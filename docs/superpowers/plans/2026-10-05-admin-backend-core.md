@@ -258,7 +258,7 @@ initial_admin_password = admin123
 
 `ConfigError` 用 `thiserror` → `admin/Cargo.toml` 的 dependencies 再加 `thiserror = "2"`。
 
-**INI 解析的行为假设**（键是否小写、节名格式）由上面三个测试固化；若 `IniParser` 行为不同（例如键转小写、必须无空格），按测试失败信息调整 `from_ini` 的取键方式，并在提交信息里注明。
+**`IniParser` 实际行为**（已读过 `crates/bee_config/src/ini.rs`，无需假设）：按行解析，`[节名]` 起新节，无节的键归入 `"default"`；键与值各自 `trim` 后**按原样**存入（键**不**转小写）；行首 `;` 或 `#` 才是注释（行尾注释不剥离）。所以 `from_ini` 的取键必须与 INI 文件里的大小写完全一致——上面样例全用小写键，配置文件也照此写。
 
 - [ ] **Step 5: 写 `admin/src/error.rs`**
 
