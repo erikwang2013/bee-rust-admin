@@ -973,16 +973,15 @@ impl<T: Model> QuerySet<T> {
     }
 
     /// 执行查询，返回全部行。
+    /// 不用 `Query::try_map`：它要求 `O: Unpin`，而 `T: Model` 推不出 Unpin。
     pub async fn fetch_all(&self, db: &Db) -> Result<Vec<T>, OrmError> {
         let sql = self.to_sql();
         let mut q = sqlx::query(&sql);
         for p in &self.params {
             q = q.bind(p.clone());
         }
-        q.try_map(|row| T::from_row(&row))
-            .fetch_all(db.pool())
-            .await
-            .map_err(normalize)
+        let rows = q.fetch_all(db.pool()).await.map_err(normalize)?;
+        rows.iter().map(T::from_row).collect::<Result<Vec<_>, _>>().map_err(normalize)
     }
 
     /// 执行查询，返回首行。
@@ -992,20 +991,19 @@ impl<T: Model> QuerySet<T> {
         for p in &self.params {
             q = q.bind(p.clone());
         }
-        q.try_map(|row| T::from_row(&row))
-            .fetch_optional(db.pool())
-            .await
-            .map_err(normalize)
+        let row = q.fetch_optional(db.pool()).await.map_err(normalize)?;
+        row.as_ref().map(T::from_row).transpose().map_err(normalize)
     }
 
-    /// 计数。
+    /// 计数。**必须按 i64 解码**：MySQL 的 COUNT(*) 是有符号 BIGINT，
+    /// sqlx 类型检查严格，`query_scalar::<_, u64>` 在真库上会直接报 ColumnDecode。
     pub async fn count(&self, db: &Db) -> Result<u64, OrmError> {
         let sql = self.count_sql();
-        let mut q = sqlx::query_scalar::<_, u64>(&sql);
+        let mut q = sqlx::query_scalar::<_, i64>(&sql);
         for p in &self.params {
             q = q.bind(p.clone());
         }
-        q.fetch_one(db.pool()).await.map_err(normalize)
+        q.fetch_one(db.pool()).await.map(|n| n as u64).map_err(normalize)
     }
 
     /// 分页：返回（当前页数据, 总数）。`page` 为 1 起始页码。
