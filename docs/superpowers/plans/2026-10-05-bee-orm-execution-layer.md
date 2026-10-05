@@ -669,8 +669,9 @@ git commit -m "feat(bee_orm_macro): 重写 Model 派生（table/pk/字段属性 
 ### Task 3: `QuerySet` 迁移 + 执行方法
 
 **Files:**
+- Create: `crates/bee_orm/src/db.rs`（最小骨架：`Db{pool}` + connect/pool/exec_sql；Task 4 在其上追加 CRUD）
 - Create: `crates/bee_orm/src/query.rs`
-- Modify: `crates/bee_orm/src/lib.rs`（删掉内联 QuerySet，改 `pub mod query; pub use query::QuerySet;`）
+- Modify: `crates/bee_orm/src/lib.rs`（删掉内联 QuerySet，改 `pub mod db; pub mod query;` + 重导出）
 - Create: `crates/bee_orm/tests/sql_gen.rs`
 
 - [ ] **Step 1: 写失败测试 `crates/bee_orm/tests/sql_gen.rs`**
@@ -767,7 +768,47 @@ fn filter_raw_binds_params() {
 Run: `cargo test -p bee_orm --test sql_gen`
 Expected: 编译失败：`filter_in` / `filter_raw` / `page` / `count_sql` 不存在。
 
-- [ ] **Step 3: 写 `src/query.rs`**
+- [ ] **Step 3: 写 `crates/bee_orm/src/db.rs`（最小骨架，Task 4 在其上追加 CRUD）**
+
+`query.rs` 的执行方法要拿 `&Db`，所以本任务先落一个最小 `Db`（连接池 + 取池 + 裸 SQL）：
+
+```rust
+// Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+use crate::error::{OrmError, normalize};
+use sqlx::mysql::{MySqlPool, MySqlPoolOptions};
+
+/// 连接池句柄；Clone 廉价（内部 Arc）。
+#[derive(Clone)]
+pub struct Db {
+    pool: MySqlPool,
+}
+
+impl Db {
+    pub async fn connect(dsn: &str) -> Result<Self, OrmError> {
+        let pool = MySqlPoolOptions::new()
+            .max_connections(10)
+            .connect(dsn)
+            .await
+            .map_err(|e| OrmError::ConnectionError(e.to_string()))?;
+        Ok(Self { pool })
+    }
+
+    pub fn pool(&self) -> &MySqlPool {
+        &self.pool
+    }
+
+    /// 执行写死的 SQL（DDL/运维/建测试库）。参数化查询一律走 QuerySet / CRUD。
+    pub async fn exec_sql(&self, sql: &str) -> Result<u64, OrmError> {
+        sqlx::query(sql)
+            .execute(&self.pool)
+            .await
+            .map_err(normalize)
+            .map(|r| r.rows_affected())
+    }
+}
+```
+
+- [ ] **Step 4: 写 `src/query.rs`**
 
 把 lib.rs 里的 `QuerySet` 整体搬过来，`validate_field` 换成 `error::validate_ident`，`filter_eq/gt/lt/contains` 的 `value: impl Into<String>` 放宽为 `impl ToString`，并补新方法：
 
@@ -976,20 +1017,30 @@ impl<T: Model> QuerySet<T> {
 }
 ```
 
-- [ ] **Step 4: 改 `src/lib.rs`**
+- [ ] **Step 5: 改 `src/lib.rs`**
 
-删掉内联的 `QuerySet` 与 `validate_field`，改为 `pub mod query;` + `pub use query::QuerySet;`。
+删掉内联的 `QuerySet` 与 `validate_field`，改为：
 
-- [ ] **Step 5: 跑测试**
+```rust
+pub mod db;
+pub mod query;
 
-Run: `cargo test -p bee_orm`
-Expected: `model_macro`、`sql_gen` 全 PASS（`mysql_integration` 因未设 DSN 跳过）。
+pub use db::Db;
+pub use query::QuerySet;
+```
 
-- [ ] **Step 6: Commit**
+（`pub use db::Tx;` 到 Task 4 有 Tx 之后再加。）
+
+- [ ] **Step 6: 跑测试**
+
+Run: `cargo test -p bee_orm -p bee_orm_macro`
+Expected: `model_macro`(6)、`sql_gen`、`orm_tests`(12)、宏 crate(3) 全 PASS；`mysql_integration` 因未设 DSN 跳过。
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add crates/bee_orm/src/query.rs crates/bee_orm/src/lib.rs crates/bee_orm/tests/sql_gen.rs
-git commit -m "feat(bee_orm): QuerySet 迁至 query 模块并支持执行（fetch/count/fetch_page）与 filter_in/filter_raw/page"
+git add crates/bee_orm/src/db.rs crates/bee_orm/src/query.rs crates/bee_orm/src/lib.rs crates/bee_orm/tests/sql_gen.rs
+git commit -m "feat(bee_orm): Db 连接骨架 + QuerySet 迁至 query 模块（执行方法/filter_in/filter_raw/page）"
 ```
 
 ---
@@ -1110,49 +1161,31 @@ async fn crud_and_query_flow() {
 Run: `BEE_ORM_TEST_DSN='...' cargo test -p bee_orm --test mysql_integration`
 Expected: 编译失败（`Db`、`exec_sql`、`insert` 等不存在）。
 
-- [ ] **Step 3: 写 `src/db.rs`**
+- [ ] **Step 3: 在 `src/db.rs` 上追加 CRUD 与 Tx（保留 Task 3 已写的 `connect`/`pool`/`exec_sql`）**
+
+`use` 行补成：
 
 ```rust
-// Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use crate::error::{OrmError, normalize, validate_ident};
 use crate::Model;
-use sqlx::mysql::{MySql, MySqlPool, MySqlPoolOptions};
+use sqlx::mysql::{MySql, MySqlPool};
 use sqlx::{Executor, QueryBuilder};
+```
 
-/// 连接池句柄；Clone 廉价（内部 Arc）。
-#[derive(Clone)]
-pub struct Db {
-    pool: MySqlPool,
-}
+（`MySqlPoolOptions` 只在 Task 3 的 `connect` 里用到；若补 `use` 时它变得未使用，按编译器提示调整，别删 `connect`。）
 
+新增 `Tx` 结构体：
+
+```rust
 /// 事务；由 `Db::begin` 创建，`commit`/`rollback` 消费自身。
 pub struct Tx {
     tx: sqlx::Transaction<'static, MySql>,
 }
+```
 
-impl Db {
-    pub async fn connect(dsn: &str) -> Result<Self, OrmError> {
-        let pool = MySqlPoolOptions::new()
-            .max_connections(10)
-            .connect(dsn)
-            .await
-            .map_err(|e| OrmError::ConnectionError(e.to_string()))?;
-        Ok(Self { pool })
-    }
+在 `impl Db` 里追加：
 
-    pub fn pool(&self) -> &MySqlPool {
-        &self.pool
-    }
-
-    /// 执行写死的 SQL（DDL/运维/建测试库）。参数化查询一律走 QuerySet / CRUD。
-    pub async fn exec_sql(&self, sql: &str) -> Result<u64, OrmError> {
-        sqlx::query(sql)
-            .execute(&self.pool)
-            .await
-            .map_err(normalize)
-            .map(|r| r.rows_affected())
-    }
-
+```rust
     pub async fn insert<T: Model>(&self, m: &mut T) -> Result<u64, OrmError> {
         insert_with(&self.pool, m).await
     }
@@ -1295,7 +1328,7 @@ where
 
 - [ ] **Step 4: 改 `src/lib.rs`**
 
-加 `pub mod db;` 与 `pub use db::{Db, Tx};`（`query.rs` 里 `use crate::db::Db` 已就位）。
+把 Task 3 写的 `pub use db::Db;` 改为 `pub use db::{Db, Tx};`（`pub mod db;` 已存在）。
 
 - [ ] **Step 5: 跑测试**
 
