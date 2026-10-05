@@ -11,7 +11,7 @@ pub mod error;
 pub mod meta;
 pub mod query;
 
-pub use db::Db;
+pub use db::{Db, Tx};
 pub use error::OrmError;
 pub use meta::{ColumnMeta, ColumnType, ModelMeta, SyncdbMode};
 pub use query::QuerySet;

@@ -80,7 +80,7 @@ fn sample_admin() -> UtAdmin {
 /// 自增列不参与 INSERT 绑定，逗号只在值之间（sqlx 的 `separated` 不留尾逗号）。
 #[test]
 fn insert_binds_skip_auto_pk() {
-    let mut qb: QueryBuilder<MySql> = QueryBuilder::new(
+    let qb: QueryBuilder<MySql> = QueryBuilder::new(
         "INSERT INTO ut_admin (username, status, dept_id, note, bio, created_at) VALUES (",
     );
     let mut qb = sample_admin().bind_insert(qb);
@@ -94,7 +94,7 @@ fn insert_binds_skip_auto_pk() {
 /// UPDATE 绑定全部非自增列，并以主键列收尾的 WHERE 结束。
 #[test]
 fn update_binds_set_all_then_where_pk() {
-    let mut qb: QueryBuilder<MySql> = QueryBuilder::new("UPDATE ut_admin ");
+    let qb: QueryBuilder<MySql> = QueryBuilder::new("UPDATE ut_admin ");
     let mut qb = sample_admin().bind_update(qb);
     assert_eq!(
         qb.build().sql(),
@@ -106,7 +106,7 @@ fn update_binds_set_all_then_where_pk() {
 #[test]
 fn update_without_pk_has_no_where() {
     let link = UtLink { admin_id: 1, role_id: 2 };
-    let mut qb: QueryBuilder<MySql> = QueryBuilder::new("UPDATE ut_link ");
+    let qb: QueryBuilder<MySql> = QueryBuilder::new("UPDATE ut_link ");
     let mut qb = link.bind_update(qb);
     assert_eq!(qb.build().sql(), "UPDATE ut_link SET admin_id = ?, role_id = ?");
 }

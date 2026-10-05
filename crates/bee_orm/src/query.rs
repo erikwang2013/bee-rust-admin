@@ -192,14 +192,15 @@ impl<T: Model> QuerySet<T> {
         row.as_ref().map(T::from_row).transpose().map_err(normalize)
     }
 
-    /// 计数。
+    /// 计数。MySQL 的 `COUNT(*)` 返回有符号 BIGINT，直接解码 u64 会被 sqlx 拒绝
+    /// （mismatched types），故按 i64 解码后再转（行数非负）。
     pub async fn count(&self, db: &Db) -> Result<u64, OrmError> {
         let sql = self.count_sql();
-        let mut q = sqlx::query_scalar::<_, u64>(&sql);
+        let mut q = sqlx::query_scalar::<_, i64>(&sql);
         for p in &self.params {
             q = q.bind(p.clone());
         }
-        q.fetch_one(db.pool()).await.map_err(normalize)
+        q.fetch_one(db.pool()).await.map_err(normalize).map(|n| n as u64)
     }
 
     /// 分页：返回（当前页数据, 总数）。`page` 为 1 起始页码。
