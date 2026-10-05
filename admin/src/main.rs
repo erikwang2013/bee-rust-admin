@@ -1,7 +1,9 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 mod config;
 mod error;
+mod models;
 mod state;
+mod util;
 
 use config::AppConfig;
 use state::AppState;
