@@ -18,6 +18,7 @@ admin/             管理后台服务端（crate bee_admin）
   src/datascope.rs 数据权限解析（全部/本部门及以下/本部门/仅本人/自定义）与查询注入
   src/seed.rs      建表（syncdb）+ 首次启动种子（超管 + 菜单权限树）
   conf/            app.conf（gitignore）/ app.conf.example
+  deploy/          systemd 单元 + nginx 站点配置示例
   tests/           集成测试（起真实进程 + 真库）
   web/             前端（React + antd）
 docs/              设计文档与实施计划
@@ -83,4 +84,12 @@ BEE_ADMIN_DB_DSN='mysql://user:pass@127.0.0.1:3306/bee_admin_test' \
 
 systemd 托管服务（监听 `127.0.0.1:8080`）+ nginx 对外 8081：静态资源指向前端构建产物
 `admin/web/dist`，`/api/` 反向代理到后端并透传 `X-Real-IP`（登录记录需要真实 IP）。
-构建前端 `cd admin/web && pnpm build`。详细单元文件与 nginx 配置见设计文档 §7。
+
+```bash
+cargo build --release -p bee_admin
+cd admin/web && pnpm build
+sudo cp admin/deploy/bee-admin.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now bee-admin
+sudo cp admin/deploy/nginx.conf.example /usr/local/nginx/conf/vhost/bee-admin.conf && sudo nginx -t && sudo systemctl reload nginx
+```
+
+文件内的注释写了各自的安装位置与前置条件；设计文档 §7 有部署方案的完整说明。
