@@ -72,6 +72,9 @@ serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }
 jsonwebtoken = "9"
 argon2 = { version = "0.5", features = ["std"] }
+# password-hash 依赖的 rand_core 默认不带 getrandom，而 OsRng 在 #[cfg(feature = "getrandom")] 后面；
+# 必须显式打开这个 feature（cargo 的 feature 合并会作用到 argon2 内部那份 rand_core）
+rand_core = { version = "0.6", features = ["getrandom"] }
 tracing = "0.1"
 
 [dev-dependencies]
@@ -721,8 +724,8 @@ pub async fn seed(db: &Db, cfg: &AppConfig) -> Result<(), bee_orm::OrmError> {
 
 ```rust
 use argon2::password_hash::SaltString;
-use argon2::password_hash::rand_core::OsRng;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
+use rand_core::OsRng;
 
 pub fn hash_password(plain: &str) -> String {
     let salt = SaltString::generate(&mut OsRng);
@@ -740,7 +743,7 @@ pub fn verify_password(plain: &str, hashed: &str) -> bool {
 }
 ```
 
-（若 `argon2::password_hash::rand_core::OsRng` 找不到，`Cargo.toml` 加 `rand_core = { version = "0.6", features = ["getrandom"] }` 并改用 `rand_core::OsRng`——以编译结果为准。）
+（`rand_core` 已在 Cargo.toml 里显式开了 `getrandom`，所以 `rand_core::OsRng` 可直接用——这一点已对着本机缓存的 `rand_core-0.6.4/src/lib.rs:49` 核过：`#[cfg(feature = "getrandom")] pub use os::OsRng;`。）
 
 - [ ] **Step 2: `main.rs` 接入**
 
