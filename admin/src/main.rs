@@ -2,6 +2,7 @@
 mod api;
 mod auth;
 mod config;
+mod datascope;
 mod error;
 mod models;
 mod seed;
