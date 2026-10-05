@@ -10,6 +10,7 @@ import NotFound from './pages/error/404';
 const Dashboard = lazy(() => import('./pages/dashboard/index'));
 const ProfilePage = lazy(() => import('./pages/profile/index'));
 const AdminPage = lazy(() => import('./pages/system/admin/index'));
+const RolePage = lazy(() => import('./pages/system/role/index'));
 
 const loading = (
   <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 120 }}>
@@ -33,6 +34,7 @@ export const router = createBrowserRouter([
           { index: true, element: <Navigate to="/dashboard" replace /> },
           { path: 'dashboard', element: <L><Dashboard /></L> },
           { path: 'system/admin', element: <L><AdminPage /></L> },
+          { path: 'system/role', element: <L><RolePage /></L> },
           { path: 'profile', element: <L><ProfilePage /></L> },
           { path: '403', element: <Forbidden /> },
           { path: '*', element: <NotFound /> },
