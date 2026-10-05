@@ -1,5 +1,5 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-use crate::api::{dedup_ids, page_size};
+use crate::api::{check_len, dedup_ids, page_size};
 use crate::auth::Auth;
 use crate::datascope;
 use crate::error::{ApiError, AppJson, ok};
@@ -101,6 +101,19 @@ fn validate_password(p: &str) -> Result<(), ApiError> {
     Ok(())
 }
 
+/// 长度上限与模型 `#[bee(len)]`、设计文档 §5.1 列宽一致。
+fn validate_profile(
+    nickname: &str,
+    email: &str,
+    phone: &str,
+    remark: &str,
+) -> Result<(), ApiError> {
+    check_len("昵称", nickname, 64)?;
+    check_len("邮箱", email, 128)?;
+    check_len("手机号", phone, 20)?;
+    check_len("备注", remark, 255)
+}
+
 /// 列表：筛选 + 数据权限 + 分页；补 dept_name / role_names。
 pub async fn list(
     State(state): State<AppState>,
@@ -198,6 +211,7 @@ pub async fn create(
     auth.require("system:admin:add")?;
     validate_username(&body.username)?;
     validate_password(&body.password)?;
+    validate_profile(&body.nickname, &body.email, &body.phone, &body.remark)?;
 
     let mut a = Admin {
         id: 0,
@@ -239,6 +253,7 @@ pub async fn update(
     AppJson(body): AppJson<AdminUpdateBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:admin:edit")?;
+    validate_profile(&body.nickname, &body.email, &body.phone, &body.remark)?;
     let mut a = Admin::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?

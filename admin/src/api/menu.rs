@@ -1,5 +1,5 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-use crate::api::would_cycle;
+use crate::api::{check_len, would_cycle};
 use crate::auth::Auth;
 use crate::error::{ApiError, AppJson, ok};
 use crate::models::{Menu, RoleMenu};
@@ -50,6 +50,17 @@ fn validate_name(name: &str) -> Result<(), ApiError> {
         return Err(ApiError::BadRequest("菜单名称不能为空".into()));
     }
     Ok(())
+}
+
+/// 长度上限与模型 `#[bee(len)]`、设计文档 §5.1 列宽一致（name 落库前会 trim）。
+fn validate_body(b: &MenuBody) -> Result<(), ApiError> {
+    validate_name(&b.name)?;
+    validate_type(&b.menu_type)?;
+    check_len("菜单名称", b.name.trim(), 64)?;
+    check_len("权限标识", &b.perm, 128)?;
+    check_len("路由路径", &b.path, 128)?;
+    check_len("组件路径", &b.component, 128)?;
+    check_len("图标", &b.icon, 64)
 }
 
 /// 父节点必须存在（0 = 根）。
@@ -104,8 +115,7 @@ pub async fn create(
     AppJson(body): AppJson<MenuBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:menu:add")?;
-    validate_name(&body.name)?;
-    validate_type(&body.menu_type)?;
+    validate_body(&body)?;
     if !parent_exists(&state, body.parent_id).await? {
         return Err(ApiError::BadRequest("上级菜单不存在".into()));
     }
@@ -136,8 +146,7 @@ pub async fn update(
     AppJson(body): AppJson<MenuBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:menu:edit")?;
-    validate_name(&body.name)?;
-    validate_type(&body.menu_type)?;
+    validate_body(&body)?;
     if !parent_exists(&state, body.parent_id).await? {
         return Err(ApiError::BadRequest("上级菜单不存在".into()));
     }

@@ -9,11 +9,15 @@ pub struct Admin {
     #[bee(auto)]
     pub id: u64,
     #[bee(unique)]
+    #[bee(len = 64)]
     pub username: String,
     #[serde(skip_serializing, default)]
     pub password: String,
+    #[bee(len = 64)]
     pub nickname: String,
+    #[bee(len = 128)]
     pub email: String,
+    #[bee(len = 20)]
     pub phone: String,
     pub sex: i8,
     pub avatar: String,
@@ -25,6 +29,7 @@ pub struct Admin {
     pub token_version: i32,
     #[serde(serialize_with = "crate::util::ser_opt_dt")]
     pub last_login_at: Option<NaiveDateTime>,
+    #[bee(len = 45)]
     pub last_login_ip: String,
     pub remark: String,
     #[serde(serialize_with = "crate::util::ser_dt")]

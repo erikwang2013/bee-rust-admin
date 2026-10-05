@@ -8,8 +8,10 @@ use serde::{Deserialize, Serialize};
 pub struct Role {
     #[bee(auto)]
     pub id: u64,
+    #[bee(len = 64)]
     pub name: String,
     #[bee(unique)]
+    #[bee(len = 64)]
     pub code: String,
     pub sort: i32,
     /// 1 全部 / 2 本部门及以下 / 3 本部门 / 4 仅本人 / 5 自定义

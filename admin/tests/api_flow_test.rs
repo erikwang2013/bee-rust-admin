@@ -131,6 +131,13 @@ async fn full_admin_flow() {
     assert_eq!(v["data"]["total"], 1, "剩下超管的记录: {v}");
     assert_eq!(v["data"]["list"][0]["username"], "admin");
 
+    // 超长文本：400 信封（不是 MySQL 1406 的 500，也不是静默截断）
+    let long_name = "角".repeat(300);
+    let (st, v) = call(&c, Method::POST, api("/roles"), Some(&admin_token),
+        Some(json!({"name": long_name, "code": "toolong", "data_scope": 1}))).await;
+    assert_eq!(st, 400, "300 字角色名应 400: {v}");
+    assert_eq!(v["code"], 400, "错误响应必须是 JSON 信封: {v}");
+
     // ── 9. 角色自定义数据范围：重复 id 去重 + 回读一致
     let (st, v) = call(&c, Method::PUT, api(&format!("/roles/{role_id}/depts")), Some(&admin_token),
         Some(json!({"dept_ids": [dept_id, dept_id]}))).await;

@@ -1,4 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+use crate::error::ApiError;
+
 pub mod admin;
 pub mod auth;
 pub mod dept;
@@ -21,6 +23,17 @@ pub(crate) fn dedup_ids(mut ids: Vec<u64>) -> Vec<u64> {
     ids.sort_unstable();
     ids.dedup();
     ids
+}
+
+/// 客户端文本字段长度校验：超长直接 400，别让 MySQL 报 1406 变成 500，
+/// 也别在非严格模式下被静默截断（截断后的权限码再也匹配不上）。
+pub(crate) fn check_len(field: &str, value: &str, max: usize) -> Result<(), ApiError> {
+    if value.chars().count() > max {
+        return Err(ApiError::BadRequest(format!(
+            "{field} 长度不能超过 {max} 个字符"
+        )));
+    }
+    Ok(())
 }
 
 /// 树形防环（menu/dept 共用）：从 `parent` 沿 `parent_of` 向上走到根，

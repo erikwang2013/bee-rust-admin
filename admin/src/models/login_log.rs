@@ -9,7 +9,9 @@ pub struct LoginLog {
     #[bee(auto)]
     pub id: u64,
     pub admin_id: u64,
+    #[bee(len = 64)]
     pub username: String,
+    #[bee(len = 45)]
     pub ip: String,
     pub user_agent: String,
     /// 1 成功 / 0 失败

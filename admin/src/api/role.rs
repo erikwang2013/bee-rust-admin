@@ -1,5 +1,5 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-use crate::api::{dedup_ids, page_size};
+use crate::api::{check_len, dedup_ids, page_size};
 use crate::auth::Auth;
 use crate::error::{ApiError, AppJson, ok};
 use crate::models::{AdminRole, Role};
@@ -70,6 +70,16 @@ fn validate_scope(scope: i8) -> Result<(), ApiError> {
     Ok(())
 }
 
+/// 长度上限与模型 `#[bee(len)]`、设计文档 §5.1 列宽一致（name/code 落库前会 trim）。
+fn validate_body(b: &RoleBody) -> Result<(), ApiError> {
+    validate_name(&b.name)?;
+    validate_code(&b.code)?;
+    validate_scope(b.data_scope)?;
+    check_len("角色名称", b.name.trim(), 64)?;
+    check_len("角色标识", b.code.trim(), 64)?;
+    check_len("备注", &b.remark, 255)
+}
+
 pub async fn list(
     State(state): State<AppState>,
     auth: Auth,
@@ -116,9 +126,7 @@ pub async fn create(
     AppJson(body): AppJson<RoleBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:add")?;
-    validate_name(&body.name)?;
-    validate_code(&body.code)?;
-    validate_scope(body.data_scope)?;
+    validate_body(&body)?;
 
     let mut r = Role {
         id: 0,
@@ -146,9 +154,7 @@ pub async fn update(
     AppJson(body): AppJson<RoleBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:edit")?;
-    validate_name(&body.name)?;
-    validate_code(&body.code)?;
-    validate_scope(body.data_scope)?;
+    validate_body(&body)?;
 
     let mut r = Role::query()
         .filter_eq("id", id)

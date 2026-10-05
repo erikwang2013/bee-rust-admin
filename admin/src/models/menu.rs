@@ -9,13 +9,18 @@ pub struct Menu {
     #[bee(auto)]
     pub id: u64,
     pub parent_id: u64,
+    #[bee(len = 64)]
     pub name: String,
     /// M 目录 / C 菜单 / F 按钮（列名用 menu_type，JSON 对外叫 type）
     #[serde(rename = "type")]
     pub menu_type: String,
+    #[bee(len = 128)]
     pub perm: String,
+    #[bee(len = 128)]
     pub path: String,
+    #[bee(len = 128)]
     pub component: String,
+    #[bee(len = 64)]
     pub icon: String,
     pub sort: i32,
     pub visible: i8,

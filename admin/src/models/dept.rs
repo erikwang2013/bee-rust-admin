@@ -9,9 +9,12 @@ pub struct Dept {
     #[bee(auto)]
     pub id: u64,
     pub parent_id: u64,
+    #[bee(len = 64)]
     pub name: String,
     pub sort: i32,
+    #[bee(len = 64)]
     pub leader: String,
+    #[bee(len = 20)]
     pub phone: String,
     pub status: i8,
     #[serde(serialize_with = "crate::util::ser_dt")]
