@@ -217,6 +217,9 @@ docker compose up -d --build
 
 - 容器内的数据库地址由 `BEE_ADMIN_DB_DSN` 注入（指向 compose 里的 `mysql` 服务）；
   配置文件仍挂载自 `admin/conf/app.conf`，JWT secret 与初始密码从那里读
+- 后端容器以**宿主机配置文件属主**的身份运行（`APP_UID`/`APP_GID`，默认 `1000:1000`）：
+  `app.conf` 通常是 600 权限，用镜像默认的非 root 用户会读不到配置而启动失败；
+  宿主 uid 不是 1000 时在 `.env` 里改
 - 想接已有的 MySQL：删掉 compose 里的 `mysql` 服务与 `depends_on`，直接改 `BEE_ADMIN_DB_DSN`
 - 只构建镜像（不启动）：`docker build -t brd-backend .`（后端）与
   `docker build -t brd-web admin/web`（前端）

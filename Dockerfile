@@ -4,9 +4,13 @@
 #   docker build -t brd-backend .
 # 运行（必须挂载配置文件，否则启动时读不到 app.conf 会直接退出）：
 #   docker run -d --name brd -p 8080:8080 \
+#     --user "$(id -u):$(id -g)" \
 #     -v "$PWD/admin/conf/app.conf:/app/conf/app.conf:ro" \
 #     -e BEE_ADMIN_DB_DSN='mysql://user:pass@host:3306/bee_admin' \
+#     -e BEE_ADMIN_HTTP_ADDR=0.0.0.0:8080 \
 #     brd-backend
+# 注意 --user：app.conf 通常是 600 权限，用镜像默认的非 root 用户（uid 10001）
+# 会读不到配置。以宿主机文件属主身份运行即可（compose 里对应 APP_UID/APP_GID）。
 #
 # 说明：
 #   - 配置文件里的 [db] dsn 会被 BEE_ADMIN_DB_DSN 覆盖（容器里指向 MySQL 服务名更自然）

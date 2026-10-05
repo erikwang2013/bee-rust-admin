@@ -34,6 +34,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    # 以「宿主机配置文件属主」的身份运行：app.conf 常是 600（只有属主可读），
+    # 若用镜像默认的非 root 用户（uid 10001）会读不到配置而启动失败。
+    # 宿主 uid/gid 不是 1000 时，在 .env 里设 APP_UID / APP_GID。
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
     environment:
       BEE_ADMIN_DB_DSN: mysql://root:${MYSQL_ROOT_PASSWORD}@mysql:3306/bee_admin
       # 必须绑 0.0.0.0：容器各有自己的网络命名空间，绑 127.0.0.1 的话
