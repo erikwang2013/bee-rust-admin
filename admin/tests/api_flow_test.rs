@@ -99,6 +99,35 @@ async fn full_admin_flow() {
     let (st, v) = call(&c, Method::POST, api("/depts"), Some(&op1_token), Some(json!({"name": "偷偷建的"}))).await;
     assert_eq!(st, 403, "无 system:dept:add 必须 403: {v}");
 
+    // ── 5b. 编辑接口不能绕过状态保护：给 op1 的角色补「编辑」按钮（system:admin:edit）
+    let (st, v) = call(&c, Method::GET, api("/menus/tree"), Some(&admin_token), None).await;
+    assert_eq!(st, 200);
+    let edit_btn_id = v["data"][0]["children"].as_array().unwrap()
+        .iter().find(|m| m["name"] == "管理员管理").expect("管理员管理菜单")["children"]
+        .as_array().expect("管理员管理有按钮子菜单")
+        .iter().find(|m| m["name"] == "编辑").expect("种子含「编辑」按钮")["id"]
+        .as_u64().expect("按钮菜单 id");
+    let (st, v) = call(&c, Method::PUT, api(&format!("/roles/{role_id}/menus")), Some(&admin_token),
+        Some(json!({"menu_ids": [admin_menu_id, edit_btn_id]}))).await;
+    assert_eq!(st, 200, "给角色补编辑按钮: {v}");
+
+    // 有 edit 权限也不能禁用超管（否则前端编辑弹窗能藏掉超管）
+    let (st, v) = call(&c, Method::PUT, api("/admins/1"), Some(&op1_token), Some(json!({"status": 0}))).await;
+    assert_eq!(st, 400, "不能修改超级管理员的状态: {v}");
+    assert!(v["msg"].as_str().unwrap().contains("超级管理员"), "错误信息应说明原因: {v}");
+    // 有 edit 权限也不能改自己的状态
+    let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{op1_id}")), Some(&op1_token),
+        Some(json!({"status": 0}))).await;
+    assert_eq!(st, 400, "不能修改自己的状态: {v}");
+    // 状态不变时编辑照常可用
+    let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{op1_id}")), Some(&op1_token), Some(json!({
+        "nickname": "操作员2", "dept_id": dept_id, "status": 1, "role_ids": [role_id]
+    }))).await;
+    assert_eq!(st, 200, "状态不变时正常编辑: {v}");
+    let (st, v) = call(&c, Method::GET, api(&format!("/admins/{op1_id}")), Some(&op1_token), None).await;
+    assert_eq!(st, 200);
+    assert_eq!(v["data"]["nickname"], "操作员2", "编辑已生效: {v}");
+
     // ── 6. 超管禁用 op1 → 旧 token 立即失效（踢下线）
     let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{op1_id}/status")), Some(&admin_token),
         Some(json!({"status": 0}))).await;
