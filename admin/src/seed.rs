@@ -182,6 +182,7 @@ pub async fn seed(db: &Db, cfg: &AppConfig) -> Result<(), bee_orm::OrmError> {
     };
     tx.insert(&mut admin).await?;
     tx.commit().await?;
-    tracing::info!("种子完成：超管 admin / {}", cfg.initial_admin_password);
+    // 不打印密码：日志会进 journald/文件，口令可能被长期留存
+    tracing::info!("种子完成：已创建超管 admin，初始密码见配置项 initial_admin_password，请登录后立即修改");
     Ok(())
 }
