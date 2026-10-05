@@ -230,13 +230,22 @@ pub(crate) fn page_size(page: Option<u32>, size: Option<u32>) -> (usize, usize) 
         size.unwrap_or(10).clamp(1, 100) as usize,
     )
 }
+
+/// 关联 id 去重排序。**所有 `set_relations` 调用前必须先过这里**：
+/// bee_orm 的 `set_relations` 不去重，传重复 id 会命中复合主键冲突、
+/// 整批回滚并返回 `DuplicateKey`（Task 5 真库实测确认）。
+pub(crate) fn dedup_ids(mut ids: Vec<u64>) -> Vec<u64> {
+    ids.sort_unstable();
+    ids.dedup();
+    ids
+}
 ```
 
 - [ ] **Step 2: 写 `admin/src/api/admin.rs`**
 
 ```rust
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-use crate::api::page_size;
+use crate::api::{dedup_ids, page_size};
 use crate::auth::Auth;
 use crate::datascope;
 use crate::error::{ApiError, ok};
@@ -460,7 +469,7 @@ pub async fn create(
     }
     state
         .db
-        .set_relations("admin_role", ("admin_id", a.id), "role_id", &body.role_ids)
+        .set_relations("admin_role", ("admin_id", a.id), "role_id", &dedup_ids(body.role_ids))
         .await
         .map_err(ApiError::from)?;
 
@@ -493,7 +502,7 @@ pub async fn update(
     state.db.update(&a).await.map_err(ApiError::from)?;
     state
         .db
-        .set_relations("admin_role", ("admin_id", id), "role_id", &body.role_ids)
+        .set_relations("admin_role", ("admin_id", id), "role_id", &dedup_ids(body.role_ids))
         .await
         .map_err(ApiError::from)?;
 
@@ -600,7 +609,7 @@ pub async fn set_roles(
     }
     state
         .db
-        .set_relations("admin_role", ("admin_id", id), "role_id", &body.role_ids)
+        .set_relations("admin_role", ("admin_id", id), "role_id", &dedup_ids(body.role_ids))
         .await
         .map_err(ApiError::from)?;
     Ok(ok(Value::Null))
@@ -651,8 +660,8 @@ git commit -m "feat(admin): 管理员 CRUD（含数据权限过滤、禁用踢�
 - `create`：`system:role:add`；校验 `name` 非空、`code` 3-64 且只允许 `[A-Za-z0-9_:]`、`data_scope ∈ 1..=5`；`OrmError::DuplicateKey` → 400「角色标识已存在」。
 - `update`：`system:role:edit`；先读后改（`name/code/sort/data_scope/status/remark`）；code 冲突同样转 400。
 - `remove`：`system:role:remove`；`AdminRole::query().filter_eq("role_id", id)?.count(&db).await? > 0` → 400「该角色已被管理员使用，不能删除」；否则 `del_relations("role_menu","role_id",id)`、`del_relations("role_dept","role_id",id)`、`delete::<Role>(id)`。
-- `get_menus` / `set_menus`：`get` 用 `system:role:list`，`set` 用 `system:role:edit`；set 前校验角色存在。
-- `get_depts` / `set_depts`：同上（`role_dept` 表）。
+- `get_menus` / `set_menus`：`get` 用 `system:role:list`，`set` 用 `system:role:edit`；set 前校验角色存在；`set_relations` 前先 `dedup_ids(body.menu_ids)`。
+- `get_depts` / `set_depts`：同上（`role_dept` 表），`set_relations` 前先 `dedup_ids(body.dept_ids)`。
 
 关键代码（其余按同样模式写）：
 
