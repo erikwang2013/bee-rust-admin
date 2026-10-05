@@ -2,6 +2,7 @@
 mod config;
 mod error;
 mod models;
+mod seed;
 mod state;
 mod util;
 
@@ -20,6 +21,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("{} 启动，配置 {}", cfg.app_name, conf_path);
 
     let db = bee_orm::Db::connect(&cfg.db_dsn).await?;
+    seed::migrate(&db).await?;
+    seed::seed(&db, &cfg).await?;
     let state = AppState { db, cfg: std::sync::Arc::new(cfg) };
     let addr = state.cfg.http_addr.clone();
 
