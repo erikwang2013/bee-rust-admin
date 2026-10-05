@@ -9,5 +9,13 @@ export default defineConfig({
       '/api': { target: 'http://127.0.0.1:8080', changeOrigin: true },
     },
   },
+  // 生产构建的本地预览（pnpm preview）：端口与线上 nginx 一致，/api 同样反代到后端，
+  // 这样不装 nginx 也能在本机跑通完整前后端链路
+  preview: {
+    port: 8081,
+    proxy: {
+      '/api': { target: 'http://127.0.0.1:8080', changeOrigin: true },
+    },
+  },
   build: { outDir: 'dist', sourcemap: false },
 });
