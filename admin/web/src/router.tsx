@@ -2,11 +2,13 @@ import { lazy, Suspense, type ReactNode } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router';
 import { Spin } from 'antd';
 import RequireAuth from './router/guard';
+import BasicLayout from './layouts/BasicLayout';
 import LoginPage from './pages/login/index';
 import Forbidden from './pages/error/403';
 import NotFound from './pages/error/404';
 
 const Dashboard = lazy(() => import('./pages/dashboard/index'));
+const ProfilePage = lazy(() => import('./pages/profile/index'));
 
 const loading = (
   <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 120 }}>
@@ -25,10 +27,11 @@ export const router = createBrowserRouter([
     element: <RequireAuth />,
     children: [
       {
-        element: <div />, // F4 换成 BasicLayout
+        element: <BasicLayout />,
         children: [
           { index: true, element: <Navigate to="/dashboard" replace /> },
           { path: 'dashboard', element: <L><Dashboard /></L> },
+          { path: 'profile', element: <L><ProfilePage /></L> },
           { path: '403', element: <Forbidden /> },
           { path: '*', element: <NotFound /> },
         ],
