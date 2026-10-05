@@ -510,11 +510,20 @@ fn expand(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     });
 
     let update_sets: Vec<_> = infos.iter().filter(|f| !f.auto).collect();
-    let update_binds = update_sets.iter().map(|f| {
-        let (ident, col) = (&f.ident, &f.column);
-        quote! { qb.push(#col).push(" = ").push_bind(self.#ident.clone()); }
-    });
-    let update_seps = (1..update_sets.len()).map(|_| quote! { qb.push(", "); });
+    // 每列一个完整片段（首列不带分隔符）——不要用两个长度不等的迭代器做 quote 重复，
+    // quote 的重复要求所有迭代器等长，否则宏展开处直接报错。
+    let update_chunks: Vec<_> = update_sets
+        .iter()
+        .enumerate()
+        .map(|(i, f)| {
+            let (ident, col) = (&f.ident, &f.column);
+            if i == 0 {
+                quote! { qb.push(#col).push(" = ").push_bind(self.#ident.clone()); }
+            } else {
+                quote! { qb.push(", ").push(#col).push(" = ").push_bind(self.#ident.clone()); }
+            }
+        })
+        .collect();
 
     // 主键列名用于 UPDATE 尾部；没有主键时不生成（Db::update 会先报错）。
     let update_where = match pk.as_deref().and_then(|p| infos.iter().find(|f| f.column == p)) {
@@ -561,7 +570,7 @@ fn expand(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
                 mut qb: bee_orm::__private::QueryBuilder<'q, bee_orm::__private::MySql>,
             ) -> bee_orm::__private::QueryBuilder<'q, bee_orm::__private::MySql> {
                 qb.push("SET ");
-                #(#update_binds #update_seps)*
+                #(#update_chunks)*
                 #update_where
                 qb
             }
