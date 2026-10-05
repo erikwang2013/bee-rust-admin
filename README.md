@@ -1,12 +1,8 @@
-<div align="center">
-
 # BRD · Bee Rust Admin
 
-**基于 bee-rust 框架的 RBAC 管理后台** —— Rust 服务端 + React 前端，建库即用
+基于 bee-rust 框架的 RBAC 管理后台 —— Rust 服务端 + React 前端，建库即用。
 
-`JWT 登录` · `管理员 / 角色 / 菜单 / 部门 / 登录记录` · `菜单+按钮级权限` · `部门数据权限`
-
-</div>
+`JWT 登录` · `管理员 / 角色 / 菜单 / 部门 / 登录记录` · `菜单 + 按钮级权限` · `部门数据权限` · `Docker 一键部署`
 
 ---
 
@@ -114,6 +110,9 @@ docs/
   diagrams/             ★ 本 README 引用的 4 张 SVG 图
   superpowers/specs/    设计文档（数据模型、接口清单、数据权限规则）
   superpowers/plans/    实施计划（ORM 执行层、后端、前端）
+Dockerfile              后端镜像（多阶段构建）
+docker-compose.yml      MySQL + 后端 + 前端一键起栈
+.github/workflows/      docker-publish.yml：打 v* 标签构建并推送镜像到 ghcr.io
 ```
 
 ## 使用说明
@@ -172,6 +171,31 @@ cd admin/web && pnpm build && pnpm preview   # http://localhost:8081
 生产环境务必同时改掉 `initial_admin_password` 与 `[jwt] secret`。
 
 > 提示：`BEE_ADMIN_CONF` 可指定配置文件路径，`BEE_ADMIN_DB_DSN` 可覆盖配置里的数据库连接串。
+
+### Docker 一键部署
+
+仓库里已备好容器化配置：
+
+| 文件 | 作用 |
+|---|---|
+| `Dockerfile` | 后端镜像：多阶段构建（Rust 编译 → Debian 运行），非 root 用户运行 |
+| `admin/web/Dockerfile` | 前端镜像：pnpm 构建 → nginx，`/api/` 上游由环境变量 `BACKEND_UPSTREAM` 注入 |
+| `docker-compose.yml` | MySQL + 后端 + 前端一键起栈，对外 `8081` |
+| `.github/workflows/docker-publish.yml` | 打 `v*` 标签时自动构建并推送两个镜像到 ghcr.io |
+
+```bash
+cp .env.example .env && vi .env                      # 填 MySQL root 密码
+cp admin/conf/app.conf.example admin/conf/app.conf   # 填 [jwt] secret（≥32 字符）
+docker compose up -d --build
+# 打开 http://localhost:8081（初始账号 admin / 配置里的 initial_admin_password）
+```
+
+- 容器内的数据库地址由 `BEE_ADMIN_DB_DSN` 注入（指向 compose 里的 `mysql` 服务）；
+  配置文件仍挂载自 `admin/conf/app.conf`，JWT secret 与初始密码从那里读
+- 想接已有的 MySQL：删掉 compose 里的 `mysql` 服务与 `depends_on`，直接改 `BEE_ADMIN_DB_DSN`
+- 只构建镜像：`docker build -t brd-backend .` 与 `docker build -t brd-web admin/web`
+- 发布：打 `v*` 标签即触发流水线，产出 `ghcr.io/<owner>/bee-rust-admin`（后端）
+  与 `ghcr.io/<owner>/bee-rust-admin-web`（前端）
 
 ### 测试
 

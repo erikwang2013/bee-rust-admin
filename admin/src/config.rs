@@ -24,7 +24,10 @@ pub struct AppConfig {
 }
 
 impl AppConfig {
-    /// 从 INI 读取；`BEE_ADMIN_DB_DSN` 环境变量可覆盖 `[db] dsn`（测试注入凭据用）。
+    /// 从 INI 读取；环境变量可覆盖两项（容器/测试注入用）：
+    /// - `BEE_ADMIN_DB_DSN` 覆盖 `[db] dsn`
+    /// - `BEE_ADMIN_HTTP_ADDR` 覆盖 `[app] http_addr`（容器里必须绑 `0.0.0.0`，
+    ///   否则同网络的其他容器连不上：127.0.0.1 是自己的网络命名空间）
     pub fn load(path: impl AsRef<Path>) -> Result<Self, ConfigError> {
         let path = path.as_ref();
         let content = std::fs::read_to_string(path)
@@ -54,7 +57,7 @@ impl AppConfig {
 
         Ok(Self {
             app_name: get("app", "name")?,
-            http_addr: get("app", "http_addr")?,
+            http_addr: std::env::var("BEE_ADMIN_HTTP_ADDR").unwrap_or(get("app", "http_addr")?),
             log_level: get("app", "log_level").unwrap_or_else(|_| "info".into()),
             db_dsn,
             jwt_secret,
@@ -95,7 +98,10 @@ initial_admin_password = admin123
     fn parses_all_fields() {
         let cfg = AppConfig::from_ini(&parse()).unwrap();
         assert_eq!(cfg.app_name, "bee-rust-admin");
-        assert_eq!(cfg.http_addr, "127.0.0.1:8080");
+        // BEE_ADMIN_HTTP_ADDR 会覆盖 INI 值（容器里绑 0.0.0.0 用），断言两种都认
+        let expect_addr =
+            std::env::var("BEE_ADMIN_HTTP_ADDR").unwrap_or_else(|_| "127.0.0.1:8080".into());
+        assert_eq!(cfg.http_addr, expect_addr);
         // BEE_ADMIN_DB_DSN 会覆盖 INI 值（测试注入真实凭据用），断言两种都认
         let expect = std::env::var("BEE_ADMIN_DB_DSN")
             .unwrap_or_else(|_| "mysql://u:p@127.0.0.1:3306/db".into());

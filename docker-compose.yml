@@ -1,0 +1,63 @@
+# BRD 一键起栈：MySQL + 后端 + 前端
+#
+# 用法：
+#   cp .env.example .env && vi .env                 # 填 MySQL root 密码
+#   cp admin/conf/app.conf.example admin/conf/app.conf
+#   vi admin/conf/app.conf                          # 填 [jwt] secret（≥32 字符）等
+#   docker compose up -d --build
+#   浏览器打开 http://localhost:8081  （初始账号 admin / 配置里的 initial_admin_password）
+#
+# 说明：
+#   - 后端容器的数据库地址由 BEE_ADMIN_DB_DSN 覆盖，指向 compose 内的 mysql 服务
+#   - 首次启动自动建表并写入超管与菜单权限种子
+#   - 想接外部已有的 MySQL：删掉 mysql 服务与 depends_on，改 .env 里的 DSN 即可
+
+services:
+  mysql:
+    image: mysql:8.4
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请在 .env 里设置 MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: bee_admin
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  bee-admin:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      BEE_ADMIN_DB_DSN: mysql://root:${MYSQL_ROOT_PASSWORD}@mysql:3306/bee_admin
+      # 必须绑 0.0.0.0：容器各有自己的网络命名空间，绑 127.0.0.1 的话
+      # 同网络的 nginx 容器连不上（反过来也解释了为什么本机直接跑用 127.0.0.1 就行）
+      BEE_ADMIN_HTTP_ADDR: 0.0.0.0:8080
+    volumes:
+      # 配置文件必须挂载：[jwt] secret 与 [seed] initial_admin_password 从这里读
+      - ./admin/conf/app.conf:/app/conf/app.conf:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+
+  bee-admin-web:
+    build:
+      context: admin/web
+      dockerfile: Dockerfile
+    environment:
+      BACKEND_UPSTREAM: bee-admin:8080
+    ports:
+      - "8081:80"
+    depends_on:
+      - bee-admin
+    restart: unless-stopped
+
+volumes:
+  mysql-data:
