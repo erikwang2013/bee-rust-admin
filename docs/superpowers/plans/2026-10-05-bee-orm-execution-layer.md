@@ -282,7 +282,7 @@ pub struct UtAdmin {
     pub created_at: chrono::NaiveDateTime,
 }
 
-/// 无属性：表名取 snake_case，主键自动认 `id`，不自增。
+/// 无属性：表名取 snake_case + "s"（与旧行为兼容），主键自动认 `id`，不自增。
 #[derive(Model)]
 pub struct DefUser {
     pub id: i64,
@@ -318,7 +318,7 @@ fn meta_reflects_attributes() {
 
 #[test]
 fn defaults_are_sane() {
-    assert_eq!(DefUser::META.table, "def_user");
+    assert_eq!(DefUser::META.table, "def_users");
     assert_eq!(DefUser::META.pk, Some("id"));
     assert!(!DefUser::META.columns[0].auto);
     assert_eq!(DefUser::META.columns[0].ty, ColumnType::I64);
@@ -329,14 +329,14 @@ fn defaults_are_sane() {
 
 #[test]
 fn query_uses_table_name() {
-    assert_eq!(DefUser::query().to_sql(), "SELECT * FROM def_user");
+    assert_eq!(DefUser::query().to_sql(), "SELECT * FROM def_users");
 }
 ```
 
 - [ ] **Step 2: 跑测试确认失败**
 
 Run: `cargo test -p bee_orm --test model_macro`
-Expected: 编译失败（旧宏生成的 `impl Model` 缺 `from_row/bind_insert/bind_update` 等关联项，且不认 `#[bee(...)]` 属性）。
+Expected: 编译失败：`error[E0046]: not all trait items implemented, missing: META, from_row, bind_insert, bind_update`（旧宏生成的空 `impl Model` 满足不了新 trait）。同一个错误现在也出现在框架自带的 `crates/bee_orm/tests/orm_tests.rs`（Task 1 之后的预期中间态），本任务的宏重写要把它一并修好。
 
 - [ ] **Step 3: 重写 `crates/bee_orm_macro/src/lib.rs`**
 
@@ -425,7 +425,7 @@ fn expand(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
             Ok(())
         })?;
     }
-    let table = table.unwrap_or_else(|| to_snake(&name.to_string()));
+    let table = table.unwrap_or_else(|| format!("{}s", to_snake(&name.to_string())));
 
     let fields = match &input.data {
         Data::Struct(s) => match &s.fields {
@@ -620,7 +620,8 @@ fn type_to_col(ty: &Type) -> syn::Result<(Ty, bool)> {
     Ok((t, false))
 }
 
-/// `UtAdmin` → `ut_admin`（默认表名；不改复数）。
+/// `UtAdmin` → `ut_admin`。默认表名 = snake_case + "s"（`User` → `users`，与旧行为兼容；
+/// 复数化是朴素加 s，不处理 `Address` → `addresss` 这类，需要就用 `#[bee(table = "…")]`）。
 fn to_snake(name: &str) -> String {
     let mut out = String::new();
     for (i, ch) in name.chars().enumerate() {
@@ -639,10 +640,13 @@ fn to_snake(name: &str) -> String {
 
 注意：宏展开引用 `bee_orm::__private::sqlx::Error`（Task 1 的 `__private` 已含 `pub use sqlx;`）与 `bee_orm::QuerySet`（Task 2 期间仍在 `lib.rs` 内，直接可达）。
 
-- [ ] **Step 4: 跑测试确认通过**
+- [ ] **Step 4: 跑测试确认通过（含框架自带测试）**
 
 Run: `cargo test -p bee_orm --test model_macro`
 Expected: 3 个测试全 PASS。
+
+Run: `cargo test -p bee_orm`
+Expected: **全部通过**，其中包括框架自带、**不得修改**的 `crates/bee_orm/tests/orm_tests.rs`（13 个测试，`test_table_name` 断言 `User` → `"users"`，正是默认表名 `snake_case + "s"` 的依据）。这个文件是本任务验收的硬指标：宏重写后它必须原样编译并通过。
 
 - [ ] **Step 5: Commit**
 
@@ -1829,6 +1833,6 @@ git commit -m "test(bee_orm): 事务提交/回滚集成测试；设计文档事�
 
 - 覆盖设计文档 §4.1–4.7 全部条目：依赖（T1）、宏（T2）、Db API + filter_in/filter_raw/page（T3/T4）、类型映射（T1 meta + T6 DDL）、syncdb（T6）、错误（T1 normalize）、测试（T2/T3 单测 + T4/T5/T6/T7 集成）。
 - 事务 API 由设计稿的 `db.transaction(闭包)` 调整为 `begin/commit/rollback`（Rust 借用限制），T7 同步改设计文档。
-- 表名默认值由旧的 `小写+s` 改为 snake_case（`DefUser` → `def_user`），T2 测试固化。
+- 表名默认值由旧的 `小写+s` 改为 snake_case + `s`（`User` → `users` 不变以兼容框架自带测试；`UtAdmin` → `ut_admins`），T2 测试与框架自带 `orm_tests.rs` 共同固化。
 - `filter_eq/gt/lt/contains` 值参数由 `impl Into<String>` 放宽到 `impl ToString`（`filter_eq("status", 1)` 可用），向后兼容。
 - 计划内所有类型/方法名一致：`Db::{connect,pool,exec_sql,insert,read,update,delete,begin,set_relations,get_relations,del_relations,syncdb}`、`Tx::{commit,rollback,exec_sql,insert,read,update,delete}`、`QuerySet::{page,count_sql,fetch_all,fetch_one,count,fetch_page,filter_in,filter_raw}`。

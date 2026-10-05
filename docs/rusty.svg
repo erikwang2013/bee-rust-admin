@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Rusty, the bee-rust project mascot bee hovering with wings spread">
+  <defs>
+    <radialGradient id="bellyGrad" cx="45%" cy="32%" r="72%">
+      <stop offset="0%" stop-color="#FFC62E"/>
+      <stop offset="70%" stop-color="#F5B301">
+        <animate attributeName="stop-color" values="#F5B301;#FF8C00;#F5B301" dur="3s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="100%" stop-color="#DE9E00"/>
+    </radialGradient>
+    <radialGradient id="headGrad" cx="42%" cy="30%" r="75%">
+      <stop offset="0%" stop-color="#FFC62E"/>
+      <stop offset="100%" stop-color="#F0AF00"/>
+    </radialGradient>
+    <linearGradient id="wingGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#EAF5FC"/>
+      <stop offset="100%" stop-color="#CFE8F5"/>
+    </linearGradient>
+    <clipPath id="bellyClip">
+      <ellipse cx="256" cy="332" rx="118" ry="128"/>
+    </clipPath>
+  </defs>
+
+  <!-- 悬停浮动：整个蜜蜂轻轻上下起伏 -->
+  <g>
+    <animateTransform attributeName="transform" type="translate" values="0,0;0,-10;0,0" dur="1.6s" repeatCount="indefinite"/>
+
+  <!-- 翅膀：四片半透明，展开成环，悬停嗡鸣 -->
+  <g fill="url(#wingGrad)" stroke="#9FC9E8" stroke-width="2" opacity="0.6">
+    <!-- 左前翅 -->
+    <g>
+      <animateTransform attributeName="transform" type="rotate" values="-22,110,150;-27,110,150;-22,110,150" dur="0.12s" repeatCount="indefinite"/>
+      <ellipse cx="110" cy="150" rx="85" ry="105" transform="rotate(-22 110 150)"/>
+      <path d="M60 80 Q105 150 165 235" fill="none" stroke-width="1.5" transform="rotate(-22 110 150)"/>
+      <path d="M130 65 Q150 140 120 245" fill="none" stroke-width="1.5" transform="rotate(-22 110 150)"/>
+    </g>
+    <!-- 右前翅 -->
+    <g>
+      <animateTransform attributeName="transform" type="rotate" values="22,402,150;27,402,150;22,402,150" dur="0.12s" repeatCount="indefinite"/>
+      <ellipse cx="402" cy="150" rx="85" ry="105" transform="rotate(22 402 150)"/>
+      <path d="M452 80 Q407 150 347 235" fill="none" stroke-width="1.5" transform="rotate(22 402 150)"/>
+      <path d="M382 65 Q362 140 392 245" fill="none" stroke-width="1.5" transform="rotate(22 402 150)"/>
+    </g>
+    <!-- 左后翅 -->
+    <g>
+      <animateTransform attributeName="transform" type="rotate" values="-42,158,238;-47,158,238;-42,158,238" dur="0.12s" repeatCount="indefinite"/>
+      <ellipse cx="158" cy="238" rx="60" ry="80" transform="rotate(-42 158 238)"/>
+    </g>
+    <!-- 右后翅 -->
+    <g>
+      <animateTransform attributeName="transform" type="rotate" values="42,354,238;47,354,238;42,354,238" dur="0.12s" repeatCount="indefinite"/>
+      <ellipse cx="354" cy="238" rx="60" ry="80" transform="rotate(42 354 238)"/>
+    </g>
+  </g>
+
+  <!-- 后腿 -->
+  <g stroke="#1F1A17" stroke-width="7" stroke-linecap="round" fill="none">
+    <path d="M198 452 Q180 482 174 502"/>
+    <path d="M314 452 Q332 482 338 502"/>
+  </g>
+
+  <!-- 腹部：琥珀金毛球，三道炭黑工装条纹 -->
+  <g>
+    <ellipse cx="256" cy="332" rx="118" ry="128" fill="url(#bellyGrad)" stroke="#C98A00" stroke-width="3"/>
+    <path d="M152 290 Q256 208 360 290" fill="none" stroke="#FFE38A" stroke-width="7" stroke-linecap="round" opacity="0.75">
+      <animate attributeName="opacity" values="0.75;0.35;0.75" dur="3s" repeatCount="indefinite"/>
+    </path>
+    <g clip-path="url(#bellyClip)">
+      <path d="M128 378 Q256 350 384 378 L384 408 Q256 380 128 408 Z" fill="#1F1A17"/>
+      <path d="M124 418 Q256 390 388 418 L388 448 Q256 420 124 448 Z" fill="#1F1A17"/>
+      <path d="M120 458 Q256 430 392 458 L392 486 Q256 460 120 486 Z" fill="#1F1A17"/>
+    </g>
+  </g>
+
+  <!-- 脖子 -->
+  <ellipse cx="256" cy="238" rx="46" ry="30" fill="url(#headGrad)" stroke="#C98A00" stroke-width="3"/>
+
+  <!-- 头部 -->
+  <circle cx="256" cy="178" r="84" fill="url(#headGrad)" stroke="#C98A00" stroke-width="3"/>
+
+  <!-- 触角 -->
+  <g stroke="#1F1A17" stroke-width="6" stroke-linecap="round" fill="#1F1A17">
+    <path d="M224 100 Q208 72 212 56" fill="none"/>
+    <circle cx="212" cy="52" r="7"/>
+    <path d="M288 100 Q304 72 300 56" fill="none"/>
+    <circle cx="300" cy="52" r="7"/>
+  </g>
+
+  <!-- 复眼：黑曜石 + 高光 -->
+  <ellipse cx="205" cy="162" rx="30" ry="38" fill="#2A1E16"/>
+  <ellipse cx="307" cy="162" rx="30" ry="38" fill="#2A1E16"/>
+  <circle cx="193" cy="146" r="9" fill="#FFFFFF"/>
+  <circle cx="295" cy="146" r="9" fill="#FFFFFF"/>
+  <circle cx="191" cy="143" r="3.5" fill="#FFFFFF"/>
+
+  <!-- 微笑 + 腮红 -->
+  <path d="M244 216 Q256 228 268 216" fill="none" stroke="#1F1A17" stroke-width="5" stroke-linecap="round"/>
+  <ellipse cx="178" cy="196" rx="15" ry="9" fill="#E8890C" opacity="0.4"/>
+  <ellipse cx="334" cy="196" rx="15" ry="9" fill="#E8890C" opacity="0.4"/>
+
+  <!-- 工具盒：前腿环抱的锈橙花粉篮 -->
+  <g>
+    <rect x="234" y="248" width="44" height="30" rx="7" fill="#B7410E" stroke="#8A320A" stroke-width="3"/>
+    <path d="M234 260 L278 260" stroke="#8A320A" stroke-width="3"/>
+    <rect x="252" y="252" width="8" height="6" rx="2" fill="#E8890C"/>
+    <path d="M170 264 Q205 284 240 268" fill="none" stroke="#1F1A17" stroke-width="7" stroke-linecap="round"/>
+    <path d="M342 264 Q307 284 272 268" fill="none" stroke="#1F1A17" stroke-width="7" stroke-linecap="round"/>
+  </g>
+
+  <!-- 名字 -->
+  <text x="256" y="500" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="30" letter-spacing="7" fill="#1F1A17">bee-rust</text>
+
+  </g>
+</svg>

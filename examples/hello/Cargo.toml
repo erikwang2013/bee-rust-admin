@@ -1,0 +1,13 @@
+# Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+[package]
+name = "hello-bee"
+version = "0.1.0"
+edition = "2021"
+# 示例兼 E2E 测试载体（tests/e2e_test.rs 靠它拉起真实二进制），不发布到 crates.io
+publish = false
+
+[dependencies]
+bee_rust = { version = "1.1.5", path = "../../crates/bee_rust", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
+axum = "0.8"
+tracing = "0.1"
