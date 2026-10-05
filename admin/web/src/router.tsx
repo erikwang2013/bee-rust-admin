@@ -13,6 +13,7 @@ const AdminPage = lazy(() => import('./pages/system/admin/index'));
 const RolePage = lazy(() => import('./pages/system/role/index'));
 const MenuPage = lazy(() => import('./pages/system/menu/index'));
 const DeptPage = lazy(() => import('./pages/system/dept/index'));
+const LoginLogPage = lazy(() => import('./pages/system/loginlog/index'));
 
 const loading = (
   <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 120 }}>
@@ -39,6 +40,7 @@ export const router = createBrowserRouter([
           { path: 'system/role', element: <L><RolePage /></L> },
           { path: 'system/menu', element: <L><MenuPage /></L> },
           { path: 'system/dept', element: <L><DeptPage /></L> },
+          { path: 'system/login-log', element: <L><LoginLogPage /></L> },
           { path: 'profile', element: <L><ProfilePage /></L> },
           { path: '403', element: <Forbidden /> },
           { path: '*', element: <NotFound /> },
