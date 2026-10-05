@@ -364,11 +364,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db = bee_orm::Db::connect(&cfg.db_dsn).await?;
     let state = AppState { db, cfg: std::sync::Arc::new(cfg) };
 
+    let addr = state.cfg.http_addr.clone(); // 必须在 with_state 前取：它会 move state
+
     let router = bee_rust::bee_router::Router::new()
         .ns("/api/v1", |ns| ns.get("/health", health))
         .with_state(state);
 
-    let addr = state.cfg.http_addr.clone();
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!("listening on http://{addr}");
     axum::serve(listener, router).await?;
@@ -381,8 +382,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 Run: `cargo build -p bee_admin`
 Expected: 编译通过。
 
-Run: `cargo test -p bee_admin --lib`
-Expected: config 的 3 个测试 PASS（`--lib` 因为此时还没有 tests/ 目录）。
+Run: `cargo test -p bee_admin`
+Expected: config 的 3 个测试 PASS（本 crate 是 bin-only，没有 lib target，所以是 `cargo test -p bee_admin` 而不是 `--lib`）。
 
 Run（真库冒烟，需要密码）:
 
