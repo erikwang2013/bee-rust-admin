@@ -7,7 +7,7 @@ pub struct SgAdmin {
     #[bee(auto)] pub id: u64,
     #[bee(unique)] pub username: String,
     pub status: i8,
-    pub dept_id: u64,
+    #[bee(index)] pub dept_id: u64,
     pub note: Option<String>,
     #[bee(text)] pub bio: String,
     pub created_at: chrono::NaiveDateTime,
@@ -70,4 +70,27 @@ fn count_sql_drops_order_and_page() {
 fn invalid_field_is_rejected() {
     assert!(SgAdmin::query().filter_eq("bad field", "x").is_err());
     assert!(SgAdmin::query().filter_in("bad;drop", vec![1u64]).is_err());
+}
+
+#[test]
+fn create_table_ddl() {
+    let ddl = bee_orm::syncdb::create_table_sql(&SgAdmin::META);
+    assert!(ddl.contains("CREATE TABLE IF NOT EXISTS sg_admin"));
+    assert!(ddl.contains("id BIGINT UNSIGNED AUTO_INCREMENT NOT NULL"));
+    assert!(ddl.contains("PRIMARY KEY (id)"));
+    assert!(ddl.contains("username VARCHAR(255) NOT NULL DEFAULT ''"));
+    assert!(ddl.contains("UNIQUE KEY uk_sg_admin_username (username)"));
+    assert!(ddl.contains("status TINYINT NOT NULL DEFAULT 0"));
+    assert!(ddl.contains("note VARCHAR(255)")); // 可空，不加 NOT NULL
+    assert!(!ddl.contains("note VARCHAR(255) NOT NULL"));
+    assert!(ddl.contains("bio TEXT NOT NULL"));
+    assert!(ddl.contains("KEY idx_sg_admin_dept_id (dept_id)"));
+    assert!(ddl.contains("created_at DATETIME NOT NULL"));
+    assert!(ddl.contains("ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"));
+}
+
+#[test]
+fn add_column_ddl() {
+    let ddl = bee_orm::syncdb::add_column_sql("sg_admin", &SgAdmin::META.columns[2]);
+    assert_eq!(ddl, "ALTER TABLE sg_admin ADD COLUMN status TINYINT NOT NULL DEFAULT 0");
 }

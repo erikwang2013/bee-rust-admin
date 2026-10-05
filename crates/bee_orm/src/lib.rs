@@ -10,6 +10,7 @@ pub mod db;
 pub mod error;
 pub mod meta;
 pub mod query;
+pub mod syncdb;
 
 pub use db::{Db, Tx};
 pub use error::OrmError;

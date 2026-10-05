@@ -1,6 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 //! 真库集成测试：设了 BEE_ORM_TEST_DSN 才跑，否则跳过（打印原因）。
-use bee_orm::{Db, Model, OrmError};
+use bee_orm::{Db, Model, OrmError, SyncdbMode};
 
 const DDL: &str = "CREATE TABLE it_admin (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -206,4 +206,56 @@ async fn relations_flow() {
     ));
 
     db.exec_sql("DROP TABLE it_admin_role").await.unwrap();
+}
+
+#[derive(Model)]
+#[bee(table = "it_sync", pk = "id")]
+pub struct ItSyncV1 {
+    #[bee(auto)] pub id: u64,
+    #[bee(unique)] pub name: String,
+    pub status: i8,
+}
+
+#[derive(Model)]
+#[bee(table = "it_sync", pk = "id")]
+pub struct ItSyncV2 {
+    #[bee(auto)] pub id: u64,
+    #[bee(unique)] pub name: String,
+    pub status: i8,
+    pub remark: String,
+    #[bee(index)] pub dept_id: u64,
+}
+
+#[tokio::test]
+async fn syncdb_creates_alters_and_is_idempotent() {
+    let Some(dsn) = dsn() else { return };
+    let db = Db::connect(&dsn).await.unwrap();
+    db.exec_sql("DROP TABLE IF EXISTS it_sync").await.unwrap();
+
+    let ddl = db.syncdb(&[ItSyncV1::META], SyncdbMode::Safe).await.unwrap();
+    assert_eq!(ddl.len(), 1);
+    assert!(ddl[0].starts_with("CREATE TABLE IF NOT EXISTS it_sync"));
+
+    // 幂等：再跑一次不产生 DDL
+    assert!(db.syncdb(&[ItSyncV1::META], SyncdbMode::Safe).await.unwrap().is_empty());
+
+    // 模型加列 → ALTER 补列 + 补索引
+    let ddl = db.syncdb(&[ItSyncV2::META], SyncdbMode::Safe).await.unwrap();
+    assert!(ddl.iter().any(|d| d.contains("ADD COLUMN remark VARCHAR(255) NOT NULL DEFAULT ''")));
+    assert!(ddl.iter().any(|d| d.contains("CREATE INDEX idx_it_sync_dept_id")));
+
+    // 补列补索引之后同样幂等（每次启动都会跑 syncdb）
+    assert!(db.syncdb(&[ItSyncV2::META], SyncdbMode::Safe).await.unwrap().is_empty());
+
+    // 新列可用
+    let mut r = ItSyncV2 { id: 0, name: "x".into(), status: 1, remark: "hi".into(), dept_id: 3 };
+    assert!(db.insert(&mut r).await.unwrap() > 0);
+
+    // Force 未实现
+    assert!(matches!(
+        db.syncdb(&[ItSyncV1::META], SyncdbMode::Force).await,
+        Err(OrmError::Unsupported(_))
+    ));
+
+    db.exec_sql("DROP TABLE it_sync").await.unwrap();
 }
