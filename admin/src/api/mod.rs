@@ -1,6 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 pub mod admin;
 pub mod auth;
+pub mod role;
 
 /// (1 起始页码, 每页条数)；size 上限 100。
 pub(crate) fn page_size(page: Option<u32>, size: Option<u32>) -> (usize, usize) {

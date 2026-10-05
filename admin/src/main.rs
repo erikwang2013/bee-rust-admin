@@ -48,6 +48,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .put("/{id}/password", api::admin::reset_password)
                 .put("/{id}/roles", api::admin::set_roles)
         })
+        .ns("/api/v1/roles", |ns| {
+            ns.get("", api::role::list)
+                .post("", api::role::create)
+                .get("/{id}", api::role::detail)
+                .put("/{id}", api::role::update)
+                .delete("/{id}", api::role::remove)
+                .get("/{id}/menus", api::role::get_menus)
+                .put("/{id}/menus", api::role::set_menus)
+                .get("/{id}/depts", api::role::get_depts)
+                .put("/{id}/depts", api::role::set_depts)
+        })
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
