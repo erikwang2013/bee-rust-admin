@@ -1,4 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+mod api;
+mod auth;
 mod config;
 mod error;
 mod models;
@@ -28,6 +30,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let router = bee_rust::bee_router::Router::new()
         .ns("/api/v1", |ns| ns.get("/health", health))
+        .ns("/api/v1/auth", |ns| {
+            ns.post("/login", api::auth::login)
+                .post("/logout", api::auth::logout)
+                .get("/profile", api::auth::profile)
+                .get("/menus", api::auth::menus)
+                .put("/password", api::auth::change_password)
+        })
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
