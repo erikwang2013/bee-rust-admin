@@ -101,7 +101,10 @@ db.del_relations("admin_role", ("admin_id", 1)).await?;                     // �
 
 // 迁移
 db.syncdb(&[Admin::META, Role::META, /* ... */], SyncdbMode::Safe).await?;
-db.transaction(|tx| async move { /* tx.insert(&mut x).await?; ... Ok(()) }).await?;
+let mut tx = db.begin().await?;   // Tx 上同样有 insert/read/update/delete/exec_sql
+tx.insert(&mut x).await?;
+tx.commit().await?;               // 或 tx.rollback().await?
+// 注意：把 &mut Tx 交给异步闭包会撞生命周期/HRTB，begin/commit/rollback 是等价且更简单的形式
 
 // 裸 SQL（DDL / 建测试库 / 运维用；仅限写死的可信 SQL，参数化查询走 QuerySet）
 db.exec_sql("CREATE DATABASE IF NOT EXISTS bee_admin_test").await?;
