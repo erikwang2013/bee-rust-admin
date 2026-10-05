@@ -1,8 +1,38 @@
-import { createBrowserRouter } from 'react-router';
-import NotFound from './pages/error/404';
+import { lazy, Suspense, type ReactNode } from 'react';
+import { createBrowserRouter, Navigate } from 'react-router';
+import { Spin } from 'antd';
+import RequireAuth from './router/guard';
+import LoginPage from './pages/login/index';
 import Forbidden from './pages/error/403';
+import NotFound from './pages/error/404';
+
+const Dashboard = lazy(() => import('./pages/dashboard/index'));
+
+const loading = (
+  <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 120 }}>
+    <Spin size="large" />
+  </div>
+);
+
+function L({ children }: { children: ReactNode }) {
+  return <Suspense fallback={loading}>{children}</Suspense>;
+}
 
 export const router = createBrowserRouter([
-  { path: '/403', element: <Forbidden /> },
-  { path: '*', element: <NotFound /> },
+  { path: '/login', element: <LoginPage /> },
+  {
+    path: '/',
+    element: <RequireAuth />,
+    children: [
+      {
+        element: <div />, // F4 换成 BasicLayout
+        children: [
+          { index: true, element: <Navigate to="/dashboard" replace /> },
+          { path: 'dashboard', element: <L><Dashboard /></L> },
+          { path: '403', element: <Forbidden /> },
+          { path: '*', element: <NotFound /> },
+        ],
+      },
+    ],
+  },
 ]);
