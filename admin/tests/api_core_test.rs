@@ -83,11 +83,16 @@ async fn login_profile_menus_logout() {
         .unwrap();
     assert_eq!(r.status(), 401);
 
-    // 登录记录：1 次失败 + 1 次成功
+    // 登录记录：1 次失败 + 1 次成功 + 1 次退出
     let pool = sqlx::MySqlPool::connect(&dsn).await.unwrap();
     let (n,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM login_log")
         .fetch_one(&pool)
         .await
         .unwrap();
-    assert_eq!(n, 2);
+    assert_eq!(n, 3, "失败 / 成功 / 退出各一条");
+    let (msg,): (String,) = sqlx::query_as("SELECT msg FROM login_log ORDER BY id DESC LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(msg, "退出登录", "最后一条是退出登录");
 }

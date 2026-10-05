@@ -9,6 +9,7 @@ use axum::extract::State;
 use axum::http::HeaderMap;
 use serde::Deserialize;
 use serde_json::{Value, json};
+use std::collections::HashMap;
 
 #[derive(Deserialize)]
 pub struct LoginBody {
@@ -127,11 +128,16 @@ pub async fn login(
     })))
 }
 
-pub async fn logout(State(state): State<AppState>, auth: Auth) -> Result<Json<Value>, ApiError> {
+pub async fn logout(
+    State(state): State<AppState>,
+    auth: Auth,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
     let mut admin = auth.admin.clone();
     admin.token_version += 1; // 当前 token 立即失效
     admin.updated_at = now();
     state.db.update(&admin).await.map_err(ApiError::from)?;
+    write_login_log(&state, admin.id, &admin.username, &headers, 1, "退出登录").await;
     Ok(ok(Value::Null))
 }
 
@@ -178,7 +184,11 @@ pub async fn menus(State(state): State<AppState>, auth: Auth) -> Result<Json<Val
                     .map_err(ApiError::from)?,
             );
         }
-        Some(ids)
+        ids.sort_unstable();
+        ids.dedup();
+        // 客户端只提交子节点时（antd 半选不落库），补全祖先，否则拼不出树、侧边栏为空
+        let parent_of: HashMap<u64, u64> = all.iter().map(|m| (m.id, m.parent_id)).collect();
+        Some(crate::api::with_ancestors(&parent_of, &ids))
     };
 
     let visible: Vec<&Menu> = all

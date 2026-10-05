@@ -247,12 +247,26 @@ pub async fn update(
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
 
+    // 本接口同样能改状态，必须走 set_status 的保护，否则可以绕过它禁用超管/自己
+    let new_status = if body.status == 0 { 0 } else { 1 };
+    if new_status != a.status {
+        if id == auth.admin.id {
+            return Err(ApiError::BadRequest("不能修改自己的状态".into()));
+        }
+        if a.is_super == 1 {
+            return Err(ApiError::BadRequest("不能修改超级管理员的状态".into()));
+        }
+        if new_status != 1 {
+            a.token_version += 1; // 禁用即踢下线
+        }
+    }
+
     a.nickname = body.nickname;
     a.email = body.email;
     a.phone = body.phone;
     a.sex = body.sex;
     a.dept_id = body.dept_id;
-    a.status = body.status;
+    a.status = new_status;
     a.remark = body.remark;
     a.updated_at = now();
     state.db.update(&a).await.map_err(ApiError::from)?;

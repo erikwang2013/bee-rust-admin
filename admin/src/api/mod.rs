@@ -42,10 +42,45 @@ pub(crate) fn would_cycle(
     false
 }
 
+/// 沿 `parent_of` 把 ids 的祖先补全（含 ids 自身）。菜单树只勾了子节点时，
+/// 没有祖先节点就拼不出树、侧边栏为空（antd 半选的父节点不会提交）。
+/// `hops` 兜底数据异常造成的环。
+pub(crate) fn with_ancestors(
+    parent_of: &std::collections::HashMap<u64, u64>,
+    ids: &[u64],
+) -> Vec<u64> {
+    let mut out = ids.to_vec();
+    for id in ids {
+        let mut cur = *parent_of.get(id).unwrap_or(&0);
+        let mut hops = 0;
+        while cur != 0 && hops <= parent_of.len() {
+            if !out.contains(&cur) {
+                out.push(cur);
+            }
+            cur = *parent_of.get(&cur).unwrap_or(&0);
+            hops += 1;
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::HashMap;
+
+    #[test]
+    fn with_ancestors_adds_chain_and_is_cycle_safe() {
+        // 1 → 2 → 3；5 ⇄ 6 成环
+        let map: HashMap<u64, u64> = [(1, 0), (2, 1), (3, 2), (5, 6), (6, 5)].into_iter().collect();
+        let mut got = with_ancestors(&map, &[3]);
+        got.sort();
+        assert_eq!(got, vec![1, 2, 3]);
+        let mut cyc = with_ancestors(&map, &[5]);
+        cyc.sort();
+        assert_eq!(cyc, vec![5, 6]);
+        assert_eq!(with_ancestors(&map, &[]), Vec::<u64>::new());
+    }
 
     #[test]
     fn would_cycle_detects_self_and_descendants() {

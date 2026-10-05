@@ -108,7 +108,11 @@ pub async fn resolve(auth: &Auth, db: &Db) -> Result<DataScope, ApiError> {
 }
 
 /// 部门子树 id（含自身）。用 `visited` 防数据异常造成的环。
+/// `root == 0` 表示「无部门」，返回空——否则会返回整片森林（所有顶级部门及其后代）。
 pub fn subtree(all: &[Dept], root: u64) -> Vec<u64> {
+    if root == 0 {
+        return Vec::new();
+    }
     let mut out: Vec<u64> = vec![root];
     let mut i = 0;
     while i < out.len() {
@@ -146,6 +150,14 @@ mod tests {
         let mut cyc = subtree(&all, 5);
         cyc.sort();
         assert_eq!(cyc, vec![5, 6]);
+    }
+
+    #[test]
+    fn subtree_of_no_dept_is_empty() {
+        // dept_id=0 是「无部门」（模型默认值、前端选项「（无）」），不是根：
+        // 返回整片森林会让「本部门及以下」看到全公司
+        let all = vec![dept(1, 0), dept(2, 1)];
+        assert!(subtree(&all, 0).is_empty());
     }
 
     #[test]

@@ -82,6 +82,12 @@ async fn full_admin_flow() {
     assert_eq!(st, 400, "op1 错密码: {v}");
     let op1_token = common::login(&base, "op1", "op123456").await.expect("op1 登录失败");
 
+    // 角色只勾了子菜单「管理员管理」→ 侧边栏必须带出父目录，否则拼不出树
+    let (st, v) = call(&c, Method::GET, api("/auth/menus"), Some(&op1_token), None).await;
+    assert_eq!(st, 200, "op1 菜单: {v}");
+    assert_eq!(v["data"][0]["path"], "/system", "只勾子菜单也要补全父目录: {v}");
+    assert_eq!(v["data"][0]["children"][0]["name"], "管理员管理", "子菜单在父目录下: {v}");
+
     let (st, v) = call(&c, Method::GET, api("/admins"), Some(&op1_token), None).await;
     assert_eq!(st, 200, "op1 看管理员列表: {v}");
     assert_eq!(v["data"]["total"], 1, "op1 只应看到自己: {v}");
