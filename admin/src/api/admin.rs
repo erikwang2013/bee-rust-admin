@@ -1,0 +1,370 @@
+// Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+use crate::api::{dedup_ids, page_size};
+use crate::auth::Auth;
+use crate::datascope;
+use crate::error::{ApiError, AppJson, ok};
+use crate::models::{Admin, Dept, Role};
+use crate::state::AppState;
+use crate::util::{hash_password, now};
+use axum::Json;
+use axum::extract::{Path, Query, State};
+use bee_orm::OrmError;
+use serde::Deserialize;
+use serde_json::{Value, json};
+use std::collections::HashMap;
+
+#[derive(Deserialize)]
+pub struct AdminListQuery {
+    pub page: Option<u32>,
+    pub size: Option<u32>,
+    pub username: Option<String>,
+    pub status: Option<i8>,
+    pub dept_id: Option<u64>,
+}
+
+#[derive(Deserialize)]
+pub struct AdminCreateBody {
+    pub username: String,
+    pub password: String,
+    #[serde(default)]
+    pub nickname: String,
+    #[serde(default)]
+    pub email: String,
+    #[serde(default)]
+    pub phone: String,
+    #[serde(default)]
+    pub sex: i8,
+    #[serde(default)]
+    pub dept_id: u64,
+    #[serde(default = "status_default")]
+    pub status: i8,
+    #[serde(default)]
+    pub remark: String,
+    #[serde(default)]
+    pub role_ids: Vec<u64>,
+}
+
+#[derive(Deserialize)]
+pub struct AdminUpdateBody {
+    #[serde(default)]
+    pub nickname: String,
+    #[serde(default)]
+    pub email: String,
+    #[serde(default)]
+    pub phone: String,
+    #[serde(default)]
+    pub sex: i8,
+    #[serde(default)]
+    pub dept_id: u64,
+    #[serde(default = "status_default")]
+    pub status: i8,
+    #[serde(default)]
+    pub remark: String,
+    #[serde(default)]
+    pub role_ids: Vec<u64>,
+}
+
+#[derive(Deserialize)]
+pub struct StatusBody {
+    pub status: i8,
+}
+
+#[derive(Deserialize)]
+pub struct PasswordBody {
+    pub password: String,
+}
+
+#[derive(Deserialize)]
+pub struct RolesBody {
+    pub role_ids: Vec<u64>,
+}
+
+fn status_default() -> i8 {
+    1
+}
+
+fn validate_username(u: &str) -> Result<(), ApiError> {
+    let u = u.trim();
+    if u.chars().count() < 3 || u.chars().count() > 64 {
+        return Err(ApiError::BadRequest("用户名长度需 3-64 个字符".into()));
+    }
+    if !u.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return Err(ApiError::BadRequest("用户名只能包含字母、数字、下划线".into()));
+    }
+    Ok(())
+}
+
+fn validate_password(p: &str) -> Result<(), ApiError> {
+    if p.chars().count() < 6 {
+        return Err(ApiError::BadRequest("密码至少 6 位".into()));
+    }
+    Ok(())
+}
+
+/// 列表：筛选 + 数据权限 + 分页；补 dept_name / role_names。
+pub async fn list(
+    State(state): State<AppState>,
+    auth: Auth,
+    Query(q): Query<AdminListQuery>,
+) -> Result<Json<Value>, ApiError> {
+    auth.require("system:admin:list")?;
+    let (page, size) = page_size(q.page, q.size);
+
+    let mut qs = Admin::query();
+    if let Some(u) = q.username.as_deref().filter(|s| !s.trim().is_empty()) {
+        qs = qs.filter_contains("username", u.trim()).map_err(ApiError::from)?;
+    }
+    if let Some(s) = q.status {
+        qs = qs.filter_eq("status", s).map_err(ApiError::from)?;
+    }
+    if let Some(d) = q.dept_id {
+        qs = qs.filter_eq("dept_id", d).map_err(ApiError::from)?;
+    }
+
+    let scope = datascope::resolve(&auth, &state.db).await?;
+    qs = datascope::apply(qs, &scope, "dept_id", "id");
+
+    let (rows, total) = qs
+        .order_by("id DESC")
+        .fetch_page(&state.db, page, size)
+        .await
+        .map_err(ApiError::from)?;
+
+    let dept_names: HashMap<u64, String> = Dept::query()
+        .fetch_all(&state.db)
+        .await
+        .map_err(ApiError::from)?
+        .into_iter()
+        .map(|d| (d.id, d.name))
+        .collect();
+    let role_names: HashMap<u64, String> = Role::query()
+        .fetch_all(&state.db)
+        .await
+        .map_err(ApiError::from)?
+        .into_iter()
+        .map(|r| (r.id, r.name))
+        .collect();
+
+    let mut list = Vec::with_capacity(rows.len());
+    for a in rows {
+        // ponytail: 每行一次关联查询（页 10 行 = 11 次查询）；行数大改批量查
+        let ids = state
+            .db
+            .get_relations("admin_role", ("admin_id", a.id), "role_id")
+            .await
+            .map_err(ApiError::from)?;
+        let names: Vec<String> = ids.iter().filter_map(|i| role_names.get(i).cloned()).collect();
+        let mut v = serde_json::to_value(&a)
+            .map_err(|e| ApiError::internal(format!("序列化失败: {e}")))?;
+        v["dept_name"] = json!(dept_names.get(&a.dept_id).cloned().unwrap_or_default());
+        v["role_names"] = json!(names);
+        v["role_ids"] = json!(ids);
+        list.push(v);
+    }
+
+    Ok(ok(json!({ "list": list, "total": total })))
+}
+
+pub async fn detail(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(id): Path<u64>,
+) -> Result<Json<Value>, ApiError> {
+    auth.require("system:admin:list")?;
+    let a = Admin::query()
+        .filter_eq("id", id)
+        .map_err(ApiError::from)?
+        .fetch_one(&state.db)
+        .await
+        .map_err(ApiError::from)?
+        .ok_or(ApiError::NotFound)?;
+    let role_ids = state
+        .db
+        .get_relations("admin_role", ("admin_id", id), "role_id")
+        .await
+        .map_err(ApiError::from)?;
+    let mut v = serde_json::to_value(&a).map_err(|e| ApiError::internal(format!("序列化失败: {e}")))?;
+    v["role_ids"] = json!(role_ids);
+    Ok(ok(v))
+}
+
+pub async fn create(
+    State(state): State<AppState>,
+    auth: Auth,
+    AppJson(body): AppJson<AdminCreateBody>,
+) -> Result<Json<Value>, ApiError> {
+    auth.require("system:admin:add")?;
+    validate_username(&body.username)?;
+    validate_password(&body.password)?;
+
+    let mut a = Admin {
+        id: 0,
+        username: body.username.trim().to_string(),
+        password: hash_password(&body.password),
+        nickname: body.nickname,
+        email: body.email,
+        phone: body.phone,
+        sex: body.sex,
+        avatar: String::new(),
+        dept_id: body.dept_id,
+        status: body.status,
+        is_super: 0,
+        token_version: 0,
+        last_login_at: None,
+        last_login_ip: String::new(),
+        remark: body.remark,
+        created_at: now(),
+        updated_at: now(),
+    };
+    match state.db.insert(&mut a).await {
+        Ok(_) => {}
+        Err(OrmError::DuplicateKey(_)) => return Err(ApiError::BadRequest("用户名已存在".into())),
+        Err(e) => return Err(e.into()),
+    }
+    state
+        .db
+        .set_relations("admin_role", ("admin_id", a.id), "role_id", &dedup_ids(body.role_ids))
+        .await
+        .map_err(ApiError::from)?;
+
+    Ok(ok(json!({ "id": a.id })))
+}
+
+pub async fn update(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(id): Path<u64>,
+    AppJson(body): AppJson<AdminUpdateBody>,
+) -> Result<Json<Value>, ApiError> {
+    auth.require("system:admin:edit")?;
+    let mut a = Admin::query()
+        .filter_eq("id", id)
+        .map_err(ApiError::from)?
+        .fetch_one(&state.db)
+        .await
+        .map_err(ApiError::from)?
+        .ok_or(ApiError::NotFound)?;
+
+    a.nickname = body.nickname;
+    a.email = body.email;
+    a.phone = body.phone;
+    a.sex = body.sex;
+    a.dept_id = body.dept_id;
+    a.status = body.status;
+    a.remark = body.remark;
+    a.updated_at = now();
+    state.db.update(&a).await.map_err(ApiError::from)?;
+    state
+        .db
+        .set_relations("admin_role", ("admin_id", id), "role_id", &dedup_ids(body.role_ids))
+        .await
+        .map_err(ApiError::from)?;
+
+    Ok(ok(Value::Null))
+}
+
+pub async fn remove(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(id): Path<u64>,
+) -> Result<Json<Value>, ApiError> {
+    auth.require("system:admin:remove")?;
+    if id == auth.admin.id {
+        return Err(ApiError::BadRequest("不能删除自己".into()));
+    }
+    let a = Admin::query()
+        .filter_eq("id", id)
+        .map_err(ApiError::from)?
+        .fetch_one(&state.db)
+        .await
+        .map_err(ApiError::from)?
+        .ok_or(ApiError::NotFound)?;
+    if a.is_super == 1 {
+        return Err(ApiError::BadRequest("不能删除超级管理员".into()));
+    }
+    state
+        .db
+        .del_relations("admin_role", "admin_id", id)
+        .await
+        .map_err(ApiError::from)?;
+    state.db.delete::<Admin>(id).await.map_err(ApiError::from)?;
+    Ok(ok(Value::Null))
+}
+
+pub async fn set_status(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(id): Path<u64>,
+    AppJson(body): AppJson<StatusBody>,
+) -> Result<Json<Value>, ApiError> {
+    auth.require("system:admin:edit")?;
+    if id == auth.admin.id {
+        return Err(ApiError::BadRequest("不能修改自己的状态".into()));
+    }
+    let mut a = Admin::query()
+        .filter_eq("id", id)
+        .map_err(ApiError::from)?
+        .fetch_one(&state.db)
+        .await
+        .map_err(ApiError::from)?
+        .ok_or(ApiError::NotFound)?;
+    if a.is_super == 1 {
+        return Err(ApiError::BadRequest("不能修改超级管理员的状态".into()));
+    }
+    a.status = if body.status == 0 { 0 } else { 1 };
+    if a.status != 1 {
+        a.token_version += 1; // 禁用即踢下线
+    }
+    a.updated_at = now();
+    state.db.update(&a).await.map_err(ApiError::from)?;
+    Ok(ok(Value::Null))
+}
+
+pub async fn reset_password(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(id): Path<u64>,
+    AppJson(body): AppJson<PasswordBody>,
+) -> Result<Json<Value>, ApiError> {
+    auth.require("system:admin:resetPwd")?;
+    validate_password(&body.password)?;
+    let mut a = Admin::query()
+        .filter_eq("id", id)
+        .map_err(ApiError::from)?
+        .fetch_one(&state.db)
+        .await
+        .map_err(ApiError::from)?
+        .ok_or(ApiError::NotFound)?;
+    if a.is_super == 1 && id != auth.admin.id {
+        return Err(ApiError::BadRequest("不能重置其他超级管理员的密码".into()));
+    }
+    a.password = hash_password(&body.password);
+    a.token_version += 1; // 旧 token 立即失效
+    a.updated_at = now();
+    state.db.update(&a).await.map_err(ApiError::from)?;
+    Ok(ok(Value::Null))
+}
+
+pub async fn set_roles(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(id): Path<u64>,
+    AppJson(body): AppJson<RolesBody>,
+) -> Result<Json<Value>, ApiError> {
+    auth.require("system:admin:edit")?;
+    let exists = Admin::query()
+        .filter_eq("id", id)
+        .map_err(ApiError::from)?
+        .fetch_one(&state.db)
+        .await
+        .map_err(ApiError::from)?;
+    if exists.is_none() {
+        return Err(ApiError::NotFound);
+    }
+    state
+        .db
+        .set_relations("admin_role", ("admin_id", id), "role_id", &dedup_ids(body.role_ids))
+        .await
+        .map_err(ApiError::from)?;
+    Ok(ok(Value::Null))
+}

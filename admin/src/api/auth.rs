@@ -229,23 +229,6 @@ pub async fn change_password(
     Ok(ok(Value::Null))
 }
 
-/// 分页查询参数（后续列表接口共用）。
-#[derive(Deserialize)]
-pub struct PageQuery {
-    pub page: Option<u32>,
-    pub size: Option<u32>,
-}
-
-impl PageQuery {
-    /// 返回 (1 起始页码, 每页条数)；size 上限 100。
-    pub fn page_size(&self) -> (usize, usize) {
-        (
-            self.page.unwrap_or(1).max(1) as usize,
-            self.size.unwrap_or(10).clamp(1, 100) as usize,
-        )
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
