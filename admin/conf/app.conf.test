@@ -1,0 +1,14 @@
+[app]
+name = bee-rust-admin-test
+http_addr = 127.0.0.1:0
+log_level = warn
+
+[db]
+dsn = mysql://root:placeholder@127.0.0.1:3306/bee_admin_test
+
+[jwt]
+secret = test-secret-0123456789abcdefghijklmnop
+expire_hours = 1
+
+[seed]
+initial_admin_password = admin123

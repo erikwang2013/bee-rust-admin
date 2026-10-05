@@ -17,6 +17,7 @@ members = [
     "crates/bee_router",
     "crates/bee_cli",
     "crates/bee_rust",
+    "admin",
     "examples/hello",
 ]
 exclude = [

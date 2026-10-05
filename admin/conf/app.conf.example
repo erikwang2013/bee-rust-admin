@@ -1,0 +1,15 @@
+[app]
+name = bee-rust-admin
+http_addr = 127.0.0.1:8080
+log_level = info
+
+[db]
+dsn = mysql://user:password@127.0.0.1:3306/bee_admin
+
+[jwt]
+# 至少 32 字符，且不能是 changeme（否则拒绝启动）
+secret = change-me-to-a-random-string-of-32-chars
+expire_hours = 24
+
+[seed]
+initial_admin_password = admin123
