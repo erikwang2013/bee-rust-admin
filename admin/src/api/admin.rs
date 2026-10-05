@@ -159,6 +159,7 @@ pub async fn list(
         v["dept_name"] = json!(dept_names.get(&a.dept_id).cloned().unwrap_or_default());
         v["role_names"] = json!(names);
         v["role_ids"] = json!(ids);
+        v["is_super"] = json!(a.is_super == 1); // 前端契约：bool
         list.push(v);
     }
 
@@ -185,6 +186,7 @@ pub async fn detail(
         .map_err(ApiError::from)?;
     let mut v = serde_json::to_value(&a).map_err(|e| ApiError::internal(format!("序列化失败: {e}")))?;
     v["role_ids"] = json!(role_ids);
+    v["is_super"] = json!(a.is_super == 1); // 前端契约：bool
     Ok(ok(v))
 }
 
