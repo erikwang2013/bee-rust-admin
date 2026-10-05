@@ -1,256 +1,240 @@
 // 阿守（Keeper）五态渲染器 —— 一份模板 + 每种心情的差异片段。
 //
 // 用法： node docs/pet/render.mjs
-// 输出： docs/pet/keeper-onduty.svg / -verifying / -superuser / -dozing / -alarmed
+// 输出： docs/pet/keeper-{onduty,verifying,superuser,dozing,alarmed}.svg
 //
-// 设计约束：五种状态共用同一副身体（改一条腿只需改这里一处），
-// 只让「脸 / 翅膀姿态 / 尾针 / 胸章 / 附加道具」随心情变化。
+// 设计要点（第二版重画）：
+//   - Q 版比例：大头 + 圆胖身体，头比身体更抢眼
+//   - 粗描边贴纸风 + 大眼睛带高光 + 腮红，小尺寸下也认得出
+//   - 粗短的圆润四肢，不用细线条（细腿在剪影上像昆虫标本）
+//   - 只留一个招牌道具（钥匙），其余靠表情与姿态区分
+//   - 元素做减法：去掉巢门平台，蜂巢意象收进胸章
 
 const W = 512;
 const H = 512;
 
-// ── 翅膀：在岗收着、超管张开、打盹下垂、警戒高举 ───────────────
+const INK = '#3A2A1A'; // 统一暖炭色描边
+const LINE = 5;
+
+// ── 翅膀：默认收在背后；超管展开、打盹下垂、警戒高举 ──────────
 const wings = (mode) => {
   const shapes = {
     rest: [
-      'M232,196 C150,150 96,96 84,44 C130,44 196,74 232,132 Z',
-      'M280,196 C362,150 416,96 428,44 C382,44 316,74 280,132 Z',
+      'M186,258 C130,212 108,166 116,128 C158,142 190,180 202,224 Z',
+      'M326,258 C382,212 404,166 396,128 C354,142 322,180 310,224 Z',
     ],
     spread: [
-      'M230,190 C126,146 60,84 34,20 C104,16 196,60 236,120 Z',
-      'M282,190 C386,146 452,84 478,20 C408,16 316,60 276,120 Z',
+      'M176,244 C104,190 66,126 62,74 C124,84 176,128 198,186 Z',
+      'M336,244 C408,190 446,126 450,74 C388,84 336,128 314,186 Z',
     ],
     droop: [
-      'M234,206 C170,196 120,182 92,166 C136,138 196,146 238,176 Z',
-      'M278,206 C342,196 392,182 420,166 C376,138 316,146 274,176 Z',
+      'M192,268 C148,264 116,252 96,236 C130,208 176,214 204,240 Z',
+      'M320,268 C364,264 396,252 416,236 C382,208 336,214 308,240 Z',
     ],
     alert: [
-      'M226,182 C140,120 78,54 62,4 C132,10 214,52 240,110 Z',
-      'M286,182 C372,120 434,54 450,4 C380,10 298,52 272,110 Z',
+      'M182,240 C112,168 78,104 76,52 C142,70 192,120 206,180 Z',
+      'M330,240 C400,168 434,104 436,52 C370,70 320,120 306,180 Z',
     ],
   }[mode];
   return `<g>
-    ${shapes.map((d) => `<path d="${d}" fill="url(#wingGrad)" stroke="#9CC7DE" stroke-width="2.5"/>`).join('\n    ')}
-    ${shapes.map((d) => `<path d="${d}" fill="none" stroke="#67E8F9" stroke-width="2" opacity="0.8"/>`).join('\n    ')}
+    ${shapes
+      .map((d) => `<path d="${d}" fill="#E4F2FB" stroke="#8FBED8" stroke-width="${LINE - 1}"/>`)
+      .join('\n    ')}
   </g>`;
 };
 
-// ── 尾针：在岗收着，警戒时竖起并加粗 ──────────────────────────
-const sting = (raised) =>
-  raised
-    ? `<path d="M256,398 L256,404 L246,436 L256,464 L266,436 L256,404 Z"
-         fill="#E8890C" stroke="#2A1E16" stroke-width="3" stroke-linejoin="round"/>
-       <circle cx="256" cy="464" r="6" fill="#2A1E16"/>`
-    : `<path d="M256,406 L256,428" stroke="#2A1E16" stroke-width="7" stroke-linecap="round"/>`;
+// ── 大眼睛（带上高光，可爱度的关键）──────────────────────────
+const eyeOpen = (cx, cy, r = 1) => `
+    <ellipse cx="${cx}" cy="${cy}" rx="${18 * r}" ry="${22 * r}" fill="${INK}"/>
+    <circle cx="${cx - 6}" cy="${cy - 8}" r="${7 * r}" fill="#FFFFFF"/>
+    <circle cx="${cx + 6}" cy="${cy + 9}" r="${3.4 * r}" fill="#FFFFFF" opacity="0.85"/>`;
 
-// ── 胸章：对勾（查验通过）/ 金星（超管）/ 感叹号（告警）────────
-const badge = (kind) => {
-  const hex = '<polygon points="256,206 282,221 282,251 256,266 230,251 230,221"';
-  if (kind === 'star') {
-    return `${hex} fill="#B45309" stroke="#FDE68A" stroke-width="2.5"/>
-      <path d="M256,214 L262,230 L279,230 L265,240 L270,256 L256,246 L242,256 L247,240 L233,230 L250,230 Z"
-            fill="#FDE68A"/>`;
-  }
-  if (kind === 'alert') {
-    return `${hex} fill="#B91C1C" stroke="#FECACA" stroke-width="2.5"/>
-      <path d="M256,216 L256,242" stroke="#FEF2F2" stroke-width="7" stroke-linecap="round"/>
-      <circle cx="256" cy="254" r="4.5" fill="#FEF2F2"/>`;
-  }
-  return `${hex} fill="#0E7490" stroke="#67E8F9" stroke-width="2.5"/>
-    <path d="M242,236 L252,247 L271,224" fill="none" stroke="#EAF5FC" stroke-width="5"
-          stroke-linecap="round" stroke-linejoin="round"/>`;
-};
-
-// ── 表情：网格复眼保留（那是阿守的标志），只改眼形与嘴 ─────────
+// ── 表情：五种心情的差异集中在这里 ───────────────────────────
 const face = (mood) => {
-  const grid = (cx, cy, extra = '') => `
-      <ellipse cx="${cx}" cy="${cy}" rx="17" ry="20" fill="#1F1A17"/>
-      ${extra}
-      <g stroke="#67E8F9" stroke-width="1.2" opacity="0.75">
-        <path d="M${cx - 13},${cy - 10} H${cx + 13} M${cx - 13},${cy} H${cx + 13} M${cx - 13},${cy + 10} H${cx + 13}"/>
-        <path d="M${cx - 7},${cy - 19} V${cy + 19} M${cx + 3},${cy - 19} V${cy + 19}"/>
-      </g>`;
-
   if (mood === 'superuser') {
-    // (＾▽＾) 开心弧眼 + 大笑
     return `
-    <g stroke="#1F1A17" stroke-width="4" fill="none" stroke-linecap="round">
-      <path d="M218,172 Q234,154 250,172"/>
-      <path d="M262,172 Q278,154 294,172"/>
+    <g stroke="${INK}" stroke-width="6" fill="none" stroke-linecap="round">
+      <path d="M206,170 Q224,148 242,170"/>
+      <path d="M270,170 Q288,148 306,170"/>
     </g>
-    <path d="M236,196 Q256,216 276,196" fill="none" stroke="#2A1E16" stroke-width="4" stroke-linecap="round"/>
-    <path d="M240,198 Q256,210 272,198" fill="#8A320A" opacity="0.35"/>`;
+    <path d="M234,196 Q256,220 278,196" fill="none" stroke="${INK}" stroke-width="5.5" stroke-linecap="round"/>
+    <path d="M240,199 Q256,214 272,199" fill="#B4552A" opacity="0.35"/>`;
   }
   if (mood === 'dozing') {
-    // (-_-) 闭眼 + 小嘴
     return `
-    <g stroke="#1F1A17" stroke-width="4" fill="none" stroke-linecap="round">
-      <path d="M217,170 Q234,178 251,170"/>
-      <path d="M261,170 Q278,178 295,170"/>
+    <g stroke="${INK}" stroke-width="6" fill="none" stroke-linecap="round">
+      <path d="M205,172 Q224,184 243,172"/>
+      <path d="M269,172 Q288,184 307,172"/>
     </g>
-    <ellipse cx="256" cy="200" rx="7" ry="9" fill="#8A320A" opacity="0.85"/>`;
+    <ellipse cx="256" cy="202" rx="9" ry="12" fill="#B4552A" opacity="0.75"/>`;
   }
   if (mood === 'alarmed') {
-    // (#°益°) 竖眉 + 瞪眼 + 咬牙
     return `
-    ${grid(234, 170)}
-    ${grid(280, 170)}
-    <g stroke="#1F1A17" stroke-width="4.5" fill="none" stroke-linecap="round">
-      <path d="M216,148 L244,158"/>
-      <path d="M296,148 L268,158"/>
+    ${eyeOpen(224, 172, 0.94)}
+    ${eyeOpen(288, 172, 0.94)}
+    <g stroke="${INK}" stroke-width="6.5" fill="none" stroke-linecap="round">
+      <path d="M200,140 L240,154"/>
+      <path d="M312,140 L272,154"/>
     </g>
-    <path d="M238,202 L274,202" stroke="#2A1E16" stroke-width="4" stroke-linecap="round"/>
-    <g fill="#FEF2F2"><rect x="240" y="196" width="8" height="12" rx="1"/><rect x="264" y="196" width="8" height="12" rx="1"/></g>`;
+    <path d="M234,204 L278,204" stroke="${INK}" stroke-width="5.5" stroke-linecap="round"/>
+    <g fill="#FFFFFF" opacity="0.95">
+      <rect x="240" y="197" width="9" height="14" rx="2"/>
+      <rect x="263" y="197" width="9" height="14" rx="2"/>
+    </g>`;
   }
   if (mood === 'verifying') {
-    // (・_・)? 一只眼瞪大 + 小圆嘴
     return `
-    ${grid(234, 170)}
-    <ellipse cx="281" cy="170" rx="19" ry="22" fill="#1F1A17"/>
-    <g stroke="#67E8F9" stroke-width="1.2" opacity="0.75">
-      <path d="M266,160 H296 M266,170 H296 M266,180 H296"/>
-      <path d="M273,151 V189 M286,151 V189"/>
-    </g>
-    <ellipse cx="256" cy="202" rx="8" ry="8" fill="#8A320A" opacity="0.8"/>`;
+    ${eyeOpen(224, 172)}
+    ${eyeOpen(292, 172, 1.18)}
+    <path d="M198,136 L234,146" stroke="${INK}" stroke-width="6" fill="none" stroke-linecap="round"/>
+    <ellipse cx="256" cy="204" rx="10" ry="11" fill="#B4552A" opacity="0.7"/>`;
   }
-  // 值守（默认）：镇定微笑
+  // 值守（默认）：柔和微笑
   return `
-    ${grid(234, 168)}
-    ${grid(280, 168)}
-    <path d="M244,200 Q256,210 268,200" fill="none" stroke="#2A1E16" stroke-width="3.5" stroke-linecap="round"/>`;
+    ${eyeOpen(224, 170)}
+    ${eyeOpen(288, 170)}
+    <path d="M240,198 Q256,212 272,198" fill="none" stroke="${INK}" stroke-width="5.5" stroke-linecap="round"/>`;
 };
 
-// ── 附加道具 / 氛围 ───────────────────────────────────────────
+// ── 胸章：对勾（通过）/ 金星（超管）/ 感叹号（告警）───────────
+const badge = (kind) => {
+  const hex = '<polygon points="256,264 277,276 277,300 256,312 235,300 235,276"';
+  const fill = kind === 'star' ? '#E8B33A' : kind === 'alert' ? '#D64545' : '#FFFFFF';
+  const stroke = kind === 'star' ? '#8A5A0B' : kind === 'alert' ? '#8E2020' : '#2E8FA8';
+  const mark =
+    kind === 'star'
+      ? `<path d="M256,272 L261,285 L275,286 L264,295 L268,309 L256,301 L244,309 L248,295 L237,286 L251,285 Z" fill="#8A5A0B"/>`
+      : kind === 'alert'
+        ? `<path d="M256,274 L256,294" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round"/>
+           <circle cx="256" cy="304" r="4" fill="#FFFFFF"/>`
+        : `<path d="M245,289 L253,298 L268,279" fill="none" stroke="#2E8FA8" stroke-width="5"
+                 stroke-linecap="round" stroke-linejoin="round"/>`;
+  return `${hex} fill="${fill}" stroke="${stroke}" stroke-width="3.5"/>\n    ${mark}`;
+};
+
+// ── 招牌道具：一把钥匙（挂在右手）──────────────────────────
+const key = (x, y, dropped = false) => `
+    <g ${dropped ? 'opacity="0.85"' : ''}>
+      <circle cx="${x}" cy="${y}" r="14" fill="none" stroke="${INK}" stroke-width="8"/>
+      <path d="M${x},${y + 14} L${x},${y + 60}" stroke="${INK}" stroke-width="10" stroke-linecap="round"/>
+      <path d="M${x},${y + 40} L${x - 18},${y + 40}" stroke="${INK}" stroke-width="8" stroke-linecap="round"/>
+      <path d="M${x},${y + 54} L${x - 13},${y + 54}" stroke="${INK}" stroke-width="8" stroke-linecap="round"/>
+    </g>`;
+
+// ── 附加道具 / 氛围 ─────────────────────────────────────────
 const extras = (mood) => {
   if (mood === 'verifying') {
-    // 举着凭证（一张小卡片）+ 问号
+    // 举放大镜 + 问号
     return `
-  <g>
-    <path d="M198,268 L150,300 L146,344" stroke="#2A1E16" stroke-width="6" fill="none" stroke-linecap="round"/>
-    <path d="M150,300 L96,272" stroke="#2A1E16" stroke-width="6" fill="none" stroke-linecap="round"/>
-    <rect x="52" y="228" width="52" height="66" rx="5" fill="#EAF5FC" stroke="#0E7490" stroke-width="3" transform="rotate(-12 78 261)"/>
-    <g stroke="#0E7490" stroke-width="2.5" opacity="0.8" transform="rotate(-12 78 261)">
-      <path d="M62,244 H94 M62,256 H94 M62,268 H86"/>
-    </g>
+  <path d="M150,306 C126,314 118,328 122,344" stroke="${INK}" stroke-width="13" fill="none" stroke-linecap="round"/>
+  <g transform="rotate(24 116 300)">
+    <circle cx="116" cy="300" r="30" fill="#E4F2FB" fill-opacity="0.6" stroke="${INK}" stroke-width="6"/>
+    <path d="M139,323 L166,352" stroke="${INK}" stroke-width="10" stroke-linecap="round"/>
+    <path d="M100,288 Q112,278 128,282" stroke="#FFFFFF" stroke-width="6" fill="none" stroke-linecap="round" opacity="0.9"/>
   </g>
-  <text x="330" y="132" font-family="system-ui, 'PingFang SC', sans-serif" font-size="44" font-weight="700"
-        fill="#0E7490" opacity="0.9">?</text>`;
+  <text x="336" y="128" font-family="system-ui,'PingFang SC',sans-serif" font-size="52" font-weight="800"
+        fill="#2E8FA8">?</text>`;
   }
   if (mood === 'dozing') {
-    // Zzz
     return `
-  <g fill="#0E7490" opacity="0.85" font-family="ui-monospace, Menlo, monospace" font-weight="700">
-    <text x="332" y="150" font-size="26">z</text>
-    <text x="352" y="124" font-size="20">z</text>
-    <text x="368" y="102" font-size="15">z</text>
+  <g fill="#2E8FA8" font-family="ui-monospace,Menlo,monospace" font-weight="800">
+    <text x="336" y="152" font-size="30">z</text>
+    <text x="360" y="122" font-size="23">z</text>
+    <text x="380" y="96" font-size="17">z</text>
   </g>
-  <path d="M120,96 A46,46 0 0 1 156,60 A40,40 0 0 0 108,80 Z" fill="#FDE68A" stroke="#C98A00" stroke-width="2"/>`;
+  <path d="M96,104 A44,44 0 0 1 130,70 A38,38 0 0 0 86,90 Z" fill="#F7D774" stroke="#C99A2E" stroke-width="2.5"/>`;
   }
   if (mood === 'alarmed') {
-    // 红晕告警光 + 一张写着 .env 的纸（被发现的密钥文件）
     return `
-  <circle cx="256" cy="250" r="150" fill="#EF4444" opacity="0.10"/>
-  <g transform="rotate(-10 96 150)">
-    <rect x="62" y="120" width="66" height="80" rx="4" fill="#FFF7ED" stroke="#B91C1C" stroke-width="3"/>
-    <text x="95" y="168" text-anchor="middle" font-family="ui-monospace, Menlo, monospace"
-          font-size="20" font-weight="700" fill="#B91C1C">.env</text>
+  <circle cx="256" cy="300" r="190" fill="#E45B5B" opacity="0.10"/>
+  <g transform="rotate(-12 112 150)">
+    <rect x="76" y="118" width="72" height="88" rx="6" fill="#FFF7ED" stroke="#C03030" stroke-width="3.5"/>
+    <text x="112" y="172" text-anchor="middle" font-family="ui-monospace,Menlo,monospace"
+          font-size="22" font-weight="700" fill="#C03030">.env</text>
   </g>`;
   }
   if (mood === 'superuser') {
-    // 超管光环 + 小皇冠
     return `
-  <circle cx="256" cy="250" r="150" fill="#FDE68A" opacity="0.22"/>
-  <path d="M214,96 L226,64 L244,84 L256,56 L268,84 L286,64 L298,96 Z"
-        fill="#F59E0B" stroke="#8A320A" stroke-width="3" stroke-linejoin="round"/>`;
+  <circle cx="256" cy="290" r="190" fill="#F7D774" opacity="0.20"/>
+  <path d="M204,92 L216,56 L238,80 L256,46 L274,80 L296,56 L308,92 Z"
+        fill="#E8B33A" stroke="${INK}" stroke-width="5" stroke-linejoin="round"/>
+  <g fill="#F0C64A">
+    <path d="M120,182 l6,14 14,6 -14,6 -6,14 -6,-14 -14,-6 14,-6 Z"/>
+    <path d="M396,166 l5,12 12,5 -12,5 -5,12 -5,-12 -12,-5 12,-5 Z"/>
+  </g>`;
   }
   return '';
 };
+
+// ── 尾针：在岗收成小圆点，警戒时拉长外挑 ─────────────────────
+const sting = (raised) =>
+  raised
+    ? `<path d="M352,392 L416,428 L360,424 Z" fill="#E8890C" stroke="${INK}" stroke-width="4" stroke-linejoin="round"/>`
+    : `<path d="M356,404 L382,418" stroke="${INK}" stroke-width="9" stroke-linecap="round"/>`;
 
 const svg = (mood, label) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="阿守（Keeper）· ${label}">
   <title>阿守（Keeper）· ${label}</title>
   <desc>BRD 项目宠物的「${label}」状态。</desc>
   <defs>
-    <radialGradient id="bodyGrad" cx="45%" cy="30%" r="78%">
-      <stop offset="0%" stop-color="#FFC62E"/><stop offset="68%" stop-color="#F5B301"/><stop offset="100%" stop-color="#DE9E00"/>
+    <radialGradient id="bodyGrad" cx="42%" cy="26%" r="82%">
+      <stop offset="0%" stop-color="#FFD75E"/><stop offset="62%" stop-color="#FFC12B"/><stop offset="100%" stop-color="#F0A81E"/>
     </radialGradient>
-    <radialGradient id="headGrad" cx="42%" cy="30%" r="80%">
-      <stop offset="0%" stop-color="#FFE38A"/><stop offset="100%" stop-color="#F0AF00"/>
+    <radialGradient id="headGrad" cx="40%" cy="26%" r="82%">
+      <stop offset="0%" stop-color="#FFE28A"/><stop offset="100%" stop-color="#FFBF2E"/>
     </radialGradient>
-    <linearGradient id="armorGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#22D3EE"/><stop offset="100%" stop-color="#0E7490"/>
-    </linearGradient>
-    <linearGradient id="wingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#EAF5FC" stop-opacity="0.95"/><stop offset="100%" stop-color="#CFE8F5" stop-opacity="0.55"/>
-    </linearGradient>
     <radialGradient id="glowGrad" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#67E8F9" stop-opacity="0.55"/><stop offset="100%" stop-color="#67E8F9" stop-opacity="0"/>
+      <stop offset="0%" stop-color="#F0C64A" stop-opacity="0.55"/><stop offset="100%" stop-color="#F0C64A" stop-opacity="0"/>
     </radialGradient>
   </defs>
 
-  <ellipse cx="256" cy="452" rx="130" ry="18" fill="#1F1A17" opacity="0.12"/>
-  <polygon points="256,336 342,386 342,462 256,492 170,462 170,386" fill="#FFF3C4" stroke="#C98A00" stroke-width="3"/>
-  <polygon points="256,352 328,393 328,452 256,478 184,452 184,393" fill="#FFE38A" opacity="0.75"/>
-  <text x="256" y="440" text-anchor="middle" font-family="ui-monospace, Menlo, Consolas, monospace"
-        font-size="20" font-weight="700" fill="#8A320A">BRD</text>
-
+  <ellipse cx="256" cy="462" rx="118" ry="16" fill="${INK}" opacity="0.12"/>
   ${wings(mood === 'superuser' ? 'spread' : mood === 'dozing' ? 'droop' : mood === 'alarmed' ? 'alert' : 'rest')}
   ${extras(mood)}
 
+  <!-- 四肢（先画，压在身体下层）：粗短的圆润手脚 -->
+  <g stroke="${INK}" stroke-width="14" stroke-linecap="round" fill="none">
+    <path d="M148,308 C122,318 114,334 120,350"/>
+    ${mood === 'verifying' ? '' : '<path d="M364,308 C390,318 398,334 392,350"/>'}
+  </g>
+
+  <!-- 身体 + 条纹 + 尾针 + 脚 -->
   <g>
-    <ellipse cx="256" cy="322" rx="76" ry="86" fill="url(#bodyGrad)" stroke="#2A1E16" stroke-width="3"/>
-    <path d="M186,300 Q256,318 326,300" fill="none" stroke="#2A1E16" stroke-width="13" stroke-linecap="round"/>
-    <path d="M182,342 Q256,362 330,342" fill="none" stroke="#2A1E16" stroke-width="13" stroke-linecap="round"/>
-    <path d="M196,382 Q256,400 316,382" fill="none" stroke="#2A1E16" stroke-width="12" stroke-linecap="round"/>
+    <ellipse cx="256" cy="316" rx="116" ry="118" fill="url(#bodyGrad)" stroke="${INK}" stroke-width="${LINE}"/>
+    <path d="M150,330 Q256,366 362,330" fill="none" stroke="${INK}" stroke-width="26" stroke-linecap="round"/>
+    <path d="M170,390 Q256,418 342,390" fill="none" stroke="${INK}" stroke-width="24" stroke-linecap="round"/>
     ${sting(mood === 'alarmed')}
+    <ellipse cx="216" cy="428" rx="27" ry="17" fill="url(#bodyGrad)" stroke="${INK}" stroke-width="${LINE}"/>
+    <ellipse cx="296" cy="428" rx="27" ry="17" fill="url(#bodyGrad)" stroke="${INK}" stroke-width="${LINE}"/>
   </g>
 
-  <g>
-    <ellipse cx="256" cy="238" rx="64" ry="54" fill="url(#bodyGrad)" stroke="#2A1E16" stroke-width="3"/>
-    <path d="M192,238 Q256,268 320,238 L320,252 Q256,282 192,252 Z" fill="url(#armorGrad)" opacity="0.9"/>
-    ${badge(mood === 'superuser' ? 'star' : mood === 'alarmed' ? 'alert' : 'check')}
-  </g>
+  <!-- 胸章 -->
+  <g>${badge(mood === 'superuser' ? 'star' : mood === 'alarmed' ? 'alert' : 'check')}</g>
 
-  <g stroke="#2A1E16" stroke-width="6" fill="none" stroke-linecap="round">
-    <path d="M206,296 L166,336 L164,384"/>
-    <path d="M214,322 L186,372 L190,414"/>
-    <path d="M314,268 L362,300 L366,344"/>
-    <path d="M306,322 L334,372 L330,414"/>
-    ${mood === 'verifying' ? '' : '<path d="M198,268 L150,300 L146,344"/>'}
-  </g>
+  <!-- 钥匙（右手提着；打盹时脱手吊着）-->
+  ${mood === 'verifying' ? '' : key(392, 356, mood === 'dozing')}
 
-  <g>
-    <path d="M298,296 L352,330 L372,372" stroke="#2A1E16" stroke-width="6" fill="none" stroke-linecap="round"/>
-    <circle cx="376" cy="384" r="19" fill="url(#glowGrad)"/>
-    <circle cx="376" cy="382" r="13" fill="none" stroke="#8A320A" stroke-width="5"/>
-    <g stroke="#8A320A" fill="none" stroke-linecap="round">
-      <circle cx="362" cy="404" r="6.5" stroke-width="4" fill="#FFF3C4"/>
-      <path d="M362,410 L362,442" stroke-width="5"/><path d="M362,432 L351,432" stroke-width="4.5"/>
-      <circle cx="378" cy="410" r="6.5" stroke-width="4" fill="#FFF3C4"/>
-      <path d="M378,416 L378,450" stroke-width="5"/><path d="M378,440 L390,440" stroke-width="4.5"/>
-      <circle cx="394" cy="404" r="6.5" stroke-width="4" fill="#FFF3C4"/>
-      <path d="M394,410 L394,440" stroke-width="5"/><path d="M394,430 L405,430" stroke-width="4.5"/>
-    </g>
-  </g>
-
-  <g transform="${mood === 'dozing' ? 'rotate(7 256 190)' : ''}">
-    <ellipse cx="256" cy="168" rx="52" ry="48" fill="url(#headGrad)" stroke="#2A1E16" stroke-width="3"/>
-    <path d="M228,128 C214,104 200,94 182,88" stroke="#2A1E16" stroke-width="5" fill="none" stroke-linecap="round"/>
-    <path d="M284,128 C298,104 312,94 330,88" stroke="#2A1E16" stroke-width="5" fill="none" stroke-linecap="round"/>
-    <circle cx="180" cy="86" r="7" fill="#2A1E16"/>
-    <circle cx="332" cy="86" r="7" fill="#2A1E16"/>
+  <!-- 头（最后画，压住身体上沿）-->
+  <g transform="${mood === 'dozing' ? 'rotate(8 256 190)' : ''}">
+    <path d="M208,104 C190,76 176,62 160,54" stroke="${INK}" stroke-width="6" fill="none" stroke-linecap="round"/>
+    <path d="M304,104 C322,76 336,62 352,54" stroke="${INK}" stroke-width="6" fill="none" stroke-linecap="round"/>
+    <circle cx="157" cy="52" r="9" fill="${INK}"/>
+    <circle cx="355" cy="52" r="9" fill="${INK}"/>
+    <circle cx="256" cy="172" r="88" fill="url(#headGrad)" stroke="${INK}" stroke-width="${LINE}"/>
+    <ellipse cx="198" cy="200" rx="16" ry="10" fill="#E88B6A" opacity="0.5"/>
+    <ellipse cx="314" cy="200" rx="16" ry="10" fill="#E88B6A" opacity="0.5"/>
     ${face(mood)}
-    <animateTransform attributeName="transform" type="translate" values="0,0; 0,-3; 0,0"
-                      dur="${mood === 'dozing' ? '5s' : '2.4s'}" repeatCount="indefinite"/>
+    <animateTransform attributeName="transform" type="translate" values="0,0; 0,-4; 0,0"
+                      dur="${mood === 'dozing' ? '5.5s' : '2.6s'}" repeatCount="indefinite"/>
   </g>
 </svg>
 `;
 
 const moods = [
-  ['onduty', '值守', 'onDuty'],
-  ['verifying', '查证', 'verifying'],
-  ['superuser', '超管', 'superuser'],
-  ['dozing', '打盹', 'dozing'],
-  ['alarmed', '竖针', 'alarmed'],
+  ['onduty', '值守'],
+  ['verifying', '查证'],
+  ['superuser', '超管'],
+  ['dozing', '打盹'],
+  ['alarmed', '竖针'],
 ];
 
 import { writeFileSync } from 'node:fs';
@@ -258,7 +242,6 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 for (const [slug, label] of moods) {
-  const out = join(here, `keeper-${slug}.svg`);
-  writeFileSync(out, svg(slug, label), 'utf8');
+  writeFileSync(join(here, `keeper-${slug}.svg`), svg(slug, label), 'utf8');
   console.log('written', `keeper-${slug}.svg`, `(${label})`);
 }
