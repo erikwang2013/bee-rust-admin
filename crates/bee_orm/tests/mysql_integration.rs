@@ -145,3 +145,65 @@ async fn tx_commit_and_rollback() {
 
     db.exec_sql("DROP TABLE it_tx_admin").await.unwrap();
 }
+
+/// 连接表：无主键、无自增。
+#[derive(Model)]
+#[bee(table = "it_admin_role")]
+pub struct ItAdminRole {
+    pub admin_id: u64,
+    pub role_id: u64,
+}
+
+#[tokio::test]
+async fn relations_flow() {
+    let Some(dsn) = dsn() else { return };
+    let db = Db::connect(&dsn).await.unwrap();
+    assert_eq!(ItAdminRole::META.pk, None);
+    db.exec_sql("DROP TABLE IF EXISTS it_admin_role").await.unwrap();
+    db.exec_sql(
+        "CREATE TABLE it_admin_role (
+           admin_id BIGINT UNSIGNED NOT NULL,
+           role_id BIGINT UNSIGNED NOT NULL,
+           PRIMARY KEY (admin_id, role_id)
+         ) ENGINE=InnoDB",
+    )
+    .await
+    .unwrap();
+
+    db.set_relations("it_admin_role", ("admin_id", 1), "role_id", &[10, 20, 30]).await.unwrap();
+    let mut got = db.get_relations("it_admin_role", ("admin_id", 1), "role_id").await.unwrap();
+    got.sort();
+    assert_eq!(got, vec![10, 20, 30]);
+
+    // set = 删旧插新（事务内）
+    db.set_relations("it_admin_role", ("admin_id", 1), "role_id", &[20, 40]).await.unwrap();
+    let mut got = db.get_relations("it_admin_role", ("admin_id", 1), "role_id").await.unwrap();
+    got.sort();
+    assert_eq!(got, vec![20, 40]);
+
+    // 空集合 = 清空
+    db.set_relations("it_admin_role", ("admin_id", 1), "role_id", &[]).await.unwrap();
+    assert!(db.get_relations("it_admin_role", ("admin_id", 1), "role_id").await.unwrap().is_empty());
+
+    // 其他 owner 不受影响
+    db.set_relations("it_admin_role", ("admin_id", 2), "role_id", &[10]).await.unwrap();
+    assert_eq!(db.del_relations("it_admin_role", "admin_id", 2).await.unwrap(), 1);
+
+    // 重复 id → 唯一键冲突 → 整个事务回滚，旧关联不被清空（防误清）
+    db.set_relations("it_admin_role", ("admin_id", 3), "role_id", &[10, 20]).await.unwrap();
+    assert!(matches!(
+        db.set_relations("it_admin_role", ("admin_id", 3), "role_id", &[10, 10]).await,
+        Err(OrmError::DuplicateKey(_))
+    ));
+    let mut got = db.get_relations("it_admin_role", ("admin_id", 3), "role_id").await.unwrap();
+    got.sort();
+    assert_eq!(got, vec![10, 20]);
+
+    // 非法标识符拒绝
+    assert!(matches!(
+        db.set_relations("it_admin_role; DROP TABLE x", ("admin_id", 1), "role_id", &[1]).await,
+        Err(OrmError::InvalidField(_))
+    ));
+
+    db.exec_sql("DROP TABLE it_admin_role").await.unwrap();
+}

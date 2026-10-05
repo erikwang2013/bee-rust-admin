@@ -63,6 +63,68 @@ impl Db {
             tx: self.pool.begin().await.map_err(normalize)?,
         })
     }
+
+    /// 重设关联：事务内「删旧 + 逐条插入新值」。空集合 = 清空。
+    /// `owner` 是 (关联列, 值)，`target` 是对端列名（如 admin_id/role_id、role_id/menu_id）。
+    pub async fn set_relations(
+        &self,
+        table: &str,
+        owner: (&str, u64),
+        target: &str,
+        ids: &[u64],
+    ) -> Result<(), OrmError> {
+        validate_ident(table)?;
+        validate_ident(owner.0)?;
+        validate_ident(target)?;
+        let mut tx = self.pool.begin().await.map_err(normalize)?;
+        sqlx::query(&format!("DELETE FROM {} WHERE {} = ?", table, owner.0))
+            .bind(owner.1)
+            .execute(&mut *tx)
+            .await
+            .map_err(normalize)?;
+        if !ids.is_empty() {
+            // ponytail: 逐条插入（管理后台量级：一次几十条），量大改多值 VALUES
+            let sql = format!("INSERT INTO {} ({}, {}) VALUES (?, ?)", table, owner.0, target);
+            for id in ids {
+                sqlx::query(&sql)
+                    .bind(owner.1)
+                    .bind(*id)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(normalize)?;
+            }
+        }
+        tx.commit().await.map_err(normalize)?;
+        Ok(())
+    }
+
+    /// 取关联目标 id 列表。
+    pub async fn get_relations(
+        &self,
+        table: &str,
+        owner: (&str, u64),
+        target: &str,
+    ) -> Result<Vec<u64>, OrmError> {
+        validate_ident(table)?;
+        validate_ident(owner.0)?;
+        validate_ident(target)?;
+        let sql = format!("SELECT {} FROM {} WHERE {} = ?", target, table, owner.0);
+        let rows: Vec<(u64,)> = sqlx::query_as(&sql)
+            .bind(owner.1)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(normalize)?;
+        Ok(rows.into_iter().map(|r| r.0).collect())
+    }
+
+    /// 按列删关联，返回删除行数。
+    pub async fn del_relations(&self, table: &str, col: &str, id: u64) -> Result<u64, OrmError> {
+        validate_ident(table)?;
+        validate_ident(col)?;
+        let sql = format!("DELETE FROM {} WHERE {} = ?", table, col);
+        let res = sqlx::query(&sql).bind(id).execute(&self.pool).await.map_err(normalize)?;
+        Ok(res.rows_affected())
+    }
 }
 
 impl Tx {
