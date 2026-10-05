@@ -112,7 +112,6 @@ docs/
   superpowers/plans/    实施计划（ORM 执行层、后端、前端）
 Dockerfile              后端镜像（多阶段构建）
 docker-compose.yml      MySQL + 后端 + 前端一键起栈
-.github/workflows/      docker-publish.yml：打 v* 标签构建并推送镜像到 ghcr.io
 ```
 
 ## 使用说明
@@ -181,7 +180,6 @@ cd admin/web && pnpm build && pnpm preview   # http://localhost:8081
 | `Dockerfile` | 后端镜像：多阶段构建（Rust 编译 → Debian 运行），非 root 用户运行 |
 | `admin/web/Dockerfile` | 前端镜像：pnpm 构建 → nginx，`/api/` 上游由环境变量 `BACKEND_UPSTREAM` 注入 |
 | `docker-compose.yml` | MySQL + 后端 + 前端一键起栈，对外 `8081` |
-| `.github/workflows/docker-publish.yml` | 打 `v*` 标签时自动构建并推送两个镜像到 ghcr.io |
 
 ```bash
 cp .env.example .env && vi .env                      # 填 MySQL root 密码
@@ -193,9 +191,10 @@ docker compose up -d --build
 - 容器内的数据库地址由 `BEE_ADMIN_DB_DSN` 注入（指向 compose 里的 `mysql` 服务）；
   配置文件仍挂载自 `admin/conf/app.conf`，JWT secret 与初始密码从那里读
 - 想接已有的 MySQL：删掉 compose 里的 `mysql` 服务与 `depends_on`，直接改 `BEE_ADMIN_DB_DSN`
-- 只构建镜像：`docker build -t brd-backend .` 与 `docker build -t brd-web admin/web`
-- 发布：打 `v*` 标签即触发流水线，产出 `ghcr.io/<owner>/bee-rust-admin`（后端）
-  与 `ghcr.io/<owner>/bee-rust-admin-web`（前端）
+- 只构建镜像（不启动）：`docker build -t brd-backend .`（后端）与
+  `docker build -t brd-web admin/web`（前端）
+- 镜像只在本机构建/离线分发，**不经过 GitHub CI 发布**；需要私有镜像仓库时用
+  `docker tag` + `docker push` 推到自己的仓库即可
 
 ### 测试
 
