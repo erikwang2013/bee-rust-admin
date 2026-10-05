@@ -27,8 +27,11 @@ export default function LoginPage() {
   return (
     <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f2f5' }}>
       <Card style={{ width: 380 }}>
-        <Typography.Title level={3} style={{ textAlign: 'center', marginBottom: 24 }}>
-          bee-rust 管理后台
+        <div style={{ textAlign: 'center' }}>
+          <img src="/keeper.svg" alt="阿守" width={132} height={132} />
+        </div>
+        <Typography.Title level={3} style={{ textAlign: 'center', marginTop: 0, marginBottom: 24 }}>
+          BRD · 管理后台
         </Typography.Title>
         <Form onFinish={onFinish} size="large">
           <Form.Item name="username" rules={[{ required: true, message: '请输入用户名' }]}>

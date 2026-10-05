@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="阿守（Keeper）· 竖针">
+  <title>阿守（Keeper）· 竖针</title>
+  <desc>BRD 项目宠物的「竖针」状态。</desc>
+  <defs>
+    <radialGradient id="bodyGrad" cx="42%" cy="26%" r="82%">
+      <stop offset="0%" stop-color="#FFD75E"/><stop offset="62%" stop-color="#FFC12B"/><stop offset="100%" stop-color="#F0A81E"/>
+    </radialGradient>
+    <radialGradient id="headGrad" cx="40%" cy="26%" r="82%">
+      <stop offset="0%" stop-color="#FFE28A"/><stop offset="100%" stop-color="#FFBF2E"/>
+    </radialGradient>
+    <radialGradient id="glowGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#F0C64A" stop-opacity="0.55"/><stop offset="100%" stop-color="#F0C64A" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <ellipse cx="256" cy="462" rx="118" ry="16" fill="#3A2A1A" opacity="0.12"/>
+  <g>
+    <path d="M182,240 C112,168 78,104 76,52 C142,70 192,120 206,180 Z" fill="#E4F2FB" stroke="#8FBED8" stroke-width="4"/>
+    <path d="M330,240 C400,168 434,104 436,52 C370,70 320,120 306,180 Z" fill="#E4F2FB" stroke="#8FBED8" stroke-width="4"/>
+  </g>
+  
+  <circle cx="256" cy="300" r="190" fill="#E45B5B" opacity="0.10"/>
+  <g transform="rotate(-12 112 150)">
+    <rect x="76" y="118" width="72" height="88" rx="6" fill="#FFF7ED" stroke="#C03030" stroke-width="3.5"/>
+    <text x="112" y="172" text-anchor="middle" font-family="ui-monospace,Menlo,monospace"
+          font-size="22" font-weight="700" fill="#C03030">.env</text>
+  </g>
+
+  <!-- 四肢（先画，压在身体下层）：粗短的圆润手脚 -->
+  <g stroke="#3A2A1A" stroke-width="14" stroke-linecap="round" fill="none">
+    <path d="M148,308 C122,318 114,334 120,350"/>
+    <path d="M364,308 C390,318 398,334 392,350"/>
+  </g>
+
+  <!-- 身体 + 条纹 + 尾针 + 脚 -->
+  <g>
+    <ellipse cx="256" cy="316" rx="116" ry="118" fill="url(#bodyGrad)" stroke="#3A2A1A" stroke-width="5"/>
+    <path d="M150,330 Q256,366 362,330" fill="none" stroke="#3A2A1A" stroke-width="26" stroke-linecap="round"/>
+    <path d="M170,390 Q256,418 342,390" fill="none" stroke="#3A2A1A" stroke-width="24" stroke-linecap="round"/>
+    <path d="M352,392 L416,428 L360,424 Z" fill="#E8890C" stroke="#3A2A1A" stroke-width="4" stroke-linejoin="round"/>
+    <ellipse cx="216" cy="428" rx="27" ry="17" fill="url(#bodyGrad)" stroke="#3A2A1A" stroke-width="5"/>
+    <ellipse cx="296" cy="428" rx="27" ry="17" fill="url(#bodyGrad)" stroke="#3A2A1A" stroke-width="5"/>
+  </g>
+
+  <!-- 胸章 -->
+  <g><polygon points="256,264 277,276 277,300 256,312 235,300 235,276" fill="#D64545" stroke="#8E2020" stroke-width="3.5"/>
+    <path d="M256,274 L256,294" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round"/>
+           <circle cx="256" cy="304" r="4" fill="#FFFFFF"/></g>
+
+  <!-- 钥匙（右手提着；打盹时脱手吊着）-->
+  
+    <g >
+      <circle cx="392" cy="356" r="14" fill="none" stroke="#3A2A1A" stroke-width="8"/>
+      <path d="M392,370 L392,416" stroke="#3A2A1A" stroke-width="10" stroke-linecap="round"/>
+      <path d="M392,396 L374,396" stroke="#3A2A1A" stroke-width="8" stroke-linecap="round"/>
+      <path d="M392,410 L379,410" stroke="#3A2A1A" stroke-width="8" stroke-linecap="round"/>
+    </g>
+
+  <!-- 头（最后画，压住身体上沿）-->
+  <g transform="">
+    <path d="M208,104 C190,76 176,62 160,54" stroke="#3A2A1A" stroke-width="6" fill="none" stroke-linecap="round"/>
+    <path d="M304,104 C322,76 336,62 352,54" stroke="#3A2A1A" stroke-width="6" fill="none" stroke-linecap="round"/>
+    <circle cx="157" cy="52" r="9" fill="#3A2A1A"/>
+    <circle cx="355" cy="52" r="9" fill="#3A2A1A"/>
+    <circle cx="256" cy="172" r="88" fill="url(#headGrad)" stroke="#3A2A1A" stroke-width="5"/>
+    <ellipse cx="198" cy="200" rx="16" ry="10" fill="#E88B6A" opacity="0.5"/>
+    <ellipse cx="314" cy="200" rx="16" ry="10" fill="#E88B6A" opacity="0.5"/>
+    
+    
+    <ellipse cx="224" cy="172" rx="16.919999999999998" ry="20.68" fill="#3A2A1A"/>
+    <circle cx="218" cy="164" r="6.58" fill="#FFFFFF"/>
+    <circle cx="230" cy="181" r="3.1959999999999997" fill="#FFFFFF" opacity="0.85"/>
+    
+    <ellipse cx="288" cy="172" rx="16.919999999999998" ry="20.68" fill="#3A2A1A"/>
+    <circle cx="282" cy="164" r="6.58" fill="#FFFFFF"/>
+    <circle cx="294" cy="181" r="3.1959999999999997" fill="#FFFFFF" opacity="0.85"/>
+    <g stroke="#3A2A1A" stroke-width="6.5" fill="none" stroke-linecap="round">
+      <path d="M200,140 L240,154"/>
+      <path d="M312,140 L272,154"/>
+    </g>
+    <path d="M234,204 L278,204" stroke="#3A2A1A" stroke-width="5.5" stroke-linecap="round"/>
+    <g fill="#FFFFFF" opacity="0.95">
+      <rect x="240" y="197" width="9" height="14" rx="2"/>
+      <rect x="263" y="197" width="9" height="14" rx="2"/>
+    </g>
+    <animateTransform attributeName="transform" type="translate" values="0,0; 0,-4; 0,0"
+                      dur="2.6s" repeatCount="indefinite"/>
+  </g>
+</svg>

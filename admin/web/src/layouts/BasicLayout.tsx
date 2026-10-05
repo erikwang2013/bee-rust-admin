@@ -69,8 +69,11 @@ export default function BasicLayout() {
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Sider collapsible collapsed={collapsed} onCollapse={setCollapsed} theme="dark" width={220}>
-        <div style={{ height: 48, margin: 12, color: '#fff', fontWeight: 600, textAlign: 'center', lineHeight: '48px' }}>
-          {collapsed ? 'bee' : 'bee-rust 管理后台'}
+        <div style={{ height: 48, margin: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <span style={{ display: 'inline-flex', background: '#fff', borderRadius: '50%', padding: 2 }}>
+            <img src="/keeper-head.svg" alt="阿守" width={collapsed ? 30 : 26} height={collapsed ? 30 : 26} />
+          </span>
+          {!collapsed && <span style={{ color: '#fff', fontWeight: 600 }}>BRD 管理后台</span>}
         </div>
         <Menu
           theme="dark"
@@ -86,7 +89,7 @@ export default function BasicLayout() {
           <Breadcrumb items={crumbs.map((c) => ({ title: c }))} />
           <Dropdown menu={userMenu}>
             <span style={{ cursor: 'pointer' }}>
-              <Avatar size="small" icon={<UserOutlined />} src={user?.avatar || undefined} />
+              <Avatar size="small" src={user?.avatar || '/keeper-head.svg'} />
               <span style={{ marginLeft: 8 }}>{user?.nickname || user?.username}</span>
             </span>
           </Dropdown>

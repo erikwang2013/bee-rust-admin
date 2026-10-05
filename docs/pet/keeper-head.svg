@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="阿守（Keeper）头像">
+  <title>阿守 · Keeper</title>
+  <defs>
+    <radialGradient id="hh" cx="40%" cy="28%" r="80%">
+      <stop offset="0%" stop-color="#FFE28A"/><stop offset="100%" stop-color="#FFBF2E"/>
+    </radialGradient>
+  </defs>
+  <g stroke="#3A2A1A" stroke-width="7" fill="none" stroke-linecap="round">
+    <path d="M96,84 C80,60 70,50 56,42"/>
+    <path d="M160,84 C176,60 186,50 200,42"/>
+  </g>
+  <circle cx="54" cy="40" r="8" fill="#3A2A1A"/>
+  <circle cx="202" cy="40" r="8" fill="#3A2A1A"/>
+  <circle cx="128" cy="152" r="92" fill="url(#hh)" stroke="#3A2A1A" stroke-width="6"/>
+  <ellipse cx="68" cy="186" rx="16" ry="10" fill="#E88B6A" opacity="0.5"/>
+  <ellipse cx="188" cy="186" rx="16" ry="10" fill="#E88B6A" opacity="0.5"/>
+  <ellipse cx="100" cy="150" rx="18" ry="22" fill="#3A2A1A"/>
+  <ellipse cx="156" cy="150" rx="18" ry="22" fill="#3A2A1A"/>
+  <circle cx="94" cy="142" r="7" fill="#FFFFFF"/>
+  <circle cx="150" cy="142" r="7" fill="#FFFFFF"/>
+  <path d="M112,188 Q128,202 144,188" fill="none" stroke="#3A2A1A" stroke-width="5.5" stroke-linecap="round"/>
+</svg>

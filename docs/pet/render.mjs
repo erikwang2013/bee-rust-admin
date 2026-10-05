@@ -229,6 +229,56 @@ const svg = (mood, label) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0
 </svg>
 `;
 
+// ── 应用图标：六边形底 + 头（favicon / 应用图标；16px 下只留最大对比度的形）──
+// 小尺寸下细节全糊，所以这里刻意简化：粗描边、大眼、无斑纹、无道具。
+const appIcon = () => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="BRD 应用图标：阿守的头像">
+  <title>BRD · 阿守</title>
+  <defs>
+    <radialGradient id="ih" cx="40%" cy="28%" r="80%">
+      <stop offset="0%" stop-color="#FFE28A"/><stop offset="100%" stop-color="#FFBF2E"/>
+    </radialGradient>
+  </defs>
+  <polygon points="128,8 236,70 236,186 128,248 20,186 20,70" fill="#FFC12B" stroke="${INK}" stroke-width="12" stroke-linejoin="round"/>
+  <circle cx="128" cy="140" r="78" fill="url(#ih)" stroke="${INK}" stroke-width="10"/>
+  <g stroke="${INK}" stroke-width="11" fill="none" stroke-linecap="round">
+    <path d="M92,76 C76,54 66,44 54,38"/>
+    <path d="M164,76 C180,54 190,44 202,38"/>
+  </g>
+  <circle cx="52" cy="36" r="11" fill="${INK}"/>
+  <circle cx="204" cy="36" r="11" fill="${INK}"/>
+  <ellipse cx="98" cy="136" rx="19" ry="23" fill="${INK}"/>
+  <ellipse cx="158" cy="136" rx="19" ry="23" fill="${INK}"/>
+  <circle cx="92" cy="127" r="7.5" fill="#FFFFFF"/>
+  <circle cx="152" cy="127" r="7.5" fill="#FFFFFF"/>
+  <path d="M110,176 Q128,192 146,176" fill="none" stroke="${INK}" stroke-width="7" stroke-linecap="round"/>
+</svg>
+`;
+
+// ── 透明底头像：侧栏 Logo / 默认头像用（放在浅色背景上，不带六边形底）──
+const head = () => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="阿守（Keeper）头像">
+  <title>阿守 · Keeper</title>
+  <defs>
+    <radialGradient id="hh" cx="40%" cy="28%" r="80%">
+      <stop offset="0%" stop-color="#FFE28A"/><stop offset="100%" stop-color="#FFBF2E"/>
+    </radialGradient>
+  </defs>
+  <g stroke="${INK}" stroke-width="7" fill="none" stroke-linecap="round">
+    <path d="M96,84 C80,60 70,50 56,42"/>
+    <path d="M160,84 C176,60 186,50 200,42"/>
+  </g>
+  <circle cx="54" cy="40" r="8" fill="${INK}"/>
+  <circle cx="202" cy="40" r="8" fill="${INK}"/>
+  <circle cx="128" cy="152" r="92" fill="url(#hh)" stroke="${INK}" stroke-width="6"/>
+  <ellipse cx="68" cy="186" rx="16" ry="10" fill="#E88B6A" opacity="0.5"/>
+  <ellipse cx="188" cy="186" rx="16" ry="10" fill="#E88B6A" opacity="0.5"/>
+  <ellipse cx="100" cy="150" rx="18" ry="22" fill="${INK}"/>
+  <ellipse cx="156" cy="150" rx="18" ry="22" fill="${INK}"/>
+  <circle cx="94" cy="142" r="7" fill="#FFFFFF"/>
+  <circle cx="150" cy="142" r="7" fill="#FFFFFF"/>
+  <path d="M112,188 Q128,202 144,188" fill="none" stroke="${INK}" stroke-width="5.5" stroke-linecap="round"/>
+</svg>
+`;
+
 const moods = [
   ['onduty', '值守'],
   ['verifying', '查证'],
@@ -245,3 +295,7 @@ for (const [slug, label] of moods) {
   writeFileSync(join(here, `keeper-${slug}.svg`), svg(slug, label), 'utf8');
   console.log('written', `keeper-${slug}.svg`, `(${label})`);
 }
+writeFileSync(join(here, 'keeper-head.svg'), head(), 'utf8');
+console.log('written keeper-head.svg (透明底头像)');
+writeFileSync(join(here, 'keeper-app.svg'), appIcon(), 'utf8');
+console.log('written keeper-app.svg (应用图标)');

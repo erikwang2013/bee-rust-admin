@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="阿守（Keeper）· 查证">
+  <title>阿守（Keeper）· 查证</title>
+  <desc>BRD 项目宠物的「查证」状态。</desc>
+  <defs>
+    <radialGradient id="bodyGrad" cx="42%" cy="26%" r="82%">
+      <stop offset="0%" stop-color="#FFD75E"/><stop offset="62%" stop-color="#FFC12B"/><stop offset="100%" stop-color="#F0A81E"/>
+    </radialGradient>
+    <radialGradient id="headGrad" cx="40%" cy="26%" r="82%">
+      <stop offset="0%" stop-color="#FFE28A"/><stop offset="100%" stop-color="#FFBF2E"/>
+    </radialGradient>
+    <radialGradient id="glowGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#F0C64A" stop-opacity="0.55"/><stop offset="100%" stop-color="#F0C64A" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <ellipse cx="256" cy="462" rx="118" ry="16" fill="#3A2A1A" opacity="0.12"/>
+  <g>
+    <path d="M186,258 C130,212 108,166 116,128 C158,142 190,180 202,224 Z" fill="#E4F2FB" stroke="#8FBED8" stroke-width="4"/>
+    <path d="M326,258 C382,212 404,166 396,128 C354,142 322,180 310,224 Z" fill="#E4F2FB" stroke="#8FBED8" stroke-width="4"/>
+  </g>
+  
+  <path d="M150,306 C126,314 118,328 122,344" stroke="#3A2A1A" stroke-width="13" fill="none" stroke-linecap="round"/>
+  <g transform="rotate(24 116 300)">
+    <circle cx="116" cy="300" r="30" fill="#E4F2FB" fill-opacity="0.6" stroke="#3A2A1A" stroke-width="6"/>
+    <path d="M139,323 L166,352" stroke="#3A2A1A" stroke-width="10" stroke-linecap="round"/>
+    <path d="M100,288 Q112,278 128,282" stroke="#FFFFFF" stroke-width="6" fill="none" stroke-linecap="round" opacity="0.9"/>
+  </g>
+  <text x="336" y="128" font-family="system-ui,'PingFang SC',sans-serif" font-size="52" font-weight="800"
+        fill="#2E8FA8">?</text>
+
+  <!-- 四肢（先画，压在身体下层）：粗短的圆润手脚 -->
+  <g stroke="#3A2A1A" stroke-width="14" stroke-linecap="round" fill="none">
+    <path d="M148,308 C122,318 114,334 120,350"/>
+    
+  </g>
+
+  <!-- 身体 + 条纹 + 尾针 + 脚 -->
+  <g>
+    <ellipse cx="256" cy="316" rx="116" ry="118" fill="url(#bodyGrad)" stroke="#3A2A1A" stroke-width="5"/>
+    <path d="M150,330 Q256,366 362,330" fill="none" stroke="#3A2A1A" stroke-width="26" stroke-linecap="round"/>
+    <path d="M170,390 Q256,418 342,390" fill="none" stroke="#3A2A1A" stroke-width="24" stroke-linecap="round"/>
+    <path d="M356,404 L382,418" stroke="#3A2A1A" stroke-width="9" stroke-linecap="round"/>
+    <ellipse cx="216" cy="428" rx="27" ry="17" fill="url(#bodyGrad)" stroke="#3A2A1A" stroke-width="5"/>
+    <ellipse cx="296" cy="428" rx="27" ry="17" fill="url(#bodyGrad)" stroke="#3A2A1A" stroke-width="5"/>
+  </g>
+
+  <!-- 胸章 -->
+  <g><polygon points="256,264 277,276 277,300 256,312 235,300 235,276" fill="#FFFFFF" stroke="#2E8FA8" stroke-width="3.5"/>
+    <path d="M245,289 L253,298 L268,279" fill="none" stroke="#2E8FA8" stroke-width="5"
+                 stroke-linecap="round" stroke-linejoin="round"/></g>
+
+  <!-- 钥匙（右手提着；打盹时脱手吊着）-->
+  
+
+  <!-- 头（最后画，压住身体上沿）-->
+  <g transform="">
+    <path d="M208,104 C190,76 176,62 160,54" stroke="#3A2A1A" stroke-width="6" fill="none" stroke-linecap="round"/>
+    <path d="M304,104 C322,76 336,62 352,54" stroke="#3A2A1A" stroke-width="6" fill="none" stroke-linecap="round"/>
+    <circle cx="157" cy="52" r="9" fill="#3A2A1A"/>
+    <circle cx="355" cy="52" r="9" fill="#3A2A1A"/>
+    <circle cx="256" cy="172" r="88" fill="url(#headGrad)" stroke="#3A2A1A" stroke-width="5"/>
+    <ellipse cx="198" cy="200" rx="16" ry="10" fill="#E88B6A" opacity="0.5"/>
+    <ellipse cx="314" cy="200" rx="16" ry="10" fill="#E88B6A" opacity="0.5"/>
+    
+    
+    <ellipse cx="224" cy="172" rx="18" ry="22" fill="#3A2A1A"/>
+    <circle cx="218" cy="164" r="7" fill="#FFFFFF"/>
+    <circle cx="230" cy="181" r="3.4" fill="#FFFFFF" opacity="0.85"/>
+    
+    <ellipse cx="292" cy="172" rx="21.24" ry="25.959999999999997" fill="#3A2A1A"/>
+    <circle cx="286" cy="164" r="8.26" fill="#FFFFFF"/>
+    <circle cx="298" cy="181" r="4.012" fill="#FFFFFF" opacity="0.85"/>
+    <path d="M198,136 L234,146" stroke="#3A2A1A" stroke-width="6" fill="none" stroke-linecap="round"/>
+    <ellipse cx="256" cy="204" rx="10" ry="11" fill="#B4552A" opacity="0.7"/>
+    <animateTransform attributeName="transform" type="translate" values="0,0; 0,-4; 0,0"
+                      dur="2.6s" repeatCount="indefinite"/>
+  </g>
+</svg>

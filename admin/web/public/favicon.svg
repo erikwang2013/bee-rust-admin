@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="BRD 应用图标：阿守的头像">
+  <title>BRD · 阿守</title>
+  <defs>
+    <radialGradient id="ih" cx="40%" cy="28%" r="80%">
+      <stop offset="0%" stop-color="#FFE28A"/><stop offset="100%" stop-color="#FFBF2E"/>
+    </radialGradient>
+  </defs>
+  <polygon points="128,8 236,70 236,186 128,248 20,186 20,70" fill="#FFC12B" stroke="#3A2A1A" stroke-width="12" stroke-linejoin="round"/>
+  <circle cx="128" cy="140" r="78" fill="url(#ih)" stroke="#3A2A1A" stroke-width="10"/>
+  <g stroke="#3A2A1A" stroke-width="11" fill="none" stroke-linecap="round">
+    <path d="M92,76 C76,54 66,44 54,38"/>
+    <path d="M164,76 C180,54 190,44 202,38"/>
+  </g>
+  <circle cx="52" cy="36" r="11" fill="#3A2A1A"/>
+  <circle cx="204" cy="36" r="11" fill="#3A2A1A"/>
+  <ellipse cx="98" cy="136" rx="19" ry="23" fill="#3A2A1A"/>
+  <ellipse cx="158" cy="136" rx="19" ry="23" fill="#3A2A1A"/>
+  <circle cx="92" cy="127" r="7.5" fill="#FFFFFF"/>
+  <circle cx="152" cy="127" r="7.5" fill="#FFFFFF"/>
+  <path d="M110,176 Q128,192 146,176" fill="none" stroke="#3A2A1A" stroke-width="7" stroke-linecap="round"/>
+</svg>
