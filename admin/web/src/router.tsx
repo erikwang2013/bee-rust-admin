@@ -11,6 +11,8 @@ const Dashboard = lazy(() => import('./pages/dashboard/index'));
 const ProfilePage = lazy(() => import('./pages/profile/index'));
 const AdminPage = lazy(() => import('./pages/system/admin/index'));
 const RolePage = lazy(() => import('./pages/system/role/index'));
+const MenuPage = lazy(() => import('./pages/system/menu/index'));
+const DeptPage = lazy(() => import('./pages/system/dept/index'));
 
 const loading = (
   <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 120 }}>
@@ -35,6 +37,8 @@ export const router = createBrowserRouter([
           { path: 'dashboard', element: <L><Dashboard /></L> },
           { path: 'system/admin', element: <L><AdminPage /></L> },
           { path: 'system/role', element: <L><RolePage /></L> },
+          { path: 'system/menu', element: <L><MenuPage /></L> },
+          { path: 'system/dept', element: <L><DeptPage /></L> },
           { path: 'profile', element: <L><ProfilePage /></L> },
           { path: '403', element: <Forbidden /> },
           { path: '*', element: <NotFound /> },
