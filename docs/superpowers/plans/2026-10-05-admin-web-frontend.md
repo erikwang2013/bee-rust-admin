@@ -724,7 +724,6 @@ export default function LoginPage() {
 import { lazy, Suspense } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router';
 import { Spin } from 'antd';
-import { AuthProvider } from './auth/AuthContext';
 import RequireAuth from './router/guard';
 import LoginPage from './pages/login/index';
 import Forbidden from './pages/error/403';
@@ -752,11 +751,7 @@ export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
   {
     path: '/',
-    element: (
-      <AuthProvider>
-        <RequireAuth />
-      </AuthProvider>
-    ),
+    element: <RequireAuth />,
     children: [
       {
         element: <div />, // F4 换成 BasicLayout
@@ -778,7 +773,7 @@ export const router = createBrowserRouter([
 ]);
 ```
 
-注意：`AuthProvider` 放在 `RequireAuth` 外层且只包住受保护区；登录页不需要 profile。`lazy` 的页面在 F4-F8 才创建——**本任务只创建 `pages/dashboard/index.tsx` 占位（下一步）与 login/403/404**，其余 lazy 页面在对应任务创建前会构建失败。为保持每步可构建：F3 先只保留 login/dashboard/403/404 路由，其余路由行在 F5-F8 各自任务里追加。
+注意：**`AuthProvider` 必须包在 `src/main.tsx` 里、`<RouterProvider>` 外面**（登录页在受保护分支之外，`LoginPage` 也要调 `useAuth()`；若只包住受保护分支，登录页会在运行时抛「useAuth 必须在 AuthProvider 内使用」白屏）。`lazy` 的页面在 F4-F8 才创建——**本任务只创建 `pages/dashboard/index.tsx` 占位（下一步）与 login/403/404**，其余 lazy 页面在对应任务创建前会构建失败。为保持每步可构建：F3 先只保留 login/dashboard/403/404 路由，其余路由行在 F5-F8 各自任务里追加。
 
 `src/pages/dashboard/index.tsx`（F4 会升级成欢迎卡片）：
 
