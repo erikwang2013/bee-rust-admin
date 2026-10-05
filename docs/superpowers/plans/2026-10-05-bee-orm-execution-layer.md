@@ -187,9 +187,16 @@ pub enum SyncdbMode {
 }
 ```
 
-- [ ] **Step 4: 改 `src/lib.rs`**
+- [ ] **Step 4: 改 `src/lib.rs`（增量改，保留现有 QuerySet）**
 
-清空重写（QuerySet 暂时保留在 lib.rs，Task 3 再搬走；`OrmError` 从 error.rs 引）：
+**不要重写整个文件。** 现有 `QuerySet`（含 `filter/filter_eq/filter_gt/filter_lt/filter_contains/params/order_by/limit/offset/to_sql`）与文件底部私有的 `validate_field` **原样保留**，Task 3 才把它们搬进 `query.rs`。本步只做四件事：
+
+1. 删掉内联的 `pub enum OrmError`（已移到 `error.rs`）
+2. 顶部加模块声明与重导出：`pub mod error; pub mod meta; pub use error::OrmError; pub use meta::{ColumnMeta, ColumnType, ModelMeta, SyncdbMode};`
+3. 把旧的 `pub trait Model: Send + Sync + 'static {}` 换成下面的新定义（含 `__private` 模块）
+4. 顶部 `use` 调整为：`use sqlx::QueryBuilder; use sqlx::mysql::{MySql, MySqlRow};`（`use std::marker::PhantomData;` 保留给 QuerySet 用）
+
+新增/替换的内容如下（其余保持原样）：
 
 ```rust
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
@@ -234,10 +241,13 @@ pub trait Model: Send + Sync + 'static {
 }
 ```
 
-- [ ] **Step 5: 编译验证**
+- [ ] **Step 5: 编译与单测验证**
 
 Run: `cargo build -p bee_orm`
-Expected: 编译失败在 `bee_orm_macro` 展开处（旧宏没实现新 trait 方法）→ 在 Task 2 修。若失败信息是 sqlx feature/依赖解析问题，先解决再继续（`cargo tree -p bee_orm | grep sqlx` 应显示 sqlx 0.8.6）。
+Expected: 编译**成功**（当前还没有任何地方 use 派生宏，新 trait 不要求旧宏实现完整）。若失败信息指向 sqlx feature/依赖解析，先解决（`cargo tree -p bee_orm | grep sqlx` 应显示 sqlx v0.8.6）。
+
+Run: `cargo test -p bee_orm --lib`
+Expected: error.rs 的 `validate_ident_accepts_plain_names`、`validate_ident_rejects_injection` 两个单测 PASS。若 `cargo build` 报 `tls-none` feature 不存在，说明 sqlx 版本不是 0.8.6+，用 `cargo tree -p bee_orm | grep sqlx` 确认后反馈。
 
 - [ ] **Step 6: Commit**
 
