@@ -54,3 +54,22 @@ impl From<OrmError> for ApiError {
 pub fn ok<T: serde::Serialize>(data: T) -> Json<Value> {
     Json(json!({ "code": 0, "msg": "ok", "data": data }))
 }
+
+/// 统一 JSON 提取器：把 axum 的 422 纯文本拒绝转成 `{code,msg,data}` 信封，
+/// 让所有错误响应形状一致（前端拦截器按 msg 提示）。
+pub struct AppJson<T>(pub T);
+
+impl<S, T> axum::extract::FromRequest<S> for AppJson<T>
+where
+    T: serde::de::DeserializeOwned,
+    S: Send + Sync,
+{
+    type Rejection = ApiError;
+
+    async fn from_request(req: axum::extract::Request, state: &S) -> Result<Self, Self::Rejection> {
+        match axum::Json::<T>::from_request(req, state).await {
+            Ok(axum::Json(v)) => Ok(AppJson(v)),
+            Err(rej) => Err(ApiError::BadRequest(format!("请求体格式错误: {}", rej.body_text()))),
+        }
+    }
+}

@@ -1,6 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use crate::auth::{Auth, sign_token};
-use crate::error::{ApiError, ok};
+use crate::error::{ApiError, AppJson, ok};
 use crate::models::{Admin, LoginLog, Menu};
 use crate::state::AppState;
 use crate::util::{hash_password, now, verify_password};
@@ -77,7 +77,7 @@ pub async fn write_login_log(
 pub async fn login(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(body): Json<LoginBody>,
+    AppJson(body): AppJson<LoginBody>,
 ) -> Result<Json<Value>, ApiError> {
     if body.username.trim().is_empty() || body.password.is_empty() {
         return Err(ApiError::BadRequest("用户名和密码不能为空".into()));
@@ -213,7 +213,7 @@ pub async fn menus(State(state): State<AppState>, auth: Auth) -> Result<Json<Val
 pub async fn change_password(
     State(state): State<AppState>,
     auth: Auth,
-    Json(body): Json<ChangePasswordBody>,
+    AppJson(body): AppJson<ChangePasswordBody>,
 ) -> Result<Json<Value>, ApiError> {
     if body.new_password.len() < 6 {
         return Err(ApiError::BadRequest("新密码至少 6 位".into()));
