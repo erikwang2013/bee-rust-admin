@@ -27,6 +27,12 @@ pub mod __private {
 }
 
 /// 模型：元数据由 `#[derive(Model)]` 生成，CRUD 与 syncdb 都从这里取信息。
+///
+/// # 使用约束
+///
+/// 派生宏展开的代码引用 `bee_orm::…` 路径，因此使用 `#[derive(Model)]` 的模块里
+/// `bee_orm` 必须在作用域内：要么本 crate 直接依赖 `bee_orm`（`use bee_orm::Model;`），
+/// 要么走框架门面 `use bee_rust::bee_orm::{self, Model};`。
 pub trait Model: Send + Sync + 'static {
     const META: ModelMeta;
 

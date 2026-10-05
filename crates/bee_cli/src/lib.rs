@@ -129,7 +129,7 @@ pub fn generate_model(name: &str, fields: Option<&str>) -> CliResult {
         }
     }
     let content = format!(
-        r#"use bee_rust::bee_orm::Model;
+        r#"use bee_rust::bee_orm::{{self, Model}};
 
 #[derive(Model)]
 #[allow(dead_code)]
@@ -457,7 +457,7 @@ mod tests {
         std::env::set_current_dir(&dir).unwrap();
         generate_model("post", None).unwrap();
         let content = fs::read_to_string("models/post.rs").unwrap();
-        assert!(content.contains("use bee_rust::bee_orm::Model;"));
+        assert!(content.contains("use bee_rust::bee_orm::{self, Model};"));
         assert!(!content.contains("use bee_orm::Model;"));
         std::env::set_current_dir(old).unwrap();
         fs::remove_dir_all(&dir).unwrap();
