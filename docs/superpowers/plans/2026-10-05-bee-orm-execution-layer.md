@@ -1821,6 +1821,44 @@ git commit -m "test(bee_orm): 事务提交/回滚集成测试；设计文档事�
 
 ---
 
+### Task 8: bee_cli 模板与文档适配（派生宏路径约束）
+
+**背景:** `#[derive(Model)]` 展开的代码引用 `bee_orm::Model / bee_orm::ModelMeta / bee_orm::__private::…`，因此**使用派生宏的模块必须让 `bee_orm` 这个名字在作用域内**（直接依赖 `bee_orm`，或 `use bee_rust::bee_orm::{self, Model};`）。`bee_cli` 现在生成的模板是 `use bee_rust::bee_orm::Model;`——只导入了 `Model`，用它生成的模型会编译失败。
+
+**Files:**
+- Modify: `crates/bee_cli/src/lib.rs`（`generate_model` 的模板字符串 + 对应测试断言，约 132 行与 460 行）
+- Modify: `crates/bee_orm/src/lib.rs`（`Model` trait 的文档注释里写明这条约束）
+
+- [ ] **Step 1: 改模板**
+
+模板里的 `use bee_rust::bee_orm::Model;` 改为 `use bee_rust::bee_orm::{self, Model};`；同时更新 `crates/bee_cli/src/lib.rs` 中断言 `content.contains("use bee_rust::bee_orm::Model;")` 的测试为断言新字符串（`assert!(content.contains("use bee_rust::bee_orm::{self, Model};"))`）。
+
+- [ ] **Step 2: 文档约束**
+
+`crates/bee_orm/src/lib.rs` 的 `Model` trait 文档加一段：
+
+```rust
+/// # 使用约束
+///
+/// 派生宏展开的代码引用 `bee_orm::…` 路径，因此使用 `#[derive(Model)]` 的模块里
+/// `bee_orm` 必须在作用域内：要么本 crate 直接依赖 `bee_orm`（`use bee_orm::Model;`），
+/// 要么 `use bee_rust::bee_orm::{self, Model};`。
+```
+
+- [ ] **Step 3: 验证**
+
+Run: `cargo test -p bee_cli && cargo build -p bee_orm`
+Expected: 全绿。
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add crates/bee_cli/src/lib.rs crates/bee_orm/src/lib.rs
+git commit -m "fix(bee_cli): 模型模板导入 bee_orm 本体，适配派生宏的路径约束"
+```
+
+---
+
 ## 明知取舍（本计划范围内不做）
 
 - **Postgres/SQLite**：占位符 `?` → `$n` 改写与各自 FromRow 未做；`sqlx` feature 已就位，加库时补。
