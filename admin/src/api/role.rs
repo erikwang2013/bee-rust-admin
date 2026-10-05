@@ -205,7 +205,7 @@ pub async fn get_menus(
         .get_relations("role_menu", ("role_id", id), "menu_id")
         .await
         .map_err(ApiError::from)?;
-    Ok(ok(json!({ "menu_ids": ids })))
+    Ok(ok(ids)) // 前端契约：data 直接是 number[]
 }
 
 pub async fn set_menus(
@@ -243,7 +243,7 @@ pub async fn get_depts(
         .get_relations("role_dept", ("role_id", id), "dept_id")
         .await
         .map_err(ApiError::from)?;
-    Ok(ok(json!({ "dept_ids": ids })))
+    Ok(ok(ids)) // 前端契约：data 直接是 number[]
 }
 
 pub async fn set_depts(

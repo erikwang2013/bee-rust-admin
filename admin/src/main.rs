@@ -71,6 +71,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .put("/{id}", api::dept::update)
                 .delete("/{id}", api::dept::remove)
         })
+        .ns("/api/v1/login-logs", |ns| {
+            ns.get("", api::login_log::list).delete("", api::login_log::clear)
+        })
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;

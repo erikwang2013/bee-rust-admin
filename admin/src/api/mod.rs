@@ -2,6 +2,7 @@
 pub mod admin;
 pub mod auth;
 pub mod dept;
+pub mod login_log;
 pub mod menu;
 pub mod role;
 
