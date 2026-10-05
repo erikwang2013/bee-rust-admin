@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="阿守（Keeper）· 值守">
+  <title>阿守（Keeper）· 值守</title>
+  <desc>BRD 项目宠物的「值守」状态。</desc>
+  <defs>
+    <radialGradient id="bodyGrad" cx="45%" cy="30%" r="78%">
+      <stop offset="0%" stop-color="#FFC62E"/><stop offset="68%" stop-color="#F5B301"/><stop offset="100%" stop-color="#DE9E00"/>
+    </radialGradient>
+    <radialGradient id="headGrad" cx="42%" cy="30%" r="80%">
+      <stop offset="0%" stop-color="#FFE38A"/><stop offset="100%" stop-color="#F0AF00"/>
+    </radialGradient>
+    <linearGradient id="armorGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#22D3EE"/><stop offset="100%" stop-color="#0E7490"/>
+    </linearGradient>
+    <linearGradient id="wingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#EAF5FC" stop-opacity="0.95"/><stop offset="100%" stop-color="#CFE8F5" stop-opacity="0.55"/>
+    </linearGradient>
+    <radialGradient id="glowGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#67E8F9" stop-opacity="0.55"/><stop offset="100%" stop-color="#67E8F9" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <ellipse cx="256" cy="452" rx="130" ry="18" fill="#1F1A17" opacity="0.12"/>
+  <polygon points="256,336 342,386 342,462 256,492 170,462 170,386" fill="#FFF3C4" stroke="#C98A00" stroke-width="3"/>
+  <polygon points="256,352 328,393 328,452 256,478 184,452 184,393" fill="#FFE38A" opacity="0.75"/>
+  <text x="256" y="440" text-anchor="middle" font-family="ui-monospace, Menlo, Consolas, monospace"
+        font-size="20" font-weight="700" fill="#8A320A">BRD</text>
+
+  <g>
+    <path d="M232,196 C150,150 96,96 84,44 C130,44 196,74 232,132 Z" fill="url(#wingGrad)" stroke="#9CC7DE" stroke-width="2.5"/>
+    <path d="M280,196 C362,150 416,96 428,44 C382,44 316,74 280,132 Z" fill="url(#wingGrad)" stroke="#9CC7DE" stroke-width="2.5"/>
+    <path d="M232,196 C150,150 96,96 84,44 C130,44 196,74 232,132 Z" fill="none" stroke="#67E8F9" stroke-width="2" opacity="0.8"/>
+    <path d="M280,196 C362,150 416,96 428,44 C382,44 316,74 280,132 Z" fill="none" stroke="#67E8F9" stroke-width="2" opacity="0.8"/>
+  </g>
+  
+
+  <g>
+    <ellipse cx="256" cy="322" rx="76" ry="86" fill="url(#bodyGrad)" stroke="#2A1E16" stroke-width="3"/>
+    <path d="M186,300 Q256,318 326,300" fill="none" stroke="#2A1E16" stroke-width="13" stroke-linecap="round"/>
+    <path d="M182,342 Q256,362 330,342" fill="none" stroke="#2A1E16" stroke-width="13" stroke-linecap="round"/>
+    <path d="M196,382 Q256,400 316,382" fill="none" stroke="#2A1E16" stroke-width="12" stroke-linecap="round"/>
+    <path d="M256,406 L256,428" stroke="#2A1E16" stroke-width="7" stroke-linecap="round"/>
+  </g>
+
+  <g>
+    <ellipse cx="256" cy="238" rx="64" ry="54" fill="url(#bodyGrad)" stroke="#2A1E16" stroke-width="3"/>
+    <path d="M192,238 Q256,268 320,238 L320,252 Q256,282 192,252 Z" fill="url(#armorGrad)" opacity="0.9"/>
+    <polygon points="256,206 282,221 282,251 256,266 230,251 230,221" fill="#0E7490" stroke="#67E8F9" stroke-width="2.5"/>
+    <path d="M242,236 L252,247 L271,224" fill="none" stroke="#EAF5FC" stroke-width="5"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <g stroke="#2A1E16" stroke-width="6" fill="none" stroke-linecap="round">
+    <path d="M206,296 L166,336 L164,384"/>
+    <path d="M214,322 L186,372 L190,414"/>
+    <path d="M314,268 L362,300 L366,344"/>
+    <path d="M306,322 L334,372 L330,414"/>
+    <path d="M198,268 L150,300 L146,344"/>
+  </g>
+
+  <g>
+    <path d="M298,296 L352,330 L372,372" stroke="#2A1E16" stroke-width="6" fill="none" stroke-linecap="round"/>
+    <circle cx="376" cy="384" r="19" fill="url(#glowGrad)"/>
+    <circle cx="376" cy="382" r="13" fill="none" stroke="#8A320A" stroke-width="5"/>
+    <g stroke="#8A320A" fill="none" stroke-linecap="round">
+      <circle cx="362" cy="404" r="6.5" stroke-width="4" fill="#FFF3C4"/>
+      <path d="M362,410 L362,442" stroke-width="5"/><path d="M362,432 L351,432" stroke-width="4.5"/>
+      <circle cx="378" cy="410" r="6.5" stroke-width="4" fill="#FFF3C4"/>
+      <path d="M378,416 L378,450" stroke-width="5"/><path d="M378,440 L390,440" stroke-width="4.5"/>
+      <circle cx="394" cy="404" r="6.5" stroke-width="4" fill="#FFF3C4"/>
+      <path d="M394,410 L394,440" stroke-width="5"/><path d="M394,430 L405,430" stroke-width="4.5"/>
+    </g>
+  </g>
+
+  <g transform="">
+    <ellipse cx="256" cy="168" rx="52" ry="48" fill="url(#headGrad)" stroke="#2A1E16" stroke-width="3"/>
+    <path d="M228,128 C214,104 200,94 182,88" stroke="#2A1E16" stroke-width="5" fill="none" stroke-linecap="round"/>
+    <path d="M284,128 C298,104 312,94 330,88" stroke="#2A1E16" stroke-width="5" fill="none" stroke-linecap="round"/>
+    <circle cx="180" cy="86" r="7" fill="#2A1E16"/>
+    <circle cx="332" cy="86" r="7" fill="#2A1E16"/>
+    
+    
+      <ellipse cx="234" cy="168" rx="17" ry="20" fill="#1F1A17"/>
+      
+      <g stroke="#67E8F9" stroke-width="1.2" opacity="0.75">
+        <path d="M221,158 H247 M221,168 H247 M221,178 H247"/>
+        <path d="M227,149 V187 M237,149 V187"/>
+      </g>
+    
+      <ellipse cx="280" cy="168" rx="17" ry="20" fill="#1F1A17"/>
+      
+      <g stroke="#67E8F9" stroke-width="1.2" opacity="0.75">
+        <path d="M267,158 H293 M267,168 H293 M267,178 H293"/>
+        <path d="M273,149 V187 M283,149 V187"/>
+      </g>
+    <path d="M244,200 Q256,210 268,200" fill="none" stroke="#2A1E16" stroke-width="3.5" stroke-linecap="round"/>
+    <animateTransform attributeName="transform" type="translate" values="0,0; 0,-3; 0,0"
+                      dur="2.4s" repeatCount="indefinite"/>
+  </g>
+</svg>
