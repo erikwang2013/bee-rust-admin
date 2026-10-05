@@ -134,6 +134,15 @@ fn expand(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     }
 
     let pk = pk.or_else(|| infos.iter().find(|f| f.column == "id").map(|f| f.column.clone()));
+    // 主键名必须指向真实字段：否则 UPDATE 尾部生成不出 WHERE，会变成全表更新。
+    if let Some(p) = &pk
+        && !infos.iter().any(|f| f.column == *p)
+    {
+        return Err(syn::Error::new_spanned(
+            name,
+            format!("#[bee(pk = \"{p}\")] 没有对应的字段"),
+        ));
+    }
     let table_str = table.as_str();
     let pk_tokens = match &pk {
         Some(p) => quote!(Some(#p)),
@@ -301,4 +310,32 @@ fn to_snake(name: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn expand_str(src: &str) -> syn::Result<proc_macro2::TokenStream> {
+        expand(&syn::parse_str::<DeriveInput>(src).expect("测试用例应当是合法 Rust"))
+    }
+
+    /// `pk` 指向不存在的字段时必须报错，否则生成不出 WHERE（全表 UPDATE）。
+    #[test]
+    fn pk_must_name_a_field() {
+        let err = expand_str(r#"#[bee(table = "t", pk = "nope")] struct M { pub id: u64 }"#)
+            .expect_err("pk 指向不存在的字段应当报编译错误");
+        assert!(err.to_string().contains("没有对应的字段"), "{err}");
+    }
+
+    #[test]
+    fn pk_naming_a_field_is_accepted() {
+        expand_str(r#"#[bee(pk = "id")] struct M { pub id: u64 }"#).expect("合法主键");
+    }
+
+    /// 无 `#[bee(pk)]` 时字段里的 `id` 仍是主键，不需要报错。
+    #[test]
+    fn pk_defaults_to_id_field() {
+        expand_str("struct M { pub id: u64, pub name: String }").expect("自动认 id");
+    }
 }
