@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 700" width="980" height="700" role="img" aria-label="BRD 服务生命周期图">
+  <title>BRD（Bee Rust Admin）— 服务生命周期</title>
+  <desc>读配置 → 连接 MySQL → syncdb 同步表结构 → 首次种子（幂等）→ 监听端口 → 运行中处理请求 → 收到信号退出</desc>
+  <style>
+    .bg { fill: #ffffff; }
+    .box-start  { fill: #eff6ff; stroke: #3b82f6; stroke-width: 1.5; }
+    .box-db     { fill: #fefce8; stroke: #eab308; stroke-width: 1.5; }
+    .box-backend{ fill: #f0fdf4; stroke: #22c55e; stroke-width: 1.5; }
+    .box-decision { fill: #f5f3ff; stroke: #8b5cf6; stroke-width: 1.5; }
+    .box-end    { fill: #f8fafc; stroke: #94a3b8; stroke-width: 1.5; }
+    .note       { fill: #fafafa; stroke: #e5e7eb; stroke-width: 1; }
+    .t-name { font: 600 12.5px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #111827; }
+    .t-sub  { font: 10.5px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #6b7280; }
+    .t-note { font: 10px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #4b5563; }
+    .t-edge { font: 10px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #7c3aed; }
+    .t-title{ font: 700 16px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #0f172a; }
+    .t-foot { font: 10px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #9ca3af; }
+    .a  { stroke: #94a3b8; stroke-width: 1.6; fill: none; }
+    .a-yes { stroke: #8b5cf6; stroke-width: 1.6; fill: none; }
+    .a-no  { stroke: #cbd5e1; stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="ay" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8b5cf6"/>
+    </marker>
+    <marker id="an" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#cbd5e1"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="980" height="700"/>
+  <text class="t-title" x="24" y="30">BRD · 服务生命周期</text>
+  <text class="t-sub" x="24" y="48">从进程启动到退出的完整路径（左侧为流程，右侧为要点）</text>
+
+  <!-- 流程箭头 -->
+  <path class="a" d="M330,140 L330,158" marker-end="url(#a)"/>
+  <path class="a" d="M330,208 L330,226" marker-end="url(#a)"/>
+  <path class="a" d="M330,276 L330,294" marker-end="url(#a)"/>
+  <path class="a-yes" d="M330,344 L330,362" marker-end="url(#ay)"/>
+  <path class="a" d="M330,412 L330,440" marker-end="url(#a)"/>
+  <path class="a" d="M330,490 L330,508" marker-end="url(#a)"/>
+  <path class="a" d="M330,558 L330,576" marker-end="url(#a)"/>
+
+  <!-- 否：跳过种子，绕回主路径 -->
+  <path class="a-no" d="M540,319 L600,319 L600,466 L540,466" marker-end="url(#an)"/>
+  <text class="t-edge" x="606" y="300">否</text>
+  <text class="t-sub"  x="606" y="316">后续启动：跳过（幂等）</text>
+  <text class="t-edge" x="546" y="366">是</text>
+
+  <!-- ① -->
+  <rect class="box-start" x="120" y="88" width="420" height="52" rx="7"/>
+  <text class="t-name" x="136" y="110">① 读取配置</text>
+  <text class="t-sub"  x="136" y="128">admin/conf/app.conf（INI，bee_config）；BEE_ADMIN_CONF 可指定路径</text>
+
+  <!-- ② -->
+  <rect class="box-db" x="120" y="158" width="420" height="50" rx="7"/>
+  <text class="t-name" x="136" y="180">② 连接 MySQL（连接池）</text>
+  <text class="t-sub"  x="136" y="197">bee_orm::Db::connect；BEE_ADMIN_DB_DSN 可覆盖配置里的 DSN</text>
+
+  <!-- ③ -->
+  <rect class="box-db" x="120" y="226" width="420" height="50" rx="7"/>
+  <text class="t-name" x="136" y="248">③ syncdb 同步表结构</text>
+  <text class="t-sub"  x="136" y="265">比对模型元数据：建表 / 加列 / 补索引 + 三张连接表 DDL</text>
+
+  <!-- ④ 判断 -->
+  <rect class="box-decision" x="120" y="294" width="420" height="50" rx="7"/>
+  <text class="t-name" x="136" y="316">④ admin 表为空？（首次启动判定）</text>
+  <text class="t-sub"  x="136" y="333">仅首次为真，之后每次启动都会跳过种子</text>
+
+  <!-- ⑤ 种子 -->
+  <rect class="box-backend" x="120" y="362" width="420" height="50" rx="7"/>
+  <text class="t-name" x="136" y="384">⑤ 写入种子（单事务）</text>
+  <text class="t-sub"  x="136" y="401">超管 admin + 菜单权限树（1 目录 / 5 菜单 / 14 按钮）</text>
+
+  <!-- ⑥ 监听 -->
+  <rect class="box-backend" x="120" y="440" width="420" height="50" rx="7"/>
+  <text class="t-name" x="136" y="462">⑥ 监听 127.0.0.1:8080</text>
+  <text class="t-sub"  x="136" y="479">bee_router（axum）注册 33 个接口；/api/v1/health 供探活</text>
+
+  <!-- ⑦ 运行 -->
+  <rect class="box-backend" x="120" y="508" width="420" height="50" rx="7"/>
+  <text class="t-name" x="136" y="530">⑦ 运行中：处理请求</text>
+  <text class="t-sub"  x="136" y="547">Auth 校验 → require(权限码) → datascope → bee_orm → MySQL（见「请求周期」）</text>
+
+  <!-- ⑧ 退出 -->
+  <rect class="box-end" x="120" y="576" width="420" height="50" rx="7"/>
+  <text class="t-name" x="136" y="598">⑧ 退出</text>
+  <text class="t-sub"  x="136" y="615">收到 SIGTERM / Ctrl-C；systemd 重启策略 on-failure</text>
+
+  <!-- 右侧要点 -->
+  <rect class="note" x="660" y="88" width="296" height="60" rx="6"/>
+  <text class="t-note" x="674" y="108">配置非法即拒绝启动：</text>
+  <text class="t-note" x="674" y="124">JWT secret 少于 32 字符或为</text>
+  <text class="t-note" x="674" y="140">changeme → 进程直接退出</text>
+
+  <rect class="note" x="660" y="226" width="296" height="60" rx="6"/>
+  <text class="t-note" x="674" y="246">syncdb 只增不删：</text>
+  <text class="t-note" x="674" y="262">绝不删列、不改类型；</text>
+  <text class="t-note" x="674" y="278">模型加字段 → 下次启动自动补列</text>
+
+  <rect class="note" x="660" y="362" width="296" height="60" rx="6"/>
+  <text class="t-note" x="674" y="382">种子在事务内写入：</text>
+  <text class="t-note" x="674" y="398">中途失败不会留下「菜单已写、</text>
+  <text class="t-note" x="674" y="414">超管未写」的半套数据</text>
+
+  <rect class="note" x="660" y="508" width="296" height="60" rx="6"/>
+  <text class="t-note" x="674" y="528">会话无需落库：</text>
+  <text class="t-note" x="674" y="544">JWT 无状态；改密 / 禁用 / 登出</text>
+  <text class="t-note" x="674" y="560">靠 admin.token_version 使旧 token 失效</text>
+
+  <text class="t-foot" x="24" y="686">© 2026 erik · https://erik.xyz</text>
+</svg>

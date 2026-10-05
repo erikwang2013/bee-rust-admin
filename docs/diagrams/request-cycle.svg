@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 780" width="980" height="780" role="img" aria-label="bee-rust 管理后台 请求周期时序图">
+  <title>BRD（Bee Rust Admin）— 请求周期</title>
+  <desc>浏览器 → nginx → bee_router → Auth 提取器 → handler（权限码校验 + 数据权限）→ bee_orm → MySQL → 统一信封响应</desc>
+  <style>
+    .bg { fill: #ffffff; }
+    .head-frontend { fill: #eff6ff; stroke: #3b82f6; stroke-width: 1.5; }
+    .head-external { fill: #f8fafc; stroke: #94a3b8; stroke-width: 1.5; }
+    .head-backend  { fill: #f0fdf4; stroke: #22c55e; stroke-width: 1.5; }
+    .head-security { fill: #fff1f2; stroke: #f43f5e; stroke-width: 1.5; }
+    .head-db       { fill: #fefce8; stroke: #eab308; stroke-width: 1.5; }
+    .life { stroke: #cbd5e1; stroke-width: 1; stroke-dasharray: 4 4; }
+    .t-head{ font: 600 11.5px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #111827; }
+    .t-sub { font: 9.5px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #6b7280; }
+    .t-msg { font: 10.5px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #374151; }
+    .t-note{ font: 10px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #b91c1c; }
+    .t-title{ font: 700 16px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #0f172a; }
+    .t-foot{ font: 10px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #9ca3af; }
+    .msg      { stroke: #64748b; stroke-width: 1.5; fill: none; }
+    .msg-hot  { stroke: #22c55e; stroke-width: 2; fill: none; }
+    .msg-ret  { stroke: #94a3b8; stroke-width: 1.4; stroke-dasharray: 5 4; fill: none; }
+    .msg-sec  { stroke: #f43f5e; stroke-width: 1.5; fill: none; }
+    .selfbox  { fill: #ffffff; stroke: #f43f5e; stroke-width: 1.3; }
+    .stepno { font: 600 10px ui-monospace, Menlo, Consolas, monospace; fill: #0ea5e9; }
+  </style>
+  <defs>
+    <marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+    </marker>
+    <marker id="m-hot" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#22c55e"/>
+    </marker>
+    <marker id="m-ret" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="m-sec" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#f43f5e"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="980" height="780"/>
+  <text class="t-title" x="24" y="30">BRD · 请求周期</text>
+  <text class="t-sub" x="24" y="48" font-size="10.5">以「管理员列表」为例：GET /api/v1/admins</text>
+
+  <!-- 生命线 -->
+  <line class="life" x1="130" y1="96" x2="130" y2="716"/>
+  <line class="life" x1="258" y1="96" x2="258" y2="716"/>
+  <line class="life" x1="386" y1="96" x2="386" y2="716"/>
+  <line class="life" x1="514" y1="96" x2="514" y2="716"/>
+  <line class="life" x1="642" y1="96" x2="642" y2="716"/>
+  <line class="life" x1="770" y1="96" x2="770" y2="716"/>
+  <line class="life" x1="890" y1="96" x2="890" y2="716"/>
+
+  <!-- 参与者 -->
+  <rect class="head-frontend" x="70" y="64" width="120" height="34" rx="6"/>
+  <text class="t-head" x="130" y="86" text-anchor="middle">浏览器 SPA</text>
+  <rect class="head-external" x="198" y="64" width="120" height="34" rx="6"/>
+  <text class="t-head" x="258" y="86" text-anchor="middle">nginx :8081</text>
+  <rect class="head-backend" x="326" y="64" width="120" height="34" rx="6"/>
+  <text class="t-head" x="386" y="86" text-anchor="middle">bee_router</text>
+  <rect class="head-security" x="454" y="64" width="120" height="34" rx="6"/>
+  <text class="t-head" x="514" y="86" text-anchor="middle">Auth 提取器</text>
+  <rect class="head-backend" x="582" y="64" width="120" height="34" rx="6"/>
+  <text class="t-head" x="642" y="86" text-anchor="middle">handler</text>
+  <rect class="head-backend" x="710" y="64" width="120" height="34" rx="6"/>
+  <text class="t-head" x="770" y="86" text-anchor="middle">bee_orm</text>
+  <rect class="head-db" x="830" y="64" width="120" height="34" rx="6"/>
+  <text class="t-head" x="890" y="86" text-anchor="middle">MySQL</text>
+
+  <!-- 1 -->
+  <path class="msg" d="M130,128 L258,128" marker-end="url(#m)"/>
+  <text class="t-msg" x="136" y="122">① GET /api/v1/admins（Authorization: Bearer &lt;token&gt;）</text>
+  <!-- 2 -->
+  <path class="msg" d="M258,168 L386,168" marker-end="url(#m)"/>
+  <text class="t-msg" x="264" y="162">② /api/ 反向代理，透传 X-Real-IP</text>
+  <!-- 3 -->
+  <path class="msg" d="M386,208 L514,208" marker-end="url(#m)"/>
+  <text class="t-msg" x="392" y="202">③ 提取器读取 Authorization</text>
+  <!-- 4 -->
+  <path class="msg" d="M514,248 L770,248" marker-end="url(#m)"/>
+  <text class="t-msg" x="520" y="242">④ 查管理员 / 角色 / 权限码</text>
+  <!-- 5 -->
+  <path class="msg" d="M770,288 L890,288" marker-end="url(#m)"/>
+  <text class="t-msg" x="776" y="282">⑤ SELECT（参数绑定）</text>
+  <!-- 6 -->
+  <path class="msg-ret" d="M890,328 L514,328" marker-end="url(#m-ret)"/>
+  <text class="t-msg" x="640" y="322" text-anchor="middle">⑥ 用户 · 角色 · 权限码</text>
+  <text class="t-note" x="522" y="344">签名无效 / ver 过期 / 账号禁用 → 401，到此结束</text>
+  <!-- 7 -->
+  <path class="msg-sec" d="M514,384 L642,384" marker-end="url(#m-sec)"/>
+  <text class="t-msg" x="520" y="378">⑦ 注入 Auth</text>
+  <!-- 8 self -->
+  <path class="msg-sec" d="M642,404 L704,404 L704,432 L642,432" marker-end="url(#m-sec)"/>
+  <text class="t-msg" x="712" y="414">⑧ auth.require("system:admin:list")</text>
+  <text class="t-note" x="712" y="430">缺权限码 → 403，不查库</text>
+  <!-- 9 -->
+  <path class="msg-hot" d="M642,472 L770,472" marker-end="url(#m-hot)"/>
+  <text class="t-msg" x="648" y="466">⑨ QuerySet 过滤 + 数据权限条件（五档）</text>
+  <!-- 10 -->
+  <path class="msg-hot" d="M770,512 L890,512" marker-end="url(#m-hot)"/>
+  <text class="t-msg" x="776" y="506">⑩ 预编译 SELECT … LIMIT ?</text>
+  <!-- 11 -->
+  <path class="msg-ret" d="M890,552 L642,552" marker-end="url(#m-ret)"/>
+  <text class="t-msg" x="766" y="546" text-anchor="middle">⑪ 结果集</text>
+  <!-- 12 -->
+  <path class="msg-ret" d="M642,608 L130,608" marker-end="url(#m-ret)"/>
+  <text class="t-msg" x="386" y="602" text-anchor="middle">⑫ {"code":0,"msg":"ok","data":{"list":[…],"total":N}}</text>
+  <text class="t-sub" x="386" y="622" text-anchor="middle">统一信封；错误时 code = HTTP 状态码，data 为 null</text>
+
+  <!-- 旁注 -->
+  <rect class="selfbox" x="24" y="648" width="440" height="52" rx="6"/>
+  <text class="t-sub" x="38" y="668">鉴权：超管（is_super）直接放行；普通用户按角色勾选的权限码集合判定。</text>
+  <text class="t-sub" x="38" y="686">IP 取 X-Real-IP → X-Forwarded-For 首个 → unknown，写入登录记录时按列宽截断。</text>
+  <text class="t-foot" x="24" y="762">© 2026 erik · https://erik.xyz</text>
+</svg>

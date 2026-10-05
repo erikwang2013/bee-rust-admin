@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 720" width="980" height="720" role="img" aria-label="bee-rust 管理后台 功能设计图">
+  <title>BRD（Bee Rust Admin）— 功能设计（RBAC 权限模型）</title>
+  <desc>登录鉴权链、管理员-角色-菜单/部门权限模型、数据权限五档、五个功能模块</desc>
+  <style>
+    .bg { fill: #ffffff; }
+    .panel { fill: #f7f8fa; stroke: #e5e7eb; stroke-width: 1; }
+    .panel-label { font: 600 12px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #4b5563; }
+    .box-frontend { fill: #eff6ff; stroke: #3b82f6; stroke-width: 1.5; }
+    .box-backend  { fill: #f0fdf4; stroke: #22c55e; stroke-width: 1.5; }
+    .box-db       { fill: #fefce8; stroke: #eab308; stroke-width: 1.5; }
+    .box-security { fill: #fff1f2; stroke: #f43f5e; stroke-width: 1.5; }
+    .box-join     { fill: #ffffff; stroke: #a855f7; stroke-width: 1.4; }
+    .box-module   { fill: #f5f3ff; stroke: #8b5cf6; stroke-width: 1.4; }
+    .t-name { font: 600 12.5px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #111827; }
+    .t-sub  { font: 10.5px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #6b7280; }
+    .t-join { font: 600 10px ui-monospace, Menlo, Consolas, monospace; fill: #7c3aed; }
+    .t-title{ font: 700 16px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #0f172a; }
+    .t-foot { font: 10px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #9ca3af; }
+    .a-default { stroke: #94a3b8; stroke-width: 1.4; fill: none; }
+    .a-data    { stroke: #a855f7; stroke-width: 1.4; fill: none; }
+  </style>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="ar-data" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#a855f7"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="980" height="720"/>
+  <text class="t-title" x="24" y="30">BRD · 功能设计</text>
+  <text class="t-sub" x="24" y="48">登录鉴权 · 角色权限模型（菜单+按钮）· 部门数据权限 · 五大功能模块</text>
+
+  <!-- 一、登录与鉴权 -->
+  <rect class="panel" x="24" y="64" width="932" height="126" rx="8"/>
+  <text class="panel-label" x="40" y="86">一、登录与鉴权（JWT）</text>
+  <path class="a-default" d="M188,124 L224,124" marker-end="url(#ar)"/>
+  <path class="a-default" d="M368,124 L404,124" marker-end="url(#ar)"/>
+  <path class="a-default" d="M548,124 L584,124" marker-end="url(#ar)"/>
+  <rect class="box-frontend" x="40" y="100" width="148" height="48" rx="6"/>
+  <text class="t-name" x="114" y="121" text-anchor="middle">账号 + 密码</text>
+  <text class="t-sub"  x="114" y="138" text-anchor="middle">登录表单</text>
+  <rect class="box-security" x="224" y="100" width="144" height="48" rx="6"/>
+  <text class="t-name" x="296" y="121" text-anchor="middle">argon2id 校验</text>
+  <text class="t-sub"  x="296" y="138" text-anchor="middle">随机盐哈希</text>
+  <rect class="box-security" x="404" y="100" width="144" height="48" rx="6"/>
+  <text class="t-name" x="476" y="121" text-anchor="middle">签发 JWT</text>
+  <text class="t-sub"  x="476" y="138" text-anchor="middle">HS256：sub/ver/exp</text>
+  <rect class="box-backend" x="584" y="100" width="356" height="48" rx="6"/>
+  <text class="t-name" x="762" y="121" text-anchor="middle">Auth 提取器：每请求校验签名 / ver / status</text>
+  <text class="t-sub"  x="762" y="138" text-anchor="middle">改密 · 禁用 · 登出 → token_version +1 → 旧 token 立即失效</text>
+  <text class="t-sub"  x="40" y="176">登录成功 / 失败 / 退出均写入登录记录（IP、User-Agent、原因）；失败原因不回显给客户端</text>
+
+  <!-- 二、权限模型 -->
+  <rect class="panel" x="24" y="204" width="932" height="212" rx="8"/>
+  <text class="panel-label" x="40" y="226">二、角色权限模型（多对多）</text>
+  <path class="a-data" d="M228,310 L294,310" marker-end="url(#ar-data)"/>
+  <text class="t-join" x="230" y="300">admin_role</text>
+  <path class="a-data" d="M462,310 L528,310" marker-end="url(#ar-data)"/>
+  <text class="t-join" x="466" y="300">role_menu</text>
+  <path class="a-data" d="M378,352 L378,376" marker-end="url(#ar-data)"/>
+  <rect class="box-frontend" x="60" y="270" width="166" height="80" rx="6"/>
+  <text class="t-name" x="143" y="298" text-anchor="middle">管理员</text>
+  <text class="t-sub"  x="143" y="316" text-anchor="middle">归属部门</text>
+  <text class="t-sub"  x="143" y="332" text-anchor="middle">is_super 旁路</text>
+  <rect class="box-join" x="296" y="270" width="164" height="80" rx="6"/>
+  <text class="t-name" x="378" y="298" text-anchor="middle">角色</text>
+  <text class="t-sub"  x="378" y="316" text-anchor="middle">name / code / 排序</text>
+  <text class="t-sub"  x="378" y="332" text-anchor="middle">data_scope 数据范围</text>
+  <rect class="box-backend" x="530" y="270" width="404" height="80" rx="6"/>
+  <text class="t-name" x="732" y="294" text-anchor="middle">菜单与按钮（权限树：目录 M / 菜单 C / 按钮 F）</text>
+  <text class="t-sub"  x="548" y="316">权限码：system:admin:list / add / edit / remove / resetPwd</text>
+  <text class="t-sub"  x="548" y="332">system:role:* · system:menu:* · system:dept:* · system:loginlog:list / remove</text>
+  <rect class="box-join" x="296" y="380" width="164" height="26" rx="5"/>
+  <text class="t-name" x="378" y="397" text-anchor="middle" font-size="11">部门（role_dept · 自定义范围）</text>
+  <text class="t-sub"  x="600" y="392">前端按权限码渲染菜单与按钮；后端逐接口再校验（隐藏 ≠ 放过）</text>
+
+  <!-- 三、数据权限 -->
+  <rect class="panel" x="24" y="434" width="470" height="212" rx="8"/>
+  <text class="panel-label" x="40" y="456">三、数据权限五档（角色级，多角色取并集）</text>
+  <text class="t-sub" x="40" y="482">1 · 全部数据 —— 不加条件</text>
+  <text class="t-sub" x="40" y="506">2 · 本部门及以下 —— dept_id ∈ 部门子树</text>
+  <text class="t-sub" x="40" y="530">3 · 本部门 —— dept_id = 本人部门</text>
+  <text class="t-sub" x="40" y="554">4 · 仅本人 —— admin_id = 本人</text>
+  <text class="t-sub" x="40" y="578">5 · 自定义 —— dept_id ∈ role_dept 勾选</text>
+  <text class="t-sub" x="40" y="606">任一角色为「全部」→ 不加条件；无启用角色或无部门且非本人 → WHERE 1 = 0</text>
+  <text class="t-sub" x="40" y="628">作用于列表接口（管理员、登录记录），条件参数化绑定，不与用户输入拼接</text>
+
+  <!-- 四、功能模块 -->
+  <rect class="panel" x="514" y="434" width="442" height="212" rx="8"/>
+  <text class="panel-label" x="530" y="456">四、功能模块（5 个）</text>
+  <rect class="box-module" x="530" y="470" width="196" height="44" rx="6"/>
+  <text class="t-name" x="628" y="489" text-anchor="middle">管理员管理</text>
+  <text class="t-sub"  x="628" y="505" text-anchor="middle">增删改 · 分配角色 · 重置密码 · 启停</text>
+  <rect class="box-module" x="744" y="470" width="196" height="44" rx="6"/>
+  <text class="t-name" x="842" y="489" text-anchor="middle">角色管理</text>
+  <text class="t-sub"  x="842" y="505" text-anchor="middle">菜单权限勾选 · 数据范围 · 引用校验</text>
+  <rect class="box-module" x="530" y="526" width="196" height="44" rx="6"/>
+  <text class="t-name" x="628" y="545" text-anchor="middle">菜单管理</text>
+  <text class="t-sub"  x="628" y="561" text-anchor="middle">目录 / 菜单 / 按钮 · 防环 · 权限码</text>
+  <rect class="box-module" x="744" y="526" width="196" height="44" rx="6"/>
+  <text class="t-name" x="842" y="545" text-anchor="middle">部门管理</text>
+  <text class="t-sub"  x="842" y="561" text-anchor="middle">树形部门 · 删除前校验</text>
+  <rect class="box-module" x="530" y="582" width="410" height="44" rx="6"/>
+  <text class="t-name" x="735" y="601" text-anchor="middle">登录记录</text>
+  <text class="t-sub"  x="735" y="617" text-anchor="middle">按用户名 / 状态 / 时间段查询 · 按条件清空 · 受数据权限约束</text>
+
+  <text class="t-foot" x="24" y="706">© 2026 erik · https://erik.xyz</text>
+</svg>

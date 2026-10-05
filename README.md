@@ -1,68 +1,179 @@
-# bee-rust 管理后台
+<div align="center">
 
-基于本仓库的 bee-rust 框架（axum + sqlx ORM + INI 配置）实现的管理后台：
-JWT 登录、管理员 / 角色 / 菜单 / 部门 / 登录记录管理，菜单 + 按钮权限 + 部门数据权限，
-前端 React + Vite + Ant Design 5。
+# BRD · Bee Rust Admin
 
-- 服务端：`admin/`（crate `bee_admin`，默认监听 `127.0.0.1:8080`）
-- 前端：`admin/web/`（开发 5173，生产由 nginx 8081 提供）
-- 设计文档：`docs/superpowers/specs/2026-10-05-bee-rust-admin-design.md`
+**基于 bee-rust 框架的 RBAC 管理后台** —— Rust 服务端 + React 前端，建库即用
 
-## 目录结构
+`JWT 登录` · `管理员 / 角色 / 菜单 / 部门 / 登录记录` · `菜单+按钮级权限` · `部门数据权限`
+
+</div>
+
+---
+
+## 项目介绍
+
+**BRD（Bee Rust Admin）** 是一个开箱即用的后台管理系统：服务端用本仓库的
+[bee-rust](https://github.com/erikwang2013/bee-rust) 框架写就（axum 路由 + 自研 ORM 执行层 +
+INI 配置），前端是 Vite + React 18 + Ant Design 5 单页应用，两者通过一套统一的
+`{code, msg, data}` 接口契约对接。
+
+它解决的问题很实际：**权限要细到按钮、数据要看得到范围、登录要留痕**。因此：
+
+- **权限模型是菜单 + 按钮两级**：角色勾选到按钮级权限码（如 `system:admin:resetPwd`），
+  前端据此渲染菜单与按钮，后端**每个接口再校验一次**——前端隐藏只是体验，不是防线。
+- **数据权限有五档**：全部 / 本部门及以下 / 本部门 / 仅本人 / 自定义（勾选部门），
+  在列表查询层做条件注入，参数化绑定，不拼接用户输入。
+- **会话无状态但有强制下线**：JWT 携带 `token_version`，改密 / 禁用 / 登出即失效旧令牌。
+- **登录成功 / 失败 / 退出全部留痕**：IP、User-Agent、失败原因入库可查。
+
+服务端启动时自动完成建表与种子（超管 + 菜单权限树），**不需要手工执行 SQL 迁移**。
+
+## 架构设计
+
+![架构设计](docs/diagrams/architecture.svg)
+
+五层结构，自上而下：
+
+| 层 | 组成 | 说明 |
+|---|---|---|
+| 客户端 | 浏览器 SPA | React 18 + TypeScript + Ant Design 5（Vite 构建） |
+| 接入层 | nginx :8081 | 提供前端静态资源，`/api/` 反向代理到后端并透传 `X-Real-IP` |
+| 应用层 | `bee_admin` | bee_router（axum）· Auth 提取器 · 33 个 API handler · datascope 数据权限 · 统一响应信封 |
+| 框架层 | bee_orm / bee_config / bee_logs | 连接池、QuerySet、CRUD、M2M、syncdb；INI 配置；tracing 日志 |
+| 数据层 | MySQL 8.4 | 8 张表（5 张业务表 + 3 张连接表） |
+
+## 功能设计
+
+![功能设计](docs/diagrams/features.svg)
+
+**权限模型是多对多的三段式**：管理员 ←`admin_role`→ 角色 ←`role_menu`→ 菜单与按钮；
+角色 ←`role_dept`→ 部门（用于「自定义」数据范围）。超管（`is_super`）旁路所有权限码校验。
+
+**数据权限五档**在列表接口注入查询条件：多角色的部门集合取并集，任一角色为「全部」则不加条件，
+一个启用的角色都没有则落到 `WHERE 1 = 0`（什么都不给看，而不是全给看）。
+
+## 请求周期
+
+![请求周期](docs/diagrams/request-cycle.svg)
+
+以 `GET /api/v1/admins` 为例的 12 步链路：浏览器 → nginx → bee_router → Auth 提取器
+（校验签名 / `ver` / 账号状态，加载角色与权限码）→ handler（先 `require(权限码)`，再解析数据权限）
+→ bee_orm（预编译 + 参数绑定）→ MySQL → 统一信封返回。**401（未登录）与 403（无权限）在查库之前就短路**。
+
+## 服务生命周期
+
+![服务生命周期](docs/diagrams/lifecycle.svg)
+
+启动路径：读配置（JWT secret 少于 32 字符或为 `changeme` → **拒绝启动**）→ 连接 MySQL →
+`syncdb` 同步表结构（**只建表 / 加列 / 补索引，绝不删列改类型**，模型加字段下次启动自动补列）→
+首次启动（`admin` 表为空）在**单事务内**写入超管与菜单权限树 → 监听 `127.0.0.1:8080` → 运行 →
+收到 `SIGTERM` 退出（systemd 策略 `on-failure` 自动重启）。
+
+## 功能介绍
+
+| 模块 | 能力 |
+|---|---|
+| **登录鉴权** | 账号密码登录（argon2id）、JWT 签发与校验、登出、个人中心改密（改后强制重新登录） |
+| **管理员管理** | 分页列表（用户名 / 状态 / 部门筛选）、增删改、分配角色、重置密码、启用禁用（禁用即踢下线） |
+| **角色管理** | 增删改查、菜单权限树勾选、数据范围五档、自定义部门、删除前校验是否被管理员引用 |
+| **菜单管理** | 树形目录 / 菜单 / 按钮三层、权限码、图标与排序、防环校验、删除前校验子节点与角色引用 |
+| **部门管理** | 树形部门、负责人与排序、删除前校验子部门与在编管理员 |
+| **登录记录** | 按用户名 / 状态 / 时间段分页查询、按条件清空，记录受数据权限约束 |
+
+接口共 33 个（32 个业务接口 + `/api/v1/health` 探活），路径与字段的完整定义见
+[设计文档 §5.3](docs/superpowers/specs/2026-10-05-bee-rust-admin-design.md)。
+
+## 项目结构
 
 ```
-crates/            bee-rust 框架（含本后台依赖的 bee_orm 执行层、bee_router、bee_config）
-admin/             管理后台服务端（crate bee_admin）
-  src/api/         接口：auth / admin / role / menu / dept / login_log
-  src/models/      模型（#[derive(Model)]，表结构由 syncdb 生成）
-  src/datascope.rs 数据权限解析（全部/本部门及以下/本部门/仅本人/自定义）与查询注入
-  src/seed.rs      建表（syncdb）+ 首次启动种子（超管 + 菜单权限树）
-  conf/            app.conf（gitignore）/ app.conf.example
-  deploy/          systemd 单元 + nginx 站点配置示例
-  tests/           集成测试（起真实进程 + 真库）
-  web/             前端（React + antd）
-docs/              设计文档与实施计划
+crates/                 bee-rust 框架（workspace 成员，本后台直接依赖）
+  bee_orm/              ★ ORM 执行层：连接池 / QuerySet / CRUD / M2M / syncdb / 事务
+  bee_orm_macro/        ★ #[derive(Model)]：元数据 + 行映射 + 参数绑定代码生成
+  bee_router/           axum 封装的路由
+  bee_config/           INI 配置（含解析与监听）
+  bee_logs/             tracing 日志初始化
+  bee_cli/ bee_kv/ ...  其余框架 crate
+admin/                  管理后台服务端（crate bee_admin）
+  src/main.rs           启动：配置 → 连库 → syncdb → 种子 → 路由 → 监听
+  src/config.rs         INI 配置与启动校验（JWT secret 强度、DSN 覆盖）
+  src/error.rs          ApiError + 统一信封 + AppJson 请求体提取器
+  src/auth.rs           JWT 签发校验 + Auth 提取器（权限码加载、token_version 校验）
+  src/datascope.rs      数据权限解析与查询注入（部门子树 / 本人 / 自定义）
+  src/api/              auth · admin · role · menu · dept · login_log 六个模块
+  src/models/           8 个模型（#[derive(Model)]，表结构由 syncdb 生成）
+  src/seed.rs           建表、连接表 DDL、首次种子（超管 + 菜单权限树）
+  conf/                 app.conf（gitignore）· app.conf.example · app.conf.test
+  deploy/               systemd 单元 + nginx 站点配置
+  tests/                集成测试：起真实进程 + 连真库（含全链路）
+  web/                  前端 SPA（React + antd，见下）
+    src/api/            接口层（契约类型 + axios 拦截器）
+    src/auth/           AuthContext + 按钮级权限组件
+    src/layouts/        动态菜单布局
+    src/pages/          登录 / 首页 / 管理员 / 角色 / 菜单 / 部门 / 登录记录 / 个人中心
+docs/
+  diagrams/             ★ 本 README 引用的 4 张 SVG 图
+  superpowers/specs/    设计文档（数据模型、接口清单、数据权限规则）
+  superpowers/plans/    实施计划（ORM 执行层、后端、前端）
 ```
 
-## 快速开始
+## 使用说明
 
-1. **建库**（MySQL 8.4，utf8mb4；表由服务启动时自动创建，无需手工建表）：
+### 环境要求
 
-   ```sql
-   CREATE DATABASE bee_admin DEFAULT CHARSET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
-   ```
+| 组件 | 版本 |
+|---|---|
+| Rust | 1.99+（edition 2024） |
+| MySQL | 8.0+（开发于 8.4，utf8mb4） |
+| Node / pnpm | Node 20+ / pnpm 9+ |
+| nginx | 任意近期版本（仅生产部署需要） |
 
-2. **配置**：
+### 快速开始
 
-   ```bash
-   cp admin/conf/app.conf.example admin/conf/app.conf
-   # 填 [db] dsn（MySQL 账号密码）与 [jwt] secret（≥32 字符随机串，且不能是 changeme）
-   ```
+**1. 建库**（表由服务启动时自动创建，无需手工建表）
 
-3. **起服务**（首次启动自动建表并写入超管、菜单权限种子）：
+```sql
+CREATE DATABASE bee_admin DEFAULT CHARSET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+```
 
-   ```bash
-   cargo run -p bee_admin
-   curl http://127.0.0.1:8080/api/v1/health   # => OK
-   ```
+**2. 配置**
 
-4. **起前端**：
+```bash
+cp admin/conf/app.conf.example admin/conf/app.conf
+# 填 [db] dsn（MySQL 账号密码）与 [jwt] secret（≥32 字符随机串，且不能是 changeme）
+```
 
-   ```bash
-   cd admin/web && pnpm i && pnpm dev
-   # 打开 http://127.0.0.1:5173（vite 已把 /api 代理到 127.0.0.1:8080）
-   ```
+**3. 起服务**（首次启动自动建表、写入超管与菜单权限种子）
 
-## 初始账号
+```bash
+cargo run -p bee_admin
+curl http://127.0.0.1:8080/api/v1/health   # => OK
+```
+
+**4. 起前端**
+
+```bash
+cd admin/web && pnpm i && pnpm dev
+# 打开 http://127.0.0.1:5173（vite 已把 /api 代理到 127.0.0.1:8080）
+```
+
+也可以用生产构建在本机预览（端口与线上 nginx 一致，同样反代 `/api`）：
+
+```bash
+cd admin/web && pnpm build && pnpm preview   # http://localhost:8081
+```
+
+### 初始账号
 
 | 账号 | 密码 |
 |---|---|
 | `admin` | `admin/conf/app.conf` 的 `[seed] initial_admin_password`（示例配置为 `admin123`） |
 
-超管仅在首次启动（admin 表为空）时写入。**登录后请立即到「个人中心」修改密码**；
+超管仅在首次启动（`admin` 表为空）时写入。**登录后请立即到「个人中心」修改密码**；
 生产环境务必同时改掉 `initial_admin_password` 与 `[jwt] secret`。
 
-## 测试
+> 提示：`BEE_ADMIN_CONF` 可指定配置文件路径，`BEE_ADMIN_DB_DSN` 可覆盖配置里的数据库连接串。
+
+### 测试
 
 ```bash
 # 框架：单测 + 真库集成（未设 DSN 的集成测试跳过并打印原因）
@@ -78,9 +189,10 @@ BEE_ADMIN_DB_DSN='mysql://user:pass@127.0.0.1:3306/bee_admin_test' \
   cargo test -p bee_admin --test api_flow_test -- --nocapture
 ```
 
-`BEE_ADMIN_DB_DSN` 会覆盖配置里的 `[db] dsn`（便于测试注入凭据），因此测试库账号不必写进仓库。
+`BEE_ADMIN_DB_DSN` 会覆盖配置里的 `[db] dsn`（便于测试注入凭据），因此测试库账号不必写进仓库；
+集成测试带**生产库护栏**——DSN 指向的库名不以 `_test` 结尾时直接拒绝执行。
 
-## 部署
+### 部署
 
 systemd 托管服务（监听 `127.0.0.1:8080`）+ nginx 对外 8081：静态资源指向前端构建产物
 `admin/web/dist`，`/api/` 反向代理到后端并透传 `X-Real-IP`（登录记录需要真实 IP）。
@@ -88,8 +200,18 @@ systemd 托管服务（监听 `127.0.0.1:8080`）+ nginx 对外 8081：静态资
 ```bash
 cargo build --release -p bee_admin
 cd admin/web && pnpm build
-sudo cp admin/deploy/bee-admin.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now bee-admin
-sudo cp admin/deploy/nginx.conf.example /usr/local/nginx/conf/vhost/bee-admin.conf && sudo nginx -t && sudo systemctl reload nginx
+
+sudo cp admin/deploy/bee-admin.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now bee-admin
+
+sudo cp admin/deploy/nginx.conf.example /usr/local/nginx/conf/vhost/bee-admin.conf
+sudo nginx -t && sudo systemctl reload nginx
 ```
 
 文件内的注释写了各自的安装位置与前置条件；设计文档 §7 有部署方案的完整说明。
+
+## 版权
+
+© 2026 erik · <https://erik.xyz>
+
+本项目基于 [Apache-2.0](LICENSE) 许可发布。
