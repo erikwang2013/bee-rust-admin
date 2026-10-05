@@ -1,0 +1,43 @@
+# bee-rust 管理后台 —— nginx 站点配置（对外 8081）
+#
+# 本机 nginx 是 /usr/local/nginx 的 LNMP 自编译版，主配置末行是 `include vhost/*.conf;`，
+# 所以安装方式（需要 root）：
+#   sudo cp admin/deploy/nginx.conf.example /usr/local/nginx/conf/vhost/bee-admin.conf
+#   sudo nginx -t && sudo systemctl reload nginx     # 或 sudo nginx -s reload
+#
+# 说明：
+#   - 静态资源 = 前端构建产物 admin/web/dist（cd admin/web && pnpm build 生成）
+#   - /api/ 反代到本机 Rust 服务（systemd 单元里监听 127.0.0.1:8080）
+#   - X-Real-IP 必须透传，登录记录取客户端 IP 靠它
+server {
+    listen 8081;
+    server_name _;
+
+    root /home/wwwroot/bee-rust-admin/admin/web/dist;
+    index index.html;
+
+    # SPA 路由回退：刷新深层路径时交给前端路由处理
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # 后端接口
+    location /api/ {
+        # 不带尾斜杠：原样转发完整 URI（/api/v1/auth/login 保持 /api/v1/auth/login）
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # 前端产物带 hash 的静态资源可长缓存；index.html 不缓存
+    location ~* \.(js|css|woff2?|svg|png|jpg|ico)$ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+    location = /index.html {
+        add_header Cache-Control "no-cache";
+    }
+}

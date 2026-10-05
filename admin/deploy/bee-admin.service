@@ -1,0 +1,24 @@
+# bee-rust 管理后台 —— systemd 单元
+# 安装：
+#   sudo cp admin/deploy/bee-admin.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now bee-admin
+# 部署前先跑：cargo build --release -p bee_admin
+[Unit]
+Description=bee-rust admin backend (bee_admin)
+After=network.target mysql.service
+Wants=mysql.service
+
+[Service]
+Type=simple
+User=erik
+Group=erik
+WorkingDirectory=/home/wwwroot/bee-rust-admin/admin
+Environment=BEE_ADMIN_CONF=/home/wwwroot/bee-rust-admin/admin/conf/app.conf
+ExecStart=/home/wwwroot/bee-rust-admin/target/release/bee_admin
+Restart=on-failure
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
