@@ -11,13 +11,43 @@ impl Drop for Server {
     }
 }
 
+/// 取出 DSN 里的库名（`mysql://u:p@host:port/dbname?params` → `dbname`）。
+pub fn db_name(dsn: &str) -> &str {
+    dsn.split("://")
+        .nth(1)
+        .and_then(|rest| rest.split('/').nth(1))
+        .map(|s| s.split('?').next().unwrap_or(""))
+        .unwrap_or("")
+}
+
 pub fn dsn() -> Option<String> {
     match std::env::var("BEE_ADMIN_DB_DSN") {
-        Ok(v) if !v.is_empty() => Some(v),
+        Ok(v) if !v.is_empty() => {
+            // 护栏：集成测试会 DROP 全部表重建，绝不能指向生产库。
+            // 所有测试都从这里取 DSN，被 spawn 的服务进程也继承同一个环境变量。
+            let db = db_name(&v);
+            assert!(
+                db.ends_with("_test"),
+                "拒绝执行：BEE_ADMIN_DB_DSN 指向的库 `{db}` 不是 *_test 库（这些测试会 DROP 全部表）"
+            );
+            Some(v)
+        }
         _ => {
             eprintln!("跳过：未设置 BEE_ADMIN_DB_DSN");
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn db_name_parses_dsn() {
+        assert_eq!(db_name("mysql://root:pw@127.0.0.1:3306/bee_admin_test"), "bee_admin_test");
+        assert_eq!(db_name("mysql://root:pw@127.0.0.1:3306/bee_admin_test?ssl-mode=DISABLED"), "bee_admin_test");
+        assert_eq!(db_name("mysql://root:pw@127.0.0.1:3306"), "");
     }
 }
 

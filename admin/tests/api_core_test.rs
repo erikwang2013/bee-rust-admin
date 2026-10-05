@@ -1,66 +1,16 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 //! 起真实进程 + 真库（bee_admin_test）跑登录链路。需要 BEE_ADMIN_DB_DSN。
-use std::process::{Child, Command, Stdio};
-use std::time::Duration;
+mod common;
 
-struct Server(Child);
-impl Drop for Server {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
-
-fn dsn() -> Option<String> {
-    match std::env::var("BEE_ADMIN_DB_DSN") {
-        Ok(v) if !v.is_empty() => Some(v),
-        _ => {
-            eprintln!("跳过：未设置 BEE_ADMIN_DB_DSN");
-            None
-        }
-    }
-}
-
-async fn start_server() -> (Server, String) {
-    let port = {
-        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        l.local_addr().unwrap().port()
-    };
-    // 测试配置：把 app.conf.test 的 http_addr 改写到随机端口
-    let conf = std::fs::read_to_string("conf/app.conf.test").unwrap();
-    let conf = conf.replace("127.0.0.1:0", &format!("127.0.0.1:{port}"));
-    let tmp = std::env::temp_dir().join(format!("bee_admin_test_{port}.conf"));
-    std::fs::write(&tmp, conf).unwrap();
-
-    let child = Command::new(env!("CARGO_BIN_EXE_bee_admin"))
-        .env("BEE_ADMIN_CONF", &tmp)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("启动 bee_admin 失败");
-    let server = Server(child);
-
-    let base = format!("http://127.0.0.1:{port}");
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
-    loop {
-        if reqwest::get(format!("{base}/api/v1/health")).await.is_ok() {
-            return (server, base);
-        }
-        assert!(tokio::time::Instant::now() < deadline, "服务 20 秒内未就绪");
-        tokio::time::sleep(Duration::from_millis(200)).await;
-    }
-}
+use common::{dsn, reset_db, start_server};
 
 #[tokio::test]
 async fn login_profile_menus_logout() {
+    // dsn() 内含生产库护栏：DSN 不指向 *_test 库时直接拒绝执行
     let Some(dsn) = dsn() else { return };
 
     // 干净库：删表后由服务启动时的 syncdb/seed 重建
-    let pool = sqlx::MySqlPool::connect(&dsn).await.unwrap();
-    for t in ["admin_role", "role_menu", "role_dept", "login_log", "menu", "role", "dept", "admin"] {
-        sqlx::query(&format!("DROP TABLE IF EXISTS {t}")).execute(&pool).await.unwrap();
-    }
-    drop(pool);
+    reset_db(&dsn).await;
 
     let (_server, base) = start_server().await;
     let client = reqwest::Client::new();
