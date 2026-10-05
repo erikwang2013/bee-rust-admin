@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Spin } from 'antd';
 import { Navigate, Outlet, useLocation } from 'react-router';
 import { useAuth } from '../auth/AuthContext';
@@ -18,4 +19,10 @@ export default function RequireAuth() {
     return <Navigate to="/login" state={{ from: loc.pathname }} replace />;
   }
   return <Outlet />;
+}
+
+/** 路由级权限：无权限码时跳 /403（后端仍逐接口鉴权，这里只管显示）。 */
+export function RequirePerm({ code, children }: { code: string; children: ReactNode }) {
+  const { has } = useAuth();
+  return has(code) ? <>{children}</> : <Navigate to="/403" replace />;
 }

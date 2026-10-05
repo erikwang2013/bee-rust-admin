@@ -12,13 +12,12 @@ import type { Dept } from '../../../api/types';
 import Auth from '../../../auth/Auth';
 import { useAuth } from '../../../auth/AuthContext';
 
-/** 部门树 → 扁平选项（Select 用）。 */
-function toTreeData(nodes: Dept[]): { value: number; title: string; children?: unknown[] }[] {
-  return nodes.map((d) => ({
-    value: d.id,
-    title: d.name,
-    children: d.children?.length ? toTreeData(d.children) : undefined,
-  }));
+/** 部门树 → 扁平选项（带父级路径，子部门也能选到）。 */
+function toDeptOptions(nodes: Dept[], prefix = ''): { value: number; label: string }[] {
+  return nodes.flatMap((d) => {
+    const label = prefix ? `${prefix} / ${d.name}` : d.name;
+    return [{ value: d.id, label }, ...toDeptOptions(d.children ?? [], label)];
+  });
 }
 
 export default function AdminPage() {
@@ -215,7 +214,7 @@ export default function AdminPage() {
           <Form.Item name="dept_id" label="部门">
             <Select
               allowClear placeholder="选择部门"
-              options={[{ value: 0, label: '（无）' }, ...toTreeData(depts).map((d) => ({ value: d.value, label: d.title }))]}
+              options={[{ value: 0, label: '（无）' }, ...toDeptOptions(depts)]}
             />
           </Form.Item>
           <Form.Item name="role_ids" label="角色">

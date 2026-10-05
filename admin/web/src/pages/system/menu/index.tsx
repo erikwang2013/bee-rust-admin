@@ -14,12 +14,29 @@ const TYPE_COLORS: Record<Menu['type'], string> = { M: 'blue', C: 'green', F: 'o
 
 type TreeNode = NonNullable<TreeSelectProps['treeData']>[number];
 
+/** 节点自身及其子孙的 id（父级选择里禁用，避免挂到自己下面成环）。 */
+function subtreeIds(nodes: Menu[], id: number): Set<number> {
+  const target = (function find(list: Menu[]): Menu | undefined {
+    for (const n of list) {
+      if (n.id === id) return n;
+      const hit = n.children && find(n.children);
+      if (hit) return hit;
+    }
+    return undefined;
+  })(nodes);
+  const out = new Set<number>();
+  const walk = (n: Menu) => { out.add(n.id); n.children?.forEach(walk); };
+  if (target) walk(target);
+  return out;
+}
+
 /** 菜单树 → TreeSelect 数据（顶级用 id=0）。 */
-function toTreeData(nodes: Menu[]): TreeNode[] {
+function toTreeData(nodes: Menu[], blocked: Set<number> = new Set()): TreeNode[] {
   return nodes.map((n) => ({
     value: n.id,
     title: n.name,
-    children: n.children?.length ? toTreeData(n.children) : undefined,
+    disabled: blocked.has(n.id),
+    children: n.children?.length ? toTreeData(n.children, blocked) : undefined,
   }));
 }
 
@@ -143,7 +160,7 @@ export default function MenuPage() {
           <Form.Item name="parent_id" label="上级菜单">
             <TreeSelect
               allowClear placeholder="顶级" treeDefaultExpandAll
-              treeData={[{ value: 0, title: '顶级', children: toTreeData(rows) }]}
+              treeData={[{ value: 0, title: '顶级', children: toTreeData(rows, editing ? subtreeIds(rows, editing.id) : undefined) }]}
             />
           </Form.Item>
           <Form.Item name="type" label="类型">

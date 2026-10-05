@@ -1,19 +1,22 @@
 import { useState } from 'react';
 import { Button, Card, Form, Input, Typography } from 'antd';
 import { LockOutlined, UserOutlined } from '@ant-design/icons';
-import { useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../../auth/AuthContext';
 
 export default function LoginPage() {
   const { login } = useAuth();
   const nav = useNavigate();
+  const loc = useLocation();
   const [loading, setLoading] = useState(false);
 
   const onFinish = async (v: { username: string; password: string }) => {
     setLoading(true);
     try {
       await login(v.username, v.password);
-      nav('/', { replace: true });
+      // 守卫写入的来路（未登录访问的页面），没有则回首页
+      const from = (loc.state as { from?: string } | null)?.from;
+      nav(from ?? '/', { replace: true });
     } catch {
       // 具体错误消息由 axios 拦截器提示
     } finally {

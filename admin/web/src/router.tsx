@@ -1,7 +1,7 @@
 import { lazy, Suspense, type ReactNode } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router';
 import { Spin } from 'antd';
-import RequireAuth from './router/guard';
+import RequireAuth, { RequirePerm } from './router/guard';
 import BasicLayout from './layouts/BasicLayout';
 import LoginPage from './pages/login/index';
 import Forbidden from './pages/error/403';
@@ -36,11 +36,11 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <Navigate to="/dashboard" replace /> },
           { path: 'dashboard', element: <L><Dashboard /></L> },
-          { path: 'system/admin', element: <L><AdminPage /></L> },
-          { path: 'system/role', element: <L><RolePage /></L> },
-          { path: 'system/menu', element: <L><MenuPage /></L> },
-          { path: 'system/dept', element: <L><DeptPage /></L> },
-          { path: 'system/login-log', element: <L><LoginLogPage /></L> },
+          { path: 'system/admin', element: <RequirePerm code="system:admin:list"><L><AdminPage /></L></RequirePerm> },
+          { path: 'system/role', element: <RequirePerm code="system:role:list"><L><RolePage /></L></RequirePerm> },
+          { path: 'system/menu', element: <RequirePerm code="system:menu:list"><L><MenuPage /></L></RequirePerm> },
+          { path: 'system/dept', element: <RequirePerm code="system:dept:list"><L><DeptPage /></L></RequirePerm> },
+          { path: 'system/login-log', element: <RequirePerm code="system:loginlog:list"><L><LoginLogPage /></L></RequirePerm> },
           { path: 'profile', element: <L><ProfilePage /></L> },
           { path: '403', element: <Forbidden /> },
           { path: '*', element: <NotFound /> },

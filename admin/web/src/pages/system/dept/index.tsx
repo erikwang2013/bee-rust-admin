@@ -11,12 +11,29 @@ import Auth from '../../../auth/Auth';
 
 type TreeNode = NonNullable<TreeSelectProps['treeData']>[number];
 
+/** 节点自身及其子孙的 id（父级选择里禁用，避免挂到自己下面成环）。 */
+function subtreeIds(nodes: Dept[], id: number): Set<number> {
+  const target = (function find(list: Dept[]): Dept | undefined {
+    for (const d of list) {
+      if (d.id === id) return d;
+      const hit = d.children && find(d.children);
+      if (hit) return hit;
+    }
+    return undefined;
+  })(nodes);
+  const out = new Set<number>();
+  const walk = (d: Dept) => { out.add(d.id); d.children?.forEach(walk); };
+  if (target) walk(target);
+  return out;
+}
+
 /** 部门树 → TreeSelect 数据（顶级用 id=0）。 */
-function toTreeData(nodes: Dept[]): TreeNode[] {
+function toTreeData(nodes: Dept[], blocked: Set<number> = new Set()): TreeNode[] {
   return nodes.map((d) => ({
     value: d.id,
     title: d.name,
-    children: d.children?.length ? toTreeData(d.children) : undefined,
+    disabled: blocked.has(d.id),
+    children: d.children?.length ? toTreeData(d.children, blocked) : undefined,
   }));
 }
 
@@ -129,7 +146,7 @@ export default function DeptPage() {
           <Form.Item name="parent_id" label="上级部门">
             <TreeSelect
               allowClear placeholder="顶级" treeDefaultExpandAll
-              treeData={[{ value: 0, title: '顶级', children: toTreeData(rows) }]}
+              treeData={[{ value: 0, title: '顶级', children: toTreeData(rows, editing ? subtreeIds(rows, editing.id) : undefined) }]}
             />
           </Form.Item>
           <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]}>
