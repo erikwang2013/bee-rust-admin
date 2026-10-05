@@ -48,6 +48,9 @@ pub async fn seed(db: &Db, cfg: &AppConfig) -> Result<(), bee_orm::OrmError> {
     }
     tracing::info!("首次启动，写入种子数据");
 
+    // 种子插入放一个事务：避免中途失败留下「菜单已写、超管未写」的半套数据
+    let mut tx = db.begin().await?;
+
     // ── 菜单：目录 → 菜单 → 按钮 ─────────────────────────────
     let mut system = Menu {
         id: 0,
@@ -64,7 +67,7 @@ pub async fn seed(db: &Db, cfg: &AppConfig) -> Result<(), bee_orm::OrmError> {
         created_at: now(),
         updated_at: now(),
     };
-    db.insert(&mut system).await?;
+    tx.insert(&mut system).await?;
 
     // (名称, 路径, 组件, 图标, 权限码前缀, 按钮后缀列表)
     let menus: [(&str, &str, &str, &str, &str, &[&str]); 5] = [
@@ -126,7 +129,7 @@ pub async fn seed(db: &Db, cfg: &AppConfig) -> Result<(), bee_orm::OrmError> {
             created_at: now(),
             updated_at: now(),
         };
-        db.insert(&mut m).await?;
+        tx.insert(&mut m).await?;
         for (j, action) in buttons.iter().enumerate() {
             if *action == "list" {
                 continue; // 菜单自身的 list 权限挂在菜单上
@@ -153,7 +156,7 @@ pub async fn seed(db: &Db, cfg: &AppConfig) -> Result<(), bee_orm::OrmError> {
                 created_at: now(),
                 updated_at: now(),
             };
-            db.insert(&mut b).await?;
+            tx.insert(&mut b).await?;
         }
     }
 
@@ -177,7 +180,8 @@ pub async fn seed(db: &Db, cfg: &AppConfig) -> Result<(), bee_orm::OrmError> {
         created_at: now(),
         updated_at: now(),
     };
-    db.insert(&mut admin).await?;
+    tx.insert(&mut admin).await?;
+    tx.commit().await?;
     tracing::info!("种子完成：超管 admin / {}", cfg.initial_admin_password);
     Ok(())
 }
