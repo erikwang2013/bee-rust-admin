@@ -55,7 +55,7 @@ async fn login_profile_menus_logout() {
     assert_eq!(body["data"]["user"]["username"], "admin");
     assert_eq!(body["data"]["perms"][0], "*:*:*");
 
-    // menus：目录 + 6 个菜单（v1.2 起多了「操作日志」）
+    // menus：目录 + 7 个菜单（v1.2 多了「操作日志」，v1.5 多了「字典管理」）
     let r = client
         .get(format!("{base}/api/v1/auth/menus"))
         .bearer_auth(&token)
@@ -65,7 +65,7 @@ async fn login_profile_menus_logout() {
     let body: serde_json::Value = r.json().await.unwrap();
     let root = &body["data"][0];
     assert_eq!(root["path"], "/system");
-    assert_eq!(root["children"].as_array().unwrap().len(), 6);
+    assert_eq!(root["children"].as_array().unwrap().len(), 7);
 
     // 登出后旧 token 失效（token_version +1）
     let r = client
