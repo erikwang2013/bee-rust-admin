@@ -1,13 +1,15 @@
 import { useState } from 'react';
-import { Button, Card, Form, Input, Typography } from 'antd';
+import { Button, Card, Form, Input, theme, Typography } from 'antd';
 import { LockOutlined, UserOutlined } from '@ant-design/icons';
 import { useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../../auth/AuthContext';
+import { ThemeToggle } from '../../theme';
 
 export default function LoginPage() {
   const { login } = useAuth();
   const nav = useNavigate();
   const loc = useLocation();
+  const { token } = theme.useToken();
   const [loading, setLoading] = useState(false);
 
   const onFinish = async (v: { username: string; password: string }) => {
@@ -25,7 +27,10 @@ export default function LoginPage() {
   };
 
   return (
-    <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f2f5' }}>
+    <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: token.colorBgLayout }}>
+      <div style={{ position: 'fixed', top: 16, right: 16 }}>
+        <ThemeToggle />
+      </div>
       <Card style={{ width: 380 }}>
         <div style={{ textAlign: 'center' }}>
           <img src="/keeper.svg" alt="阿守" width={132} height={132} />

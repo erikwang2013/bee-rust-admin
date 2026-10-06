@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { Avatar, Breadcrumb, Dropdown, Layout, Menu, theme, type MenuProps } from 'antd';
+import { Avatar, Breadcrumb, Dropdown, Layout, Menu, Space, theme, type MenuProps } from 'antd';
 import { LogoutOutlined, UserOutlined } from '@ant-design/icons';
 import { Outlet, useLocation, useNavigate } from 'react-router';
 import { menuIcon } from '../icons';
 import { useAuth } from '../auth/AuthContext';
+import { ThemeToggle } from '../theme';
 import type { MenuNode } from '../api/types';
 
 const { Header, Sider, Content } = Layout;
@@ -87,12 +88,15 @@ export default function BasicLayout() {
       <Layout>
         <Header style={{ background: token.colorBgContainer, padding: '0 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Breadcrumb items={crumbs.map((c) => ({ title: c }))} />
-          <Dropdown menu={userMenu}>
-            <span style={{ cursor: 'pointer' }}>
-              <Avatar size="small" src={user?.avatar || '/keeper-head.svg'} />
-              <span style={{ marginLeft: 8 }}>{user?.nickname || user?.username}</span>
-            </span>
-          </Dropdown>
+          <Space size={16}>
+            <ThemeToggle />
+            <Dropdown menu={userMenu}>
+              <span style={{ cursor: 'pointer' }}>
+                <Avatar size="small" src={user?.avatar || '/keeper-head.svg'} />
+                <span style={{ marginLeft: 8 }}>{user?.nickname || user?.username}</span>
+              </span>
+            </Dropdown>
+          </Space>
         </Header>
         <Content style={{ margin: 16 }}>
           <Outlet />
