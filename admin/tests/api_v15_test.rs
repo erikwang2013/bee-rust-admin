@@ -146,6 +146,7 @@ async fn v15_dict_features() {
         }))).await;
         assert_eq!(st, 400, "编码 {bad:?} 必须 400: {v}");
         assert_eq!(v["msg"], "字典编码只能是小写字母、数字、下划线，长度 2~64", "{v}");
+        assert_eq!(v["err"], "dict.code_format", "格式校验也要能被前端翻译: {v}");
     }
     let (st, v) = call(&c, Method::POST, api("/dicts"), Some(&admin), Some(json!({
         "name": "  ", "code": "ok_code", "status": 1,

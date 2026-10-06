@@ -124,6 +124,7 @@ const ERR_TABLE: &[(&str, &str)] = &[
     ("字典标签不能为空", "dict.label_required"),
     ("字典值不能为空", "dict.value_required"),
     ("字典编码已存在", "dict.code_taken"),
+    ("字典编码只能是小写字母、数字、下划线，长度 2~64", "dict.code_format"),
     ("该类型下字典值已存在", "dict.value_taken"),
     ("字典类型不存在", "dict.type_missing"),
     // job
@@ -340,6 +341,11 @@ mod tests {
     fn code_of_hits_known_and_misses_unknown() {
         assert_eq!(code_of("用户名或密码错误"), Some("auth.bad_credentials"));
         assert_eq!(code_of("字典类型不存在"), Some("dict.type_missing"));
+        assert_eq!(
+            code_of("字典编码只能是小写字母、数字、下划线，长度 2~64"),
+            Some("dict.code_format"),
+            "跨行写的构造点也必须有码（漏网过一次）"
+        );
         assert_eq!(code_of("资源不存在"), Some("common.not_found"));
         assert_eq!(code_of("缺少权限：system:dict:add"), None, "动态文案没有稳定码");
     }
