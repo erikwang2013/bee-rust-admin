@@ -108,6 +108,15 @@ async fn v15_dict_features() {
     assert_eq!(st, 200, "建第二个类型: {v}");
     let order_id = v["data"]["id"].as_u64().unwrap();
 
+    // 下拉的两种“空”要分开：类型不存在 → 404；类型在但没配条目 → 200 + []
+    let (st, v) = call(&c, Method::GET, api("/dicts/no_such_code/items"), Some(&admin), None).await;
+    assert_eq!(st, 404, "拼错 code 必须 404，不能是「空下拉」: {v}");
+    assert_eq!(v["msg"], "字典类型不存在", "{v}");
+    assert!(v["data"].is_null(), "错误信封形状: {v}");
+    let (st, v) = call(&c, Method::GET, api("/dicts/order_status/items"), Some(&admin), None).await;
+    assert_eq!(st, 200, "类型在、没配条目是合法状态，不是错误: {v}");
+    assert_eq!(v["data"], json!([]), "{v}");
+
     // 列表 + 筛选
     let (st, v) = call(&c, Method::GET, api("/dicts?page=1&size=10"), Some(&admin), None).await;
     assert_eq!(st, 200, "{v}");
@@ -169,10 +178,23 @@ async fn v15_dict_features() {
         item_ids.push(v["data"]["id"].as_u64().unwrap());
     }
     // 另一个类型下的同名 value：证明唯一键是 (type_code, value) 而不是全局
+    // （先建成停用：顺手验「条目全停用」也是 200 + []）
     let (st, v) = call(&c, Method::POST, api("/dict-items"), Some(&admin),
-        Some(mk_item("order_status", "待付款", "1", 1, 1))).await;
+        Some(mk_item("order_status", "待付款", "1", 1, 0))).await;
     assert_eq!(st, 200, "别的类型下同 value 允许: {v}");
     let order_item_id = v["data"]["id"].as_u64().unwrap();
+    let (st, v) = call(&c, Method::GET, api("/dicts/order_status/items"), Some(&admin), None).await;
+    assert_eq!(st, 200, "条目全停用仍是合法空下拉（不是 404）: {v}");
+    assert_eq!(v["data"], json!([]), "{v}");
+    let (st, v) = call(&c, Method::PUT, api(&format!("/dict-items/{order_item_id}")), Some(&admin),
+        Some(json!({"label": "待付款", "value": "1", "sort": 1, "status": 1}))).await;
+    assert_eq!(st, 200, "启用它，供后面用: {v}");
+
+    // 孤儿项：type_code 写错必须 400（不建外键，至少别造出下拉里永远看不到的行）
+    let (st, v) = call(&c, Method::POST, api("/dict-items"), Some(&admin),
+        Some(mk_item("no_such_code", "孤儿", "9", 0, 1))).await;
+    assert_eq!(st, 400, "不存在的 type_code: {v}");
+    assert_eq!(v["msg"], "字典类型不存在", "{v}");
 
     // 下拉：只回启用项，按 sort, id 排序，只要 label/value
     let (st, v) = call(&c, Method::GET, api("/dicts/user_sex/items"), Some(&admin), None).await;
@@ -295,8 +317,8 @@ async fn v15_dict_features() {
         .unwrap();
     assert_eq!(kept, 1, "别类型的项不能跟着被删");
     let (st, v) = call(&c, Method::GET, api("/dicts/user_sex/items"), Some(&admin), None).await;
-    assert_eq!(st, 200, "类型没了下拉照常回空数组（前端不该 404）: {v}");
-    assert_eq!(v["data"], json!([]), "{v}");
+    assert_eq!(st, 404, "类型被删后 code 就不存在了，下拉要 404（不是空数组）: {v}");
+    assert_eq!(v["msg"], "字典类型不存在", "{v}");
     let (st, v) = call(&c, Method::DELETE, api(&format!("/dicts/{sex_id}")), Some(&admin), None).await;
     assert_eq!(st, 404, "再删一次 404: {v}");
 
