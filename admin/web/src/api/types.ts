@@ -48,6 +48,30 @@ export interface DictItem {
   id: number; type_code: string; label: string; value: string; sort: number;
   status: number; remark: string; created_at: string;
 }
+export interface Job {
+  id: number; name: string; code: string;
+  /** 间隔秒数的**字符串**（列是 varchar64）：列名保留 cron 是为了将来换表达式时不改列名 */
+  cron: string; status: number;
+  /** 从未跑过时为空 */
+  last_run_at: string | null; last_status: number | null; last_msg: string;
+  created_at: string; updated_at: string;
+}
+export interface JobLog {
+  id: number; job_code: string; started_at: string; duration_ms: number;
+  status: number; msg: string;
+}
+/** 手动触发（同步执行）的结果：status 1 成功 / 0 失败，msg 就是写进 job_log 的那条 */
+export interface JobRunResult { status: number; msg: string; duration_ms: number }
+
+export interface Notice {
+  id: number; title: string; content: string;
+  /** 0 草稿 / 1 已发布。取消发布不清 published_at（留痕：曾发布过） */
+  status: number; created_by: number; published_at: string | null;
+  created_at: string; updated_at: string;
+}
+/** 未读接口：total 是未读总数（铃铛角标用它），list 只给最近 50 条 */
+export interface NoticeUnread { total: number; list: Notice[] }
+
 export const DATA_SCOPE_LABELS: Record<number, string> = {
   1: '全部数据', 2: '本部门及以下', 3: '本部门', 4: '仅本人', 5: '自定义',
 };
