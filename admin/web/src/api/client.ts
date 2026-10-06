@@ -12,12 +12,24 @@ client.interceptors.request.use((cfg) => {
   return cfg;
 });
 
+/**
+ * 业务信封判定：HTTP 200 也可能是失败（`code != 0`）。返回错误文案，成功返回 null。
+ *
+ * 单独抽出来是为了能在没有网络的情况下测——拦截器只是拿它决定 reject 还是放行。
+ * 注意放行条件严格：非对象、没有数字 code 的一律当成功（blob 等非信封响应）。
+ */
+export function envelopeError(body: unknown): string | null {
+  if (!body || typeof body !== 'object') return null;
+  const { code, msg } = body as ApiResult<unknown>;
+  return typeof code === 'number' && code !== 0 ? msg || '请求失败' : null;
+}
+
 client.interceptors.response.use(
   (res) => {
-    const body = res.data as ApiResult<unknown>;
-    if (body && typeof body.code === 'number' && body.code !== 0) {
-      message.error(body.msg || '请求失败');
-      return Promise.reject(new Error(body.msg || 'request failed'));
+    const msg = envelopeError(res.data);
+    if (msg) {
+      message.error(msg);
+      return Promise.reject(new Error(msg));
     }
     return res;
   },

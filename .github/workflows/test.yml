@@ -67,5 +67,8 @@ jobs:
       - name: 安装依赖
         run: pnpm install --frozen-lockfile
 
+      - name: 单元测试
+        run: pnpm test
+
       - name: 类型检查 + 生产构建
         run: pnpm build
