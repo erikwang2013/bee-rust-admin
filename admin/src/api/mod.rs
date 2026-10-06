@@ -8,8 +8,10 @@ pub mod auth;
 pub mod csv;
 pub mod dept;
 pub mod dict;
+pub mod job;
 pub mod login_log;
 pub mod menu;
+pub mod notice;
 pub mod role;
 
 /// 按 id 分批删（ORM 无按条件批量删）；返回删除条数。

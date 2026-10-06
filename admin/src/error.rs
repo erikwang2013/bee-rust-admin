@@ -16,6 +16,8 @@ pub enum ApiError {
     NotFoundMsg(String),
     /// 登录限流（账号 / IP 维度失败次数超阈值或封禁中）
     TooManyRequests(String),
+    /// 409：请求本身合法，但与当前状态冲突（如库里残留的任务 code 已不在代码注册表里）
+    Conflict(String),
     Internal(String),
 }
 
@@ -36,6 +38,7 @@ impl IntoResponse for ApiError {
             ApiError::NotFound => (StatusCode::NOT_FOUND, "资源不存在".to_string()),
             ApiError::NotFoundMsg(m) => (StatusCode::NOT_FOUND, m.clone()),
             ApiError::TooManyRequests(m) => (StatusCode::TOO_MANY_REQUESTS, m.clone()),
+            ApiError::Conflict(m) => (StatusCode::CONFLICT, m.clone()),
             ApiError::Internal(m) => {
                 // 细节只进日志，不外泄给客户端
                 tracing::error!("内部错误: {m}");
