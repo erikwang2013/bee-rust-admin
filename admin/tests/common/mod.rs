@@ -54,7 +54,10 @@ mod tests {
 /// 清库（服务启动时会 syncdb + seed 重建）。
 pub async fn reset_db(dsn: &str) {
     let pool = sqlx::MySqlPool::connect(dsn).await.unwrap();
-    for t in ["admin_role", "role_menu", "role_dept", "login_log", "menu", "role", "dept", "admin"] {
+    for t in [
+        "admin_role", "role_menu", "role_dept", "login_log", "audit_log", "menu", "role", "dept",
+        "admin",
+    ] {
         sqlx::query(&format!("DROP TABLE IF EXISTS {t}")).execute(&pool).await.unwrap();
     }
 }
