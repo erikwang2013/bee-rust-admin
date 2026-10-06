@@ -112,6 +112,7 @@ async fn v15_dict_features() {
     let (st, v) = call(&c, Method::GET, api("/dicts/no_such_code/items"), Some(&admin), None).await;
     assert_eq!(st, 404, "拼错 code 必须 404，不能是「空下拉」: {v}");
     assert_eq!(v["msg"], "字典类型不存在", "{v}");
+    assert_eq!(v["err"], "dict.type_missing", "稳定码要能对上表: {v}");
     assert!(v["data"].is_null(), "错误信封形状: {v}");
     let (st, v) = call(&c, Method::GET, api("/dicts/order_status/items"), Some(&admin), None).await;
     assert_eq!(st, 200, "类型在、没配条目是合法状态，不是错误: {v}");
@@ -136,6 +137,7 @@ async fn v15_dict_features() {
     }))).await;
     assert_eq!(st, 400, "重复编码必须 400: {v}");
     assert_eq!(v["msg"], "字典编码已存在", "{v}");
+    assert_eq!(v["err"], "dict.code_taken", "{v}");
 
     // 编码字符集/长度
     for bad in ["USER_SEX", "user-sex", "a", "用_户", ""] {
@@ -195,6 +197,7 @@ async fn v15_dict_features() {
         Some(mk_item("no_such_code", "孤儿", "9", 0, 1))).await;
     assert_eq!(st, 400, "不存在的 type_code: {v}");
     assert_eq!(v["msg"], "字典类型不存在", "{v}");
+    assert_eq!(v["err"], "dict.type_missing", "稳定码要能对上表: {v}");
 
     // 下拉：只回启用项，按 sort, id 排序，只要 label/value
     let (st, v) = call(&c, Method::GET, api("/dicts/user_sex/items"), Some(&admin), None).await;
@@ -237,6 +240,9 @@ async fn v15_dict_features() {
         let (st, v) = call(&c, m.clone(), api(&path), Some(&plain), body).await;
         assert_eq!(st, 403, "{m} {path} 无权限必须 403: {v}");
         assert!(v["msg"].as_str().unwrap_or("").starts_with("缺少权限"), "{m} {path}: {v}");
+        assert_eq!(v["err"], "auth.forbidden", "{m} {path} 403 要带码: {v}");
+        assert!(v["args"]["code"].as_str().unwrap_or("").starts_with("system:"),
+            "args.code 给出缺的权限码: {m} {path}: {v}");
     }
 
     // 项列表筛选（管理侧）
@@ -254,6 +260,7 @@ async fn v15_dict_features() {
         Some(mk_item("user_sex", "重复值", "1", 9, 1))).await;
     assert_eq!(st, 400, "同类型下 value 唯一: {v}");
     assert_eq!(v["msg"], "该类型下字典值已存在", "{v}");
+    assert_eq!(v["err"], "dict.value_taken", "{v}");
     let (st, v) = call(&c, Method::PUT, api(&format!("/dict-items/{}", item_ids[0])), Some(&admin),
         Some(json!({"label": "女", "value": "1", "sort": 2, "status": 1}))).await;
     assert_eq!(st, 400, "改成已存在的 value 也要 400: {v}");
@@ -263,10 +270,12 @@ async fn v15_dict_features() {
         Some(mk_item("user_sex", "空值", "  ", 0, 1))).await;
     assert_eq!(st, 400, "空 value 400: {v}");
     assert_eq!(v["msg"], "字典值不能为空", "{v}");
+    assert_eq!(v["err"], "dict.value_required", "{v}");
     let (st, v) = call(&c, Method::POST, api("/dict-items"), Some(&admin),
         Some(mk_item("user_sex", "  ", "9", 0, 1))).await;
     assert_eq!(st, 400, "空 label 400: {v}");
     assert_eq!(v["msg"], "字典标签不能为空", "{v}");
+    assert_eq!(v["err"], "dict.label_required", "{v}");
     let long = "x".repeat(65);
     let (st, v) = call(&c, Method::POST, api("/dict-items"), Some(&admin),
         Some(mk_item("user_sex", "超长", &long, 0, 1))).await;
@@ -319,6 +328,7 @@ async fn v15_dict_features() {
     let (st, v) = call(&c, Method::GET, api("/dicts/user_sex/items"), Some(&admin), None).await;
     assert_eq!(st, 404, "类型被删后 code 就不存在了，下拉要 404（不是空数组）: {v}");
     assert_eq!(v["msg"], "字典类型不存在", "{v}");
+    assert_eq!(v["err"], "dict.type_missing", "稳定码要能对上表: {v}");
     let (st, v) = call(&c, Method::DELETE, api(&format!("/dicts/{sex_id}")), Some(&admin), None).await;
     assert_eq!(st, 404, "再删一次 404: {v}");
 

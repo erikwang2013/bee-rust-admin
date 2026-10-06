@@ -279,12 +279,15 @@ async fn v12_backend_features() {
         assert_eq!(st, 400, "第 {i} 次错密码: {v}");
         assert!(v["msg"].as_str().unwrap().contains("用户名或密码错误"),
             "未达阈值前仍提示密码错（不暴露锁定逻辑）: {v}");
+        assert_eq!(v["err"], "auth.bad_credentials", "{v}");
     }
     // 第 5 次失败当场记入封禁，但这一发的响应已经定了 —— 下一个请求才吃 429
     let (st, v) = call(&c, Method::POST, api("/auth/login"), None,
         Some(json!({"username": "lockme", "password": "lockme123"}))).await;
     assert_eq!(st, 429, "封禁后正确密码也拒绝: {v}");
     assert!(v["msg"].as_str().unwrap().contains("频繁"), "提示要说明限流: {v}");
+    assert_eq!(v["err"], "auth.throttled", "{v}");
+    assert_eq!(v["args"]["minutes"], 10, "带 N 分钟的码要给原始值: {v}");
     assert!(common::login(&base, "lockme", "lockme123").await.is_none(), "封禁期内登不进去");
 
     // 另一个用户不受影响（账号维度按用户名分桶）。这一发同时也验证了直连不做 IP 维度：
@@ -319,6 +322,7 @@ async fn v12_backend_features() {
     assert_eq!(st, 429, "同 IP 失败达阈值后，正确的账号密码也必须 429: {v}");
     assert_eq!(v["code"], 429, "429 也要走 code/msg/data 信封: {v}");
     assert!(v["msg"].as_str().unwrap().contains("频繁"), "提示说明限流: {v}");
+    assert_eq!(v["err"], "auth.throttled", "{v}");
 
     // 换个 IP 不受影响（限流按 IP 分桶）
     let (st, v) = login_from(&c, &api("/auth/login"), "2.2.2.2", "admin", "admin123").await;

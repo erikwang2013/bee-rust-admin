@@ -181,6 +181,8 @@ async fn v16_job_notice_features() {
     let (st, v) = call(&c, Method::POST, api(&format!("/jobs/{ghost}/run")), Some(&admin), None).await;
     assert_eq!(st, 409, "未注册 code 必须 409: {v}");
     assert!(v["msg"].as_str().unwrap_or("").contains("未在代码中注册"), "{v}");
+    assert_eq!(v["err"], "job.not_registered", "{v}");
+    assert_eq!(v["args"]["code"], "ghost_job", "args.code 是 code 原始值: {v}");
     let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM job_log WHERE job_code = 'ghost_job'")
         .fetch_one(&pool)
         .await
@@ -396,6 +398,9 @@ async fn v16_job_notice_features() {
         let (st, v) = call(&c, m.clone(), api(&path), Some(&plain), body).await;
         assert_eq!(st, 403, "{m} {path} 无权限必须 403: {v}");
         assert!(v["msg"].as_str().unwrap_or("").starts_with("缺少权限"), "{m} {path}: {v}");
+        assert_eq!(v["err"], "auth.forbidden", "{m} {path} 403 要带码: {v}");
+        assert!(v["args"]["code"].as_str().unwrap_or("").starts_with("system:"),
+            "args.code 给出缺的权限码: {m} {path}: {v}");
     }
 
     // ── published_at 只在首次发布时写（改回草稿不清空）───────────

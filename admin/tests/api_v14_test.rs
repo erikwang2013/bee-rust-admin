@@ -109,6 +109,7 @@ async fn v14_backend_features() {
     let v: Value = r.json().await.unwrap();
     assert_eq!(v["code"], 404, "{v}");
     assert_eq!(v["msg"], "接口不存在", "{v}");
+    assert_eq!(v["err"], "common.not_found", "路由级 404 也带码: {v}");
     assert!(v["data"].is_null(), "信封形状一致: {v}");
 
     // /api/v1/health 只注册了 GET
@@ -144,6 +145,7 @@ async fn v14_backend_features() {
         Some(json!({"username": "ghost_none", "password": "whatever123"}))).await;
     assert_eq!(st, 400, "{v}");
     assert_eq!(v["msg"], "用户名或密码错误", "与密码错误同一句提示，不泄露用户是否存在: {v}");
+    assert_eq!(v["err"], "auth.bad_credentials", "{v}");
     let n: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM login_log WHERE username = 'ghost_none' AND msg = '用户不存在'",
     )
@@ -331,6 +333,7 @@ async fn v14_backend_features() {
         let (st, v) = call(&c, m.clone(), api(&path), Some(&op), body).await;
         assert_eq!(st, 403, "{m} {path} 跨部门必须 403: {v}");
         assert_eq!(v["msg"], "超出你的数据权限范围", "{m} {path}: {v}");
+        assert_eq!(v["err"], "scope.out_of_range", "稳定码要能对上表: {v}");
     }
     // 范围内的人也不能挪到范围外的部门去（否则能绕开上面的目标判定）
     let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{t1}")), Some(&op), Some(json!({
@@ -338,12 +341,14 @@ async fn v14_backend_features() {
     }))).await;
     assert_eq!(st, 403, "不能把人挪到范围外的部门: {v}");
     assert_eq!(v["msg"], "超出你的数据权限范围", "{v}");
+    assert_eq!(v["err"], "scope.out_of_range", "{v}");
 
     // 反自我提权：给自己授 data_scope=1 → 403（修复前会成功，这就是提权路径）
     let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{op_id}/roles")), Some(&op),
         Some(json!({"role_ids": [wide_role]}))).await;
     assert_eq!(st, 403, "给自己授 data_scope=1 就是自我提权: {v}");
     assert_eq!(v["msg"], "不能授予数据范围更宽的角色", "{v}");
+    assert_eq!(v["err"], "scope.wider_role", "{v}");
     // 授给本部门的人一样拦：等于给自己发个马甲
     let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{t1}/roles")), Some(&op),
         Some(json!({"role_ids": [op_role, wide_role]}))).await;
@@ -354,6 +359,7 @@ async fn v14_backend_features() {
         Some(json!({"role_ids": [alien_role]}))).await;
     assert_eq!(st, 403, "授自己没有的权限码: {v}");
     assert_eq!(v["msg"], "不能授予包含你没有的权限的角色", "{v}");
+    assert_eq!(v["err"], "scope.extra_perms", "{v}");
 
     // 子集 + scope=4 放行；清空角色不是提权，也放行
     let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{t1}/roles")), Some(&op),
@@ -369,6 +375,7 @@ async fn v14_backend_features() {
             Some(json!({"role_ids": [bad]}))).await;
         assert_eq!(st, 400, "角色 {bad} 不存在或已停用: {v}");
         assert_eq!(v["msg"], "角色不存在或已停用", "{v}");
+        assert_eq!(v["err"], "scope.role_unavailable", "{v}");
     }
 
     // 角色列表/详情带 grantable：前端照它灰掉选项，别摆出「点了才被骂」的角色
@@ -409,6 +416,7 @@ async fn v14_backend_features() {
         Some(json!({"role_ids": [wide_role, wide2_role]}))).await;
     assert_eq!(st, 403, "新增的宽角色仍要 403（原有保护不能被削掉）: {v}");
     assert_eq!(v["msg"], "不能授予数据范围更宽的角色", "{v}");
+    assert_eq!(v["err"], "scope.wider_role", "{v}");
     // 移除已有角色不算越权：收窄权限不需要谁的许可
     let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{t1}/roles")), Some(&op),
         Some(json!({"role_ids": []}))).await;
