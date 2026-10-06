@@ -28,6 +28,13 @@ pub struct ChangePasswordBody {
     pub new_password: String,
 }
 
+/// 用户名不存在时也要付一次 argon2 校验，抹平「用户存在与否」的响应时差
+/// （A2：提前返回会跳过 argon2，快出来的那截就是用户名枚举的时序侧信道）。
+/// 这是用本项目 `util::hash_password("bee-admin-dummy")` 生成的一次性 argon2id
+/// 哈希，只烧 CPU，结果丢弃。
+const DUMMY_PASSWORD_HASH: &str =
+    "$argon2id$v=19$m=19456,t=2,p=1$dhEKLDVWOgNaVRGlknZrTw$SoG1K6HuZZmwffQCWSyxO55B9KpBGRKrsxC8w+CVhTs";
+
 /// 客户端 IP：nginx 透传的 X-Real-IP → X-Forwarded-For 首个 → unknown。
 /// 头部由客户端可控，截到 IPv6 文本最长 45 字符，避免写库超长报错。
 pub fn client_ip(headers: &HeaderMap) -> String {
@@ -170,6 +177,9 @@ pub async fn login(
         .map_err(ApiError::from)?;
 
     let Some(admin) = admin else {
+        // 与下面「密码错误」分支付同样的 argon2 代价（结果丢弃），
+        // 否则两条路径的耗时差就是用户名枚举的侧信道
+        let _ = verify_password(&body.password, DUMMY_PASSWORD_HASH);
         write_login_log(&state, 0, username, &headers, 0, "用户不存在").await;
         record_login_failure(&state, username, &ip);
         return Err(ApiError::BadRequest("用户名或密码错误".into()));
@@ -482,6 +492,17 @@ mod tests {
         // 700 KB base64 ≈ 525 KB 解码后 > 512 KB，长度闸在解码前就拦下
         let huge = format!("data:image/png;base64,{}", "A".repeat(700 * 1024));
         assert!(decode_avatar(&huge).is_err());
+    }
+
+    /// 假哈希必须是**可解析**的 argon2 串：解析失败时 `verify_password` 会立刻返回
+    /// false（不跑 KDF），A2 的抹平效果就静默失效了。
+    #[test]
+    fn dummy_hash_is_a_real_argon2_hash() {
+        let h = argon2::PasswordHash::new(DUMMY_PASSWORD_HASH)
+            .expect("占位哈希必须是合法 argon2id PHC 串");
+        assert_eq!(h.algorithm.as_str(), "argon2id");
+        // 且真的会跑一遍校验（不 panic、不提前返回）
+        assert!(!verify_password("not-the-dummy-plaintext", DUMMY_PASSWORD_HASH));
     }
 
     #[test]
