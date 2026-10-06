@@ -77,11 +77,12 @@ impl<T: Model> QuerySet<T> {
     }
 
     /// `field LIKE ?`，值两侧自动加 `%`。
+    /// 用户输入里的 `\` `%` `_` 会被转义：否则搜「100%」会变成通配匹配。
     pub fn filter_contains(mut self, field: impl Into<String>, value: impl ToString) -> Result<Self, OrmError> {
         let field = field.into();
         validate_ident(&field)?;
         self.filters.push(format!("{field} LIKE ?"));
-        self.params.push(format!("%{}%", value.to_string()));
+        self.params.push(format!("%{}%", escape_like(&value.to_string())));
         Ok(self)
     }
 
@@ -209,4 +210,17 @@ impl<T: Model> QuerySet<T> {
         let rows = self.clone().page(page, size).fetch_all(db).await?;
         Ok((rows, total))
     }
+}
+
+/// 转义 LIKE 的通配符（MySQL 默认转义符是 `\`）。
+/// 不转义的话，用户在搜索框里输入 `%` 或 `_` 会被当成通配符。
+fn escape_like(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 4);
+    for ch in s.chars() {
+        if matches!(ch, '\\' | '%' | '_') {
+            out.push('\\');
+        }
+        out.push(ch);
+    }
+    out
 }

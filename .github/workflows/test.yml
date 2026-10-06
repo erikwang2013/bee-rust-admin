@@ -1,0 +1,71 @@
+# 只跑测试与构建，不发布、不推送任何产物（镜像仍在本机构建）。
+# 触发：推送到 main、任意 PR、或手动触发。
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: testpass
+          MYSQL_DATABASE: bee_admin_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -ptestpass"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: 单元测试（框架 + 后台）
+        run: cargo test --workspace
+
+      - name: 真库集成测试（框架 ORM）
+        env:
+          BEE_ORM_TEST_DSN: mysql://root:testpass@127.0.0.1:3306/bee_admin_test
+        run: cargo test -p bee_orm --test mysql_integration -- --nocapture
+
+      - name: 真库集成测试（后台全链路）
+        env:
+          # 这两个测试会先 DROP 测试库里的表再重建；集成测试自带护栏：
+          # DSN 指向的库名不以 _test 结尾时直接拒绝执行
+          BEE_ADMIN_DB_DSN: mysql://root:testpass@127.0.0.1:3306/bee_admin_test
+        run: cargo test -p bee_admin --test api_core_test --test api_flow_test -- --nocapture
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: admin/web/pnpm-lock.yaml
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 类型检查 + 生产构建
+        run: pnpm build

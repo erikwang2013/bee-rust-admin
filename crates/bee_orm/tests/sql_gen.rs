@@ -67,6 +67,14 @@ fn count_sql_drops_order_and_page() {
 }
 
 #[test]
+fn filter_contains_escapes_like_wildcards() {
+    // 用户输入里的 \ % _ 必须转义，否则搜「100%」会变成通配匹配
+    let qs = SgAdmin::query().filter_contains("username", "100%_x\\y").unwrap();
+    assert_eq!(qs.to_sql(), "SELECT * FROM sg_admin WHERE username LIKE ?");
+    assert_eq!(qs.params(), ["%100\\%\\_x\\\\y%"]);
+}
+
+#[test]
 fn invalid_field_is_rejected() {
     assert!(SgAdmin::query().filter_eq("bad field", "x").is_err());
     assert!(SgAdmin::query().filter_in("bad;drop", vec![1u64]).is_err());
