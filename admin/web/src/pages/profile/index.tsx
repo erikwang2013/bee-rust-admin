@@ -1,7 +1,8 @@
 import { useRef, useState, type ChangeEvent } from 'react';
-import { App, Avatar, Button, Card, Divider, Form, Input, Space } from 'antd';
+import { App, Avatar, Button, Card, Divider, Form, Input, Popconfirm, Space } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
 import { authApi } from '../../api/auth';
+import { TOKEN_KEY } from '../../api/client';
 import { avatarUrl, useAuth } from '../../auth/AuthContext';
 
 const MAX_DATA_URL = 512 * 1024; // 后端对 data_url 与解码后字节双重卡 512KB
@@ -42,6 +43,7 @@ export default function ProfilePage() {
   const [savingInfo, setSavingInfo] = useState(false);
   const [savingPwd, setSavingPwd] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [kicking, setKicking] = useState(false);
 
   const onPickAvatar = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -89,6 +91,22 @@ export default function ProfilePage() {
       window.location.href = '/login';
     } finally {
       setSavingPwd(false);
+    }
+  };
+
+  /**
+   * 退出其他设备：后端把 token_version +1，别的设备手里的 token 全失效；
+   * 当前设备同时拿到一个新 token，所以本机不掉线。
+   */
+  const onLogoutOthers = async () => {
+    setKicking(true);
+    try {
+      const { token } = await authApi.logoutOthers();
+      localStorage.setItem(TOKEN_KEY, token); // 先落新 token，reload 才能带着它拉 profile
+      await reload();
+      message.success('其他设备已退出登录');
+    } finally {
+      setKicking(false);
     }
   };
 
@@ -172,6 +190,19 @@ export default function ProfilePage() {
         </Form.Item>
         <Button type="primary" htmlType="submit" loading={savingPwd}>修改密码</Button>
       </Form>
+
+      <Divider />
+
+      <Popconfirm
+        title="退出其他设备"
+        description="其他设备上的登录会立即失效，需要重新登录；当前设备保持登录。"
+        okText="确认退出"
+        cancelText="取消"
+        okButtonProps={{ danger: true }}
+        onConfirm={() => void onLogoutOthers()}
+      >
+        <Button danger loading={kicking}>退出其他设备</Button>
+      </Popconfirm>
     </Card>
   );
 }
