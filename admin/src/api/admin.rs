@@ -262,6 +262,7 @@ pub async fn detail(
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
+    datascope::ensure_admin_in_scope(&auth, &state.db, &a).await?;
     let role_ids = state
         .db
         .get_relations("admin_role", ("admin_id", id), "role_id")
@@ -282,6 +283,9 @@ pub async fn create(
     validate_username(&body.username)?;
     validate_password(&body.password)?;
     validate_profile(&body.nickname, &body.email, &body.phone, &body.remark)?;
+    // 建人也要在范围内：部门与角色都不能超出操作者自己（B5）
+    datascope::ensure_dept_in_scope(&auth, &state.db, body.dept_id).await?;
+    datascope::ensure_roles_grantable(&auth, &state.db, &body.role_ids).await?;
 
     let mut a = Admin {
         id: 0,
@@ -346,6 +350,13 @@ pub async fn update(
         }
     }
 
+    // 范围与授权闸门（B5）：目标、目标部门、要授的角色三者都不能超出操作者。
+    // 放在状态保护之后 —— 「不能改超管/自己状态」是更明确的 400（既有契约，
+    // api_flow_test 钉着），范围判定只在它之后兜底。
+    datascope::ensure_admin_in_scope(&auth, &state.db, &a).await?;
+    datascope::ensure_dept_in_scope(&auth, &state.db, body.dept_id).await?;
+    datascope::ensure_roles_grantable(&auth, &state.db, &body.role_ids).await?;
+
     a.nickname = body.nickname;
     a.email = body.email;
     a.phone = body.phone;
@@ -383,6 +394,7 @@ pub async fn remove(
     if a.is_super == 1 {
         return Err(ApiError::BadRequest("不能删除超级管理员".into()));
     }
+    datascope::ensure_admin_in_scope(&auth, &state.db, &a).await?;
     state
         .db
         .del_relations("admin_role", "admin_id", id)
@@ -412,6 +424,7 @@ pub async fn set_status(
     if a.is_super == 1 {
         return Err(ApiError::BadRequest("不能修改超级管理员的状态".into()));
     }
+    datascope::ensure_admin_in_scope(&auth, &state.db, &a).await?;
     a.status = if body.status == 0 { 0 } else { 1 };
     if a.status != 1 {
         a.token_version += 1; // 禁用即踢下线
@@ -439,6 +452,7 @@ pub async fn reset_password(
     if a.is_super == 1 && id != auth.admin.id {
         return Err(ApiError::BadRequest("不能重置其他超级管理员的密码".into()));
     }
+    datascope::ensure_admin_in_scope(&auth, &state.db, &a).await?;
     a.password = hash_password(&body.password);
     a.token_version += 1; // 旧 token 立即失效
     a.updated_at = now();
@@ -453,15 +467,16 @@ pub async fn set_roles(
     AppJson(body): AppJson<RolesBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:admin:edit")?;
-    let exists = Admin::query()
+    let target = Admin::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
         .fetch_one(&state.db)
         .await
-        .map_err(ApiError::from)?;
-    if exists.is_none() {
-        return Err(ApiError::NotFound);
-    }
+        .map_err(ApiError::from)?
+        .ok_or(ApiError::NotFound)?;
+    datascope::ensure_admin_in_scope(&auth, &state.db, &target).await?;
+    // 授出去的角色不能比自己宽（自己给自己授 data_scope=1 就是自我提权）
+    datascope::ensure_roles_grantable(&auth, &state.db, &body.role_ids).await?;
     state
         .db
         .set_relations("admin_role", ("admin_id", id), "role_id", &dedup_ids(body.role_ids))

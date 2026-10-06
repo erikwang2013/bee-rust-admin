@@ -1,8 +1,10 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+use crate::api::dedup_ids;
 use crate::auth::Auth;
 use crate::error::ApiError;
-use crate::models::Dept;
+use crate::models::{Admin, Dept, Menu, Role};
 use bee_orm::{Db, Model, QuerySet};
+use std::collections::HashSet;
 
 /// 解析后的数据权限：全部 / 部门集合（并集）/ 仅本人。
 #[derive(Debug, Default, Clone)]
@@ -69,6 +71,90 @@ pub fn apply<T: Model>(qs: QuerySet<T>, scope: &DataScope, dept_col: &str, self_
         Some((sql, params)) => qs.filter_raw(sql, &params),
         None => qs,
     }
+}
+
+/// 部门维度是否落在 scope 内（全部 / 部门命中）。
+fn dept_covered(scope: &DataScope, dept_id: u64) -> bool {
+    scope.all || scope.dept_ids.contains(&dept_id)
+}
+
+/// 单条记录的作用域闸门（B5）：目标管理员必须在操作者范围内 ——
+/// 与列表同一个口径（`DataScope::condition`），否则「列表里看不见的人，详情/编辑
+/// 接口照样改得到」。超管的 `scope.all` 恒为真，自然放行。
+pub async fn ensure_admin_in_scope(auth: &Auth, db: &Db, target: &Admin) -> Result<(), ApiError> {
+    let scope = resolve(auth, db).await?;
+    if dept_covered(&scope, target.dept_id) || (scope.self_only && target.id == scope.me) {
+        return Ok(());
+    }
+    Err(ApiError::Forbidden("超出你的数据权限范围".into()))
+}
+
+/// 部门版（建人 / 改人时校验 `body.dept_id`）：非超管只能把人放进自己范围内。
+/// 「仅本人」只认自己所在部门 —— 否则 scope=4 的角色能把人建到任意部门下。
+pub async fn ensure_dept_in_scope(auth: &Auth, db: &Db, dept_id: u64) -> Result<(), ApiError> {
+    let scope = resolve(auth, db).await?;
+    if dept_covered(&scope, dept_id) || (scope.self_only && dept_id == auth.admin.dept_id) {
+        return Ok(());
+    }
+    Err(ApiError::Forbidden("超出你的数据权限范围".into()))
+}
+
+/// 授予的角色不得超出操作者自身（B5）。超管放行；空集合放行（清空角色不是提权）；
+/// 角色必须存在且启用；非超管两条：只能授予 `data_scope ∈ {3 本部门, 4 仅本人}`
+/// （1/2/5 都是更宽的范围），且角色的生效权限码必须是操作者权限码的子集 ——
+/// 授不出「自己都没有的能力」。
+pub async fn ensure_roles_grantable(auth: &Auth, db: &Db, role_ids: &[u64]) -> Result<(), ApiError> {
+    if auth.is_super {
+        return Ok(());
+    }
+    let ids = dedup_ids(role_ids.to_vec());
+    if ids.is_empty() {
+        return Ok(());
+    }
+    let roles = Role::query()
+        .filter_in("id", &ids)
+        .map_err(ApiError::from)?
+        .fetch_all(db)
+        .await
+        .map_err(ApiError::from)?;
+    // 顺带补上此前缺失的存在性校验：id 不存在与已停用一律当整体非法
+    if roles.len() != ids.len() || roles.iter().any(|r| r.status != 1) {
+        return Err(ApiError::BadRequest("角色不存在或已停用".into()));
+    }
+    for r in &roles {
+        if !matches!(r.data_scope, 3 | 4) {
+            return Err(ApiError::Forbidden("不能授予数据范围更宽的角色".into()));
+        }
+        for perm in role_perms(db, r.id).await? {
+            if !auth.perms.contains(&perm) {
+                return Err(ApiError::Forbidden("不能授予包含你没有的权限的角色".into()));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// 角色当前生效的权限码（口径同 `Auth` 装载：role_menu → 启用菜单的非空 perm）。
+async fn role_perms(db: &Db, role_id: u64) -> Result<HashSet<String>, ApiError> {
+    let menu_ids = db
+        .get_relations("role_menu", ("role_id", role_id), "menu_id")
+        .await
+        .map_err(ApiError::from)?;
+    if menu_ids.is_empty() {
+        return Ok(HashSet::new());
+    }
+    Ok(Menu::query()
+        .filter_in("id", menu_ids)
+        .map_err(ApiError::from)?
+        .filter_eq("status", 1)
+        .map_err(ApiError::from)?
+        .fetch_all(db)
+        .await
+        .map_err(ApiError::from)?
+        .into_iter()
+        .filter(|m| !m.perm.is_empty())
+        .map(|m| m.perm)
+        .collect())
 }
 
 /// 解析当前用户的数据权限。规则：超管=全部；任一启用角色 scope=1 → 全部；
