@@ -355,7 +355,7 @@ pub async fn update(
     // api_flow_test 钉着），范围判定只在它之后兜底。
     datascope::ensure_admin_in_scope(&auth, &state.db, &a).await?;
     datascope::ensure_dept_in_scope(&auth, &state.db, body.dept_id).await?;
-    datascope::ensure_roles_grantable(&auth, &state.db, &body.role_ids).await?;
+    datascope::ensure_roles_added_grantable(&auth, &state.db, id, &body.role_ids).await?;
 
     a.nickname = body.nickname;
     a.email = body.email;
@@ -475,8 +475,9 @@ pub async fn set_roles(
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
     datascope::ensure_admin_in_scope(&auth, &state.db, &target).await?;
-    // 授出去的角色不能比自己宽（自己给自己授 data_scope=1 就是自我提权）
-    datascope::ensure_roles_grantable(&auth, &state.db, &body.role_ids).await?;
+    // 新增的角色不能比自己宽（自己给自己授 data_scope=1 就是自我提权）；
+    // 已挂着的照旧保留，别把「改个昵称」也一起拒了
+    datascope::ensure_roles_added_grantable(&auth, &state.db, target.id, &body.role_ids).await?;
     state
         .db
         .set_relations("admin_role", ("admin_id", id), "role_id", &dedup_ids(body.role_ids))

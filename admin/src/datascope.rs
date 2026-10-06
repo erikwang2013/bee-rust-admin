@@ -163,6 +163,27 @@ pub async fn ensure_roles_grantable(auth: &Auth, db: &Db, role_ids: &[u64]) -> R
     Ok(())
 }
 
+/// 只校验**新增**的角色（B5）：保留已挂的不算授予。
+/// 否则超管给某人授了个 `data_scope=1` 的角色之后，部门经理连那个人的昵称都改不了
+/// —— 编辑表单会把现有的 `role_ids` 一起提交，全量校验直接把整个编辑拒了。
+/// 移除角色也不校验（把人手上的权限收窄不需要谁的许可）。
+pub async fn ensure_roles_added_grantable(
+    auth: &Auth,
+    db: &Db,
+    admin_id: u64,
+    new_ids: &[u64],
+) -> Result<(), ApiError> {
+    let current = db
+        .get_relations("admin_role", ("admin_id", admin_id), "role_id")
+        .await
+        .map_err(ApiError::from)?;
+    let added: Vec<u64> = dedup_ids(new_ids.to_vec())
+        .into_iter()
+        .filter(|id| !current.contains(id))
+        .collect();
+    ensure_roles_grantable(auth, db, &added).await
+}
+
 /// 给角色列表/详情标 `grantable`（B5 显示口径）：只做提示，写路径仍走硬校验。
 /// 前端拿不到角色的权限码集合，判不了这件事，所以由后端给权威结论。
 /// ponytail: 每行一次 `role_perms`（2 条查询）；角色是配置量级（几十个），不分批。
