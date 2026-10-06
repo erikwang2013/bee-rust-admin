@@ -16,6 +16,9 @@ expire_hours = 1
 # 锁定期用「把失败记录时间戳往前挪」来测，不用真等
 max_fail = 5
 lock_minutes = 10
+# 比默认 20 小：IP 限流测试不用真发 20 个请求。测试里所有不带 X-Real-IP 的登录
+# 都落进 "unknown" 桶并跳过限流，只有显式带头的用例吃这个阈值
+ip_max_fail = 6
 
 [seed]
 initial_admin_password = admin123

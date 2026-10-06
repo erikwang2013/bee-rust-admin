@@ -11,6 +11,8 @@ pub enum ApiError {
     Unauthorized,
     Forbidden(String),
     NotFound,
+    /// 登录限流（按 IP 计的失败次数超阈值）
+    TooManyRequests,
     Internal(String),
 }
 
@@ -29,6 +31,9 @@ impl IntoResponse for ApiError {
             }
             ApiError::Forbidden(m) => (StatusCode::FORBIDDEN, m.clone()),
             ApiError::NotFound => (StatusCode::NOT_FOUND, "资源不存在".to_string()),
+            ApiError::TooManyRequests => {
+                (StatusCode::TOO_MANY_REQUESTS, "尝试过于频繁，请稍后再试".to_string())
+            }
             ApiError::Internal(m) => {
                 // 细节只进日志，不外泄给客户端
                 tracing::error!("内部错误: {m}");

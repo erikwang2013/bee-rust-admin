@@ -77,33 +77,65 @@ pub async fn write_login_log(
     }
 }
 
-/// 锁定阈值判定（纯函数，便于单测）：`max_fail <= 0` = 关闭锁定。
-fn is_locked(fails: u64, max_fail: i64) -> bool {
-    max_fail > 0 && fails >= max_fail as u64
+/// 阈值判定（纯函数，便于单测）：`limit <= 0` = 关闭该限制。
+/// 账号锁定与 IP 限流共用这套语义，所以两边都走它。
+fn is_locked(fails: u64, limit: i64) -> bool {
+    limit > 0 && fails >= limit as u64
 }
 
-/// 窗口内（最近 `lock_minutes` 分钟）该用户名的失败次数是否已达锁定阈值。
-/// 锁定状态不额外存列，全部由 login_log 推导；锁定期间的失败照记，
-/// 所以锁定期会随每次尝试顺延（滚动窗口），不用额外清零逻辑。
+/// 滑动窗口起点（`minutes` 分钟前）的 MySQL DATETIME 文本。
+fn window_start(minutes: i64) -> String {
+    (chrono::Local::now() - chrono::Duration::minutes(minutes))
+        .naive_local()
+        .format("%Y-%m-%d %H:%M:%S")
+        .to_string()
+}
+
+/// 该用户名是否已锁定：只数**上次成功登录之后**且在窗口内的失败。
+/// 不减去上次成功登录的话，4 次失败 + 1 次成功 + 1 次失败就会把刚登录成功的人立刻锁死
+/// （成功登录不清窗口）。锁定状态不额外存列，全部由 login_log 推导；锁定期间的失败照记
+/// （时间戳在最近一次成功之后），所以锁定期会随每次尝试顺延（滚动窗口），不用额外清零逻辑。
 async fn locked_now(state: &AppState, username: &str) -> Result<bool, ApiError> {
     let (max_fail, minutes) = (state.cfg.max_fail, state.cfg.lock_minutes);
     if max_fail <= 0 || minutes <= 0 || username.is_empty() {
         return Ok(false);
     }
-    let since = (chrono::Local::now() - chrono::Duration::minutes(minutes))
-        .naive_local()
-        .format("%Y-%m-%d %H:%M:%S")
-        .to_string();
     let fails = LoginLog::query()
         .filter_eq("username", username)
         .map_err(ApiError::from)?
         .filter_eq("status", 0)
         .map_err(ApiError::from)?
-        .filter_raw("created_at >= ?", &[since])
+        // 上次成功登录的时间；从没成功过 → 1970，即窗口内所有失败都算
+        .filter_raw(
+            "created_at > COALESCE((SELECT MAX(created_at) FROM login_log \
+             WHERE username = ? AND status = 1), '1970-01-01 00:00:00')",
+            &[username],
+        )
+        .filter_raw("created_at >= ?", &[window_start(minutes)])
         .count(&state.db)
         .await
         .map_err(ApiError::from)?;
     Ok(is_locked(fails, max_fail))
+}
+
+/// 该 IP 是否已被限流：窗口内失败次数（不分用户名，含 429 拦截留下的记录）达阈值。
+/// 无 X-Real-IP / X-Forwarded-For 时 `client_ip()` 返回 "unknown"：直连（没走反向代理）
+/// 场景下所有客户端都会落进这一个桶，按它限流等于误伤全体用户 → 宁可跳过。
+async fn ip_throttled_now(state: &AppState, ip: &str) -> Result<bool, ApiError> {
+    let (ip_max_fail, minutes) = (state.cfg.ip_max_fail, state.cfg.lock_minutes);
+    if ip_max_fail <= 0 || minutes <= 0 || ip == "unknown" {
+        return Ok(false);
+    }
+    let fails = LoginLog::query()
+        .filter_eq("ip", ip)
+        .map_err(ApiError::from)?
+        .filter_eq("status", 0)
+        .map_err(ApiError::from)?
+        .filter_raw("created_at >= ?", &[window_start(minutes)])
+        .count(&state.db)
+        .await
+        .map_err(ApiError::from)?;
+    Ok(is_locked(fails, ip_max_fail))
 }
 
 pub async fn login(
@@ -115,6 +147,24 @@ pub async fn login(
         return Err(ApiError::BadRequest("用户名和密码不能为空".into()));
     }
     let username = body.username.trim();
+
+    // IP 限流在最外层：同一个来源刷得太狠时，先于任何账号判定拦下（429）
+    if ip_throttled_now(&state, &client_ip(&headers)).await? {
+        // 这条记录 username 列**留空**，只留 ip：写进被尝试的用户名下会替那个账号
+        // 把失败窗口续上（每次 429 都是一条新失败），那 (b)「攻击者拖住受害者账号」
+        // 等于没修。反过来 ip 必须写：它让攻击者的限流窗口随其尝试滚动，真正停住他。
+        // 尝试的用户名留在 msg 里，事后仍可追查。
+        write_login_log(
+            &state,
+            0,
+            "",
+            &headers,
+            0,
+            &format!("请求过于频繁（尝试用户名: {username}）"),
+        )
+        .await;
+        return Err(ApiError::TooManyRequests);
+    }
 
     // 锁定检查在验密之前：锁定期间不比对密码，响应也不泄露密码是否正确
     if locked_now(&state, username).await? {

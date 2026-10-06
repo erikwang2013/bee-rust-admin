@@ -1,6 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-//! BRD v1.2 后端新能力集成测试：B2 禁用菜单即收权 / B3 提取器信封 / B4 登录锁定 /
-//! B5 操作日志 / B6 CSV 导出 / B7 个人资料 / B8 头像 / B9 菜单幂等补齐。
+//! BRD v1.2 后端新能力集成测试：B2 禁用菜单即收权 / B3 提取器信封 / B4 登录锁定
+//! （含两处语义修正：成功登录清失败窗口、按 IP 限流）/ B5 操作日志 / B6 CSV 导出 /
+//! B7 个人资料 / B8 头像 / B9 菜单幂等补齐。
 //! 起真实进程 + 真库（bee_admin_test），需要 BEE_ADMIN_DB_DSN。
 mod common;
 
@@ -24,6 +25,26 @@ async fn call(
         rb = rb.json(&b);
     }
     let r = rb.send().await.expect("请求发送失败");
+    let status = r.status().as_u16();
+    let v = r.json().await.unwrap_or(Value::Null);
+    (status, v)
+}
+
+/// 带固定 `X-Real-IP` 的登录请求（IP 限流用例；`call()` 不带这个头，落 "unknown" 桶）。
+async fn login_from(
+    c: &reqwest::Client,
+    url: &str,
+    ip: &str,
+    user: &str,
+    pass: &str,
+) -> (u16, Value) {
+    let r = c
+        .post(url)
+        .header("X-Real-IP", ip)
+        .json(&json!({"username": user, "password": pass}))
+        .send()
+        .await
+        .expect("请求发送失败");
     let status = r.status().as_u16();
     let v = r.json().await.unwrap_or(Value::Null);
     (status, v)
@@ -272,6 +293,63 @@ async fn v12_backend_features() {
     sqlx::query("UPDATE login_log SET created_at = created_at - INTERVAL 11 MINUTE WHERE username = 'lockme'")
         .execute(&pool).await.unwrap();
     assert!(common::login(&base, "lockme", "lockme123").await.is_some(), "窗口过后可登录");
+
+    // ── B4 修正 (a)：成功登录清掉失败窗口 ────────────────────
+    let (st, _v) = call(&c, Method::POST, api("/admins"), Some(&admin),
+        Some(json!({"username": "clearwind", "password": "clearwind123"}))).await;
+    assert_eq!(st, 200);
+    for i in 1..=4 {
+        let (st, v) = call(&c, Method::POST, api("/auth/login"), None,
+            Some(json!({"username": "clearwind", "password": "wrong"}))).await;
+        assert_eq!(st, 400, "第 {i} 次错密码（未达阈值 5）: {v}");
+    }
+    assert!(common::login(&base, "clearwind", "clearwind123").await.is_some(), "4 次失败后本人登录成功");
+    let (st, v) = call(&c, Method::POST, api("/auth/login"), None,
+        Some(json!({"username": "clearwind", "password": "wrong"}))).await;
+    assert_eq!(st, 400, "成功后再错一次: {v}");
+    assert!(v["msg"].as_str().unwrap().contains("用户名或密码错误"),
+        "这一发不该被算成锁定: {v}");
+    assert!(common::login(&base, "clearwind", "clearwind123").await.is_some(),
+        "4 失败 + 1 成功 + 1 失败后必须还能登录：失败窗口从上次成功登录起算");
+
+    // ── B4 修正 (b)：按 IP 限流 ──────────────────────────────
+    // 直连（无 X-Real-IP）不进 IP 桶：clearwind 的 5 次失败已在 "unknown" 桶里，
+    // 再加 1 次刚好到 ip_max_fail(6)，下一发仍必须是密码错而不是 429，
+    // 否则所有直连客户端会被并成一个桶互相拖死
+    let (st, _v) = call(&c, Method::POST, api("/auth/login"), None,
+        Some(json!({"username": "ghost_direct", "password": "nope"}))).await;
+    assert_eq!(st, 400);
+    let (st, v) = call(&c, Method::POST, api("/auth/login"), None,
+        Some(json!({"username": "ghost_direct2", "password": "nope"}))).await;
+    assert_eq!(st, 400, "unknown 桶攒够 ip_max_fail 后直连仍不限流（跳过而不是并桶）: {v}");
+
+    // 固定 IP 连续失败：每次换用户名（不触发账号锁定），只让 1.1.1.1 的计数涨
+    for i in 0..6 {
+        let (st, v) = login_from(&c, &api("/auth/login"), "1.1.1.1", &format!("ghost{i}"), "nope").await;
+        assert_eq!(st, 400, "第 {i} 次（未达 IP 阈值）: {v}");
+    }
+    let (st, v) = login_from(&c, &api("/auth/login"), "1.1.1.1", "admin", "admin123").await;
+    assert_eq!(st, 429, "同 IP 失败超阈值后，正确的账号密码也必须 429: {v}");
+    assert_eq!(v["code"], 429, "429 也要走 code/msg/data 信封: {v}");
+    assert!(v["msg"].as_str().unwrap().contains("频繁"), "提示说明限流: {v}");
+
+    // 限流拦截留痕：ip 列保留（让限流窗口随攻击者滚动），username 列留空
+    // （写进 admin 名下会替 admin 续上失败窗口，等于把 (b) 原样留着）
+    let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM login_log WHERE ip = '1.1.1.1'")
+        .fetch_one(&pool).await.unwrap();
+    assert_eq!(n, 7, "6 次失败 + 1 次限流拦截: {n}");
+    let u: String = sqlx::query_scalar(
+        "SELECT username FROM login_log WHERE ip = '1.1.1.1' AND msg LIKE '%频繁%'")
+        .fetch_one(&pool).await.unwrap();
+    assert_eq!(u, "", "限流记录不落在被尝试的账号名下");
+    let n: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM login_log WHERE username = 'admin' AND status = 0")
+        .fetch_one(&pool).await.unwrap();
+    assert_eq!(n, 0, "admin 一次失败都没有（限流不该算它的）: {n}");
+
+    // 换个 IP 不受影响（限流按 IP 分桶）
+    let (st, v) = login_from(&c, &api("/auth/login"), "2.2.2.2", "admin", "admin123").await;
+    assert_eq!(st, 200, "其他 IP 不受这个桶影响: {v}");
 
     // ── B9 内置菜单幂等补齐 ─────────────────────────────────
     let (st, v) = call(&c, Method::GET, api("/menus/tree"), Some(&admin), None).await;
