@@ -95,7 +95,11 @@ export default function ProfilePage() {
   return (
     <Card title="个人中心" style={{ maxWidth: 640 }}>
       <Space size={16} align="center" style={{ marginBottom: 24 }}>
-        <Avatar size={64} src={avatarUrl(user?.avatar, version)} />
+        <Avatar
+          size={64}
+          src={avatarUrl(user?.avatar, version)}
+          icon={<img src="/keeper-head.svg" alt="" width={52} height={52} />}
+        />
         <div>
           <input
             ref={fileRef}

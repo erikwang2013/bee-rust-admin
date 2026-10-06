@@ -92,7 +92,12 @@ export default function BasicLayout() {
             <ThemeToggle />
             <Dropdown menu={userMenu}>
               <span style={{ cursor: 'pointer' }}>
-                <Avatar size="small" src={avatarUrl(user?.avatar, version)} />
+                <Avatar
+                  size="small"
+                  src={avatarUrl(user?.avatar, version)}
+                  // 头像 URL 失效时（换机器/恢复备份丢了 uploads 目录）回落到阿守，而不是一个灰圆点
+                  icon={<img src="/keeper-head.svg" alt="" width={22} height={22} />}
+                />
                 <span style={{ marginLeft: 8 }}>{user?.nickname || user?.username}</span>
               </span>
             </Dropdown>
