@@ -275,10 +275,11 @@ async fn v14_backend_features() {
     let tree = v["data"].clone();
     let perm_menu = |p: &str| menu_id(&tree, p).unwrap_or_else(|| panic!("种子菜单里没有 {p}"));
 
-    // 操作者：管理员管理全套权限（list/add/edit/remove/resetPwd）+ scope=3
+    // 操作者：管理员管理全套权限（list/add/edit/remove/resetPwd）+ 角色列表（分配角色
+    // 时得看得见角色）+ scope=3
     let op_menus: Vec<u64> = [
         "system:admin:list", "system:admin:add", "system:admin:edit",
-        "system:admin:remove", "system:admin:resetPwd",
+        "system:admin:remove", "system:admin:resetPwd", "system:role:list",
     ].iter().map(|p| perm_menu(p)).collect();
     let op_role = make_role(&c, &base, &admin, "b5_scope3", 3, 1, &op_menus).await;
     // 更宽的角色（scope=1）：只有超管能授
@@ -369,6 +370,26 @@ async fn v14_backend_features() {
         assert_eq!(v["msg"], "角色不存在或已停用", "{v}");
     }
 
+    // 角色列表/详情带 grantable：前端照它灰掉选项，别摆出「点了才被骂」的角色
+    let (st, v) = call(&c, Method::GET, api("/roles?size=100"), Some(&op), None).await;
+    assert_eq!(st, 200, "操作者读角色列表: {v}");
+    let grant = |id: u64| {
+        v["data"]["list"].as_array().unwrap().iter()
+            .find(|r| r["id"] == json!(id))
+            .unwrap_or_else(|| panic!("角色 {id} 不在列表里: {v}"))["grantable"]
+            .as_bool()
+            .unwrap_or(false)
+    };
+    assert!(!grant(wide_role), "data_scope=1 不该标记为可授: {v}");
+    assert!(!grant(alien_role), "权限不是自己子集的不可授: {v}");
+    assert!(!grant(off_role), "已停用的不可授: {v}");
+    assert!(grant(op_role), "自己那类角色可授: {v}");
+    assert!(grant(ok_role), "scope=4 且权限是子集可授: {v}");
+
+    let (st, vd) = call(&c, Method::GET, api(&format!("/roles/{wide_role}")), Some(&op), None).await;
+    assert_eq!(st, 200, "角色详情: {vd}");
+    assert_eq!(vd["data"]["grantable"], false, "详情同样带标记: {vd}");
+
     // 建人：部门与角色同样受限
     let (st, v) = call(&c, Method::POST, api("/admins"), Some(&op), Some(json!({
         "username": "b5new", "password": "b5new12345", "dept_id": dept_b,
@@ -390,4 +411,11 @@ async fn v14_backend_features() {
         "nickname": "超管改的", "dept_id": dept_b, "status": 1, "role_ids": [wide_role],
     }))).await;
     assert_eq!(st, 200, "超管改 B 部的人并授 scope=1: {v}");
+
+    // 超管的角色列表：全部 grantable（显示口径与写路径一致）
+    let (st, v) = call(&c, Method::GET, api("/roles?size=100"), Some(&admin), None).await;
+    assert_eq!(st, 200, "超管读角色列表: {v}");
+    let rows = v["data"]["list"].as_array().unwrap();
+    assert!(rows.len() >= 5, "至少 5 个角色（含上面停用的那个）: {v}");
+    assert!(rows.iter().all(|r| r["grantable"] == true), "超管全可授: {v}");
 }
