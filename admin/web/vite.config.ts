@@ -7,6 +7,44 @@ import { visualizer } from 'rollup-plugin-visualizer';
 // `json` 给 `scripts/top-modules.mjs` 读，`html` 给人在浏览器里点。
 const analyze = process.env.ANALYZE === '1';
 
+// 首屏真正用到的 antd 组件（布局 / 登录页 / 错误页 / 顶栏）—— 只有这些进 vendor 块。
+//
+// 「按包名整包列」是把重组件拖进首屏的元凶：`antd: ['antd']` 会把**任何页面用到的**
+// antd 组件（Table / DatePicker / Tree…）都并进这个块，而这个块是 index.html 静态
+// modulepreload 的，于是懒加载页面白拆了 —— 实测 rc-picker + antd/table 等约 1 MB
+// （压缩前）就这么躺在首屏里。
+//
+// 现在只列下面这批：加进来的会连同依赖（rc-* 等）一起进 vendor 块；没列的（列表页
+// 才用的 Table / DatePicker / Tree / Modal / Tabs / Descriptions…）不列，跟着各自的
+// 懒加载页面走，首屏不再下载。**新增首屏组件时记得补进这个数组**，漏了不会坏，
+// 只是它会被打进 entry 块（少了 vendor 缓存的好处）。
+const ENTRY_ANTD = [
+  'antd/es/app',
+  'antd/es/avatar',
+  'antd/es/badge',
+  'antd/es/breadcrumb',
+  'antd/es/button',
+  'antd/es/card',
+  'antd/es/config-provider',
+  'antd/es/dropdown',
+  'antd/es/empty',
+  'antd/es/form',
+  'antd/es/input',
+  'antd/es/layout',
+  'antd/es/locale/en_US',
+  'antd/es/locale/zh_CN',
+  'antd/es/menu',
+  'antd/es/message',
+  'antd/es/popover',
+  'antd/es/result',
+  'antd/es/select',
+  'antd/es/space',
+  'antd/es/spin',
+  'antd/es/switch',
+  'antd/es/theme',
+  'antd/es/typography',
+];
+
 export default defineConfig({
   plugins: [
     react(),
@@ -44,7 +82,7 @@ export default defineConfig({
         // 并入 antd 块，剩下没用到的归入懒加载块，只有运维填了映射外的 icon 名才下载。
         manualChunks: {
           react: ['react', 'react-dom', 'react-router'],
-          antd: ['antd'],
+          antd: ENTRY_ANTD,
         },
       },
     },

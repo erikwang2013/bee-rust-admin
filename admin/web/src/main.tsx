@@ -1,8 +1,10 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { ConfigProvider, App as AntdApp, theme as antdTheme } from 'antd';
-import antdZhCN from 'antd/locale/zh_CN';
-import antdEnUS from 'antd/locale/en_US';
+// 走 es/ 而不是 'antd/locale/xx_XX'：后者是 CJS 包装（`module.exports = require('../lib/…)`），
+// 会把 lib 与 es 两份语言包都打进包里。es 版是同一份数据的 ESM 版，只留一份。
+import antdZhCN from 'antd/es/locale/zh_CN';
+import antdEnUS from 'antd/es/locale/en_US';
 import { RouterProvider } from 'react-router';
 import { router } from './router';
 import { AuthProvider } from './auth/AuthContext';
