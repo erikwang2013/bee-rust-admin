@@ -244,6 +244,24 @@ pub async fn logout(
     Ok(ok(Value::Null))
 }
 
+/// 退出其他设备（A3）：token_version 自增让所有旧 token 作废，然后给当前设备
+/// 换发一枚新版本的 token —— 用旧版本签的当前设备 token 也一起失效了，
+/// 不回新就得把发起者自己也踢下线。前端契约：新 token 在 `data.token`。
+pub async fn logout_others(
+    State(state): State<AppState>,
+    auth: Auth,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    let mut admin = auth.admin.clone();
+    admin.token_version += 1;
+    admin.updated_at = now();
+    state.db.update(&admin).await.map_err(ApiError::from)?;
+
+    let (token, expires_in) = sign_token(admin.id, admin.token_version, &state.cfg)?;
+    write_login_log(&state, admin.id, &admin.username, &headers, 1, "退出其他设备").await;
+    Ok(ok(json!({ "token": token, "expires_in": expires_in })))
+}
+
 pub async fn profile(State(_state): State<AppState>, auth: Auth) -> Result<Json<Value>, ApiError> {
     let mut perms: Vec<&String> = auth.perms.iter().collect();
     perms.sort();

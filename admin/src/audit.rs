@@ -140,6 +140,7 @@ fn module_action(method: &Method, path: &str) -> (String, String) {
         ("DELETE", ["audit-logs"]) => ("auditlog", "清空操作日志"),
 
         ("POST", ["auth", "logout"]) => ("auth", "退出登录"),
+        ("POST", ["auth", "logout-others"]) => ("auth", "退出其他设备"),
         ("PUT", ["auth", "password"]) => ("auth", "修改密码"),
         ("PUT", ["auth", "profile"]) => ("auth", "修改个人资料"),
         ("POST", ["auth", "avatar"]) => ("auth", "上传头像"),

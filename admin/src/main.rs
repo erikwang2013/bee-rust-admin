@@ -96,6 +96,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ns("/api/v1/auth", |ns| {
             ns.post("/login", api::auth::login)
                 .post("/logout", api::auth::logout)
+                .post("/logout-others", api::auth::logout_others)
                 .get("/profile", api::auth::profile)
                 .put("/profile", api::auth::update_profile)
                 .post("/avatar", api::auth::upload_avatar)
