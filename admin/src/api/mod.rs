@@ -7,6 +7,7 @@ pub mod audit_log;
 pub mod auth;
 pub mod csv;
 pub mod dept;
+pub mod dict;
 pub mod login_log;
 pub mod menu;
 pub mod role;
