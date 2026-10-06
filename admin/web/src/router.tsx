@@ -1,6 +1,7 @@
 import { lazy, Suspense, type ReactNode } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router';
 import { Spin } from 'antd';
+import { RouteError } from './ErrorBoundary';
 import RequireAuth, { RequirePerm } from './router/guard';
 import BasicLayout from './layouts/BasicLayout';
 import LoginPage from './pages/login/index';
@@ -26,11 +27,15 @@ function L({ children }: { children: ReactNode }) {
   return <Suspense fallback={loading}>{children}</Suspense>;
 }
 
+// errorElement 挂在这两条顶层路由上：react-router 的每条路由都有自己的错误边界，
+// 不在这里指定的话，路由内抛错会落到它自带的英文通用错误页，而不是我们的降级界面。
+// 子路由没写 errorElement，错误会向上冒泡到最近的一条，所以挂顶层就够。
 export const router = createBrowserRouter([
-  { path: '/login', element: <LoginPage /> },
+  { path: '/login', element: <LoginPage />, errorElement: <RouteError /> },
   {
     path: '/',
     element: <RequireAuth />,
+    errorElement: <RouteError />,
     children: [
       {
         element: <BasicLayout />,

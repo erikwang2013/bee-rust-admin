@@ -7,6 +7,7 @@ import { RouterProvider } from 'react-router';
 import { router } from './router';
 import { AuthProvider } from './auth/AuthContext';
 import { ThemeProvider, useThemeMode } from './theme';
+import { ErrorBoundary } from './ErrorBoundary';
 
 function ThemedApp() {
   const { mode } = useThemeMode();
@@ -26,8 +27,11 @@ function ThemedApp() {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <ThemeProvider>
-      <ThemedApp />
-    </ThemeProvider>
+    {/* 最外层：登录页也一并兜住，见 ErrorBoundary.tsx 的说明 */}
+    <ErrorBoundary>
+      <ThemeProvider>
+        <ThemedApp />
+      </ThemeProvider>
+    </ErrorBoundary>
   </React.StrictMode>,
 );
