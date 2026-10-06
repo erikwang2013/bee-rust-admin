@@ -7,6 +7,14 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
+    # 压缩。**这一行不是可选项**：首屏那几个 JS 未压缩 1.1 MB，gzip 后 ~364 kB（3 倍差），
+    # 而 nginx 默认只压 text/html —— 不显式列出 js/css，压缩等于没开。
+    # 别用 gzip_static 指望构建产物预压缩：vite 没生成 .gz 文件。
+    gzip on;
+    gzip_types text/css text/javascript application/javascript application/json image/svg+xml;
+    gzip_min_length 1024;   # 小文件压了反而更大
+    gzip_vary on;           # 让中间缓存按 Accept-Encoding 分别缓存
+
     # SPA 路由回退
     location / {
         try_files $uri $uri/ /index.html;
