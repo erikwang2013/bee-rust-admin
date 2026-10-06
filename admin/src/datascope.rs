@@ -99,10 +99,37 @@ pub async fn ensure_dept_in_scope(auth: &Auth, db: &Db, dept_id: u64) -> Result<
     Err(ApiError::Forbidden("超出你的数据权限范围".into()))
 }
 
+/// 不能授予某角色的原因（`None` = 能授）。规则**只有这一份**：写路径
+/// （`ensure_roles_grantable`）与列表/详情的显示口径（`roles_grantable`）都走它，
+/// 不会出现「列表说能授、保存时 403」。
+enum Block {
+    /// 已停用
+    Off,
+    /// data_scope 比操作者宽（1/2/5 只有超管能授）
+    Wider,
+    /// 角色带操作者自己没有的权限码
+    ExtraPerm,
+}
+
+fn block_reason(auth: &Auth, role: &Role, perms: &HashSet<String>) -> Option<Block> {
+    if auth.is_super {
+        return None;
+    }
+    if role.status != 1 {
+        return Some(Block::Off);
+    }
+    if !matches!(role.data_scope, 3 | 4) {
+        return Some(Block::Wider);
+    }
+    if perms.iter().any(|p| !auth.perms.contains(p)) {
+        return Some(Block::ExtraPerm);
+    }
+    None
+}
+
 /// 授予的角色不得超出操作者自身（B5）。超管放行；空集合放行（清空角色不是提权）；
-/// 角色必须存在且启用；非超管两条：只能授予 `data_scope ∈ {3 本部门, 4 仅本人}`
-/// （1/2/5 都是更宽的范围），且角色的生效权限码必须是操作者权限码的子集 ——
-/// 授不出「自己都没有的能力」。
+/// 角色必须存在且启用；非超管只能授予 `data_scope ∈ {3 本部门, 4 仅本人}`，
+/// 且角色的生效权限码必须是操作者权限码的子集 —— 授不出「自己都没有的能力」。
 pub async fn ensure_roles_grantable(auth: &Auth, db: &Db, role_ids: &[u64]) -> Result<(), ApiError> {
     if auth.is_super {
         return Ok(());
@@ -117,21 +144,37 @@ pub async fn ensure_roles_grantable(auth: &Auth, db: &Db, role_ids: &[u64]) -> R
         .fetch_all(db)
         .await
         .map_err(ApiError::from)?;
-    // 顺带补上此前缺失的存在性校验：id 不存在与已停用一律当整体非法
-    if roles.len() != ids.len() || roles.iter().any(|r| r.status != 1) {
+    // 顺带补上此前缺失的存在性校验：id 不存在一律当整体非法（停用见 block_reason）
+    if roles.len() != ids.len() {
         return Err(ApiError::BadRequest("角色不存在或已停用".into()));
     }
     for r in &roles {
-        if !matches!(r.data_scope, 3 | 4) {
-            return Err(ApiError::Forbidden("不能授予数据范围更宽的角色".into()));
-        }
-        for perm in role_perms(db, r.id).await? {
-            if !auth.perms.contains(&perm) {
+        match block_reason(auth, r, &role_perms(db, r.id).await?) {
+            None => {}
+            Some(Block::Off) => return Err(ApiError::BadRequest("角色不存在或已停用".into())),
+            Some(Block::Wider) => {
+                return Err(ApiError::Forbidden("不能授予数据范围更宽的角色".into()));
+            }
+            Some(Block::ExtraPerm) => {
                 return Err(ApiError::Forbidden("不能授予包含你没有的权限的角色".into()));
             }
         }
     }
     Ok(())
+}
+
+/// 给角色列表/详情标 `grantable`（B5 显示口径）：只做提示，写路径仍走硬校验。
+/// 前端拿不到角色的权限码集合，判不了这件事，所以由后端给权威结论。
+/// ponytail: 每行一次 `role_perms`（2 条查询）；角色是配置量级（几十个），不分批。
+pub async fn roles_grantable(auth: &Auth, db: &Db, roles: &[Role]) -> Result<Vec<bool>, ApiError> {
+    if auth.is_super {
+        return Ok(vec![true; roles.len()]);
+    }
+    let mut out = Vec::with_capacity(roles.len());
+    for r in roles {
+        out.push(block_reason(auth, r, &role_perms(db, r.id).await?).is_none());
+    }
+    Ok(out)
 }
 
 /// 角色当前生效的权限码（口径同 `Auth` 装载：role_menu → 启用菜单的非空 perm）。

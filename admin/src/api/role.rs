@@ -1,6 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use crate::api::{check_len, dedup_ids, page_size};
 use crate::auth::Auth;
+use crate::datascope;
 use crate::error::{ApiError, AppJson, AppPath, AppQuery, ok};
 use crate::models::{AdminRole, Role};
 use crate::state::AppState;
@@ -70,6 +71,27 @@ fn validate_scope(scope: i8) -> Result<(), ApiError> {
     Ok(())
 }
 
+/// 补 `grantable`（B5）：当前操作者能不能把这个角色授出去。
+/// 只是显示提示 —— 前端角色选择框据此灰掉选项，保存时仍由
+/// `ensure_roles_grantable` 硬校验（两处共用同一条规则）。
+async fn with_grantable(
+    state: &AppState,
+    auth: &Auth,
+    roles: Vec<Role>,
+) -> Result<Vec<Value>, ApiError> {
+    let grants = datascope::roles_grantable(auth, &state.db, &roles).await?;
+    roles
+        .into_iter()
+        .zip(grants)
+        .map(|(r, g)| {
+            let mut v = serde_json::to_value(&r)
+                .map_err(|e| ApiError::internal(format!("序列化失败: {e}")))?;
+            v["grantable"] = json!(g);
+            Ok(v)
+        })
+        .collect()
+}
+
 /// 长度上限与模型 `#[bee(len)]`、设计文档 §5.1 列宽一致（name/code 落库前会 trim）。
 fn validate_body(b: &RoleBody) -> Result<(), ApiError> {
     validate_name(&b.name)?;
@@ -101,7 +123,8 @@ pub async fn list(
         .fetch_page(&state.db, page, size)
         .await
         .map_err(ApiError::from)?;
-    Ok(ok(json!({ "list": rows, "total": total })))
+    let list = with_grantable(&state, &auth, rows).await?;
+    Ok(ok(json!({ "list": list, "total": total })))
 }
 
 pub async fn detail(
@@ -117,7 +140,9 @@ pub async fn detail(
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
-    Ok(ok(r))
+    // 详情同样带 grantable（前端编辑弹窗里也要判）
+    let v = with_grantable(&state, &auth, vec![r]).await?.pop().unwrap_or(Value::Null);
+    Ok(ok(v))
 }
 
 pub async fn create(
