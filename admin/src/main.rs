@@ -153,6 +153,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .put("/{id}", api::dept::update)
                 .delete("/{id}", api::dept::remove)
         })
+        .ns("/api/v1/dicts", |ns| {
+            ns.get("", api::dict::type_list)
+                .post("", api::dict::type_create)
+                .put("/{id}", api::dict::type_update)
+                .delete("/{id}", api::dict::type_remove)
+                // 下拉数据源：登录即可，注册在 {id} 之后也不冲突（路径形状不同）
+                .get("/{code}/items", api::dict::type_items)
+        })
+        .ns("/api/v1/dict-items", |ns| {
+            ns.get("", api::dict::item_list)
+                .post("", api::dict::item_create)
+                .get("/export", api::dict::item_export)
+                .put("/{id}", api::dict::item_update)
+                .delete("/{id}", api::dict::item_remove)
+        })
         .ns("/api/v1/login-logs", |ns| {
             ns.get("", api::login_log::list)
                 .delete("", api::login_log::clear)

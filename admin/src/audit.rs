@@ -136,6 +136,13 @@ fn module_action(method: &Method, path: &str) -> (String, String) {
         ("PUT", ["depts", _]) => ("dept", "编辑部门"),
         ("DELETE", ["depts", _]) => ("dept", "删除部门"),
 
+        ("POST", ["dicts"]) => ("dict", "新增字典类型"),
+        ("PUT", ["dicts", _]) => ("dict", "编辑字典类型"),
+        ("DELETE", ["dicts", _]) => ("dict", "删除字典类型"),
+        ("POST", ["dict-items"]) => ("dict", "新增字典项"),
+        ("PUT", ["dict-items", _]) => ("dict", "编辑字典项"),
+        ("DELETE", ["dict-items", _]) => ("dict", "删除字典项"),
+
         ("DELETE", ["login-logs"]) => ("loginlog", "清空登录记录"),
         ("DELETE", ["audit-logs"]) => ("auditlog", "清空操作日志"),
 
@@ -168,6 +175,14 @@ mod tests {
         assert_eq!(
             module_action(&Method::POST, "/api/v1/auth/avatar"),
             ("auth".into(), "上传头像".into())
+        );
+        assert_eq!(
+            module_action(&Method::DELETE, "/api/v1/dicts/3"),
+            ("dict".into(), "删除字典类型".into())
+        );
+        assert_eq!(
+            module_action(&Method::POST, "/api/v1/dict-items"),
+            ("dict".into(), "新增字典项".into())
         );
     }
 

@@ -6,6 +6,27 @@ use bee_orm::{Db, Model, SyncdbMode};
 
 /// 建表（syncdb Safe）+ 连接表 DDL，幂等。
 pub async fn migrate(db: &Db) -> Result<(), bee_orm::OrmError> {
+    // dict_item 的复合唯一键 `uk_type_value(type_code, value)` syncdb 表达不了
+    // （模型属性只支持单列唯一），所以这张表先裸 DDL 建出来，列与索引再由下面的
+    // syncdb 补齐（幂等）。必须建在 syncdb 之前：否则 syncdb 先建出一张没有
+    // uk_type_value 的表，IF NOT EXISTS 就再也补不上了。
+    db.exec_sql(
+        "CREATE TABLE IF NOT EXISTS dict_item (
+           id BIGINT UNSIGNED AUTO_INCREMENT NOT NULL,
+           type_code VARCHAR(64) NOT NULL DEFAULT '',
+           label VARCHAR(64) NOT NULL DEFAULT '',
+           value VARCHAR(64) NOT NULL DEFAULT '',
+           sort INT NOT NULL DEFAULT 0,
+           status TINYINT NOT NULL DEFAULT 0,
+           remark VARCHAR(255) NOT NULL DEFAULT '',
+           created_at DATETIME NOT NULL,
+           updated_at DATETIME NOT NULL,
+           PRIMARY KEY (id),
+           UNIQUE KEY uk_type_value (type_code, value)
+         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+    )
+    .await?;
+
     db.syncdb(
         &[
             Admin::META,
@@ -14,6 +35,8 @@ pub async fn migrate(db: &Db) -> Result<(), bee_orm::OrmError> {
             Menu::META,
             crate::models::LoginLog::META,
             crate::models::AuditLog::META,
+            crate::models::DictType::META,
+            crate::models::DictItem::META,
         ],
         SyncdbMode::Safe,
     )
@@ -43,7 +66,7 @@ pub async fn migrate(db: &Db) -> Result<(), bee_orm::OrmError> {
 }
 
 /// 内置菜单定义：(名称, 路径, 组件, 图标, 权限码前缀, 按钮后缀列表)。
-const BUILTIN_MENUS: [(&str, &str, &str, &str, &str, &[&str]); 6] = [
+const BUILTIN_MENUS: [(&str, &str, &str, &str, &str, &[&str]); 7] = [
     (
         "管理员管理",
         "/system/admin",
@@ -91,6 +114,14 @@ const BUILTIN_MENUS: [(&str, &str, &str, &str, &str, &[&str]); 6] = [
         "FileSearchOutlined",
         "system:auditlog",
         &["list", "remove"],
+    ),
+    (
+        "字典管理",
+        "/system/dict",
+        "system/dict/index",
+        "ProfileOutlined",
+        "system:dict",
+        &["list", "add", "edit", "remove"],
     ),
 ];
 

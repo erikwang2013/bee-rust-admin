@@ -13,7 +13,7 @@ pub struct AuditLog {
     pub admin_id: u64,
     #[bee(len = 64)]
     pub username: String,
-    /// 模块码：admin / role / menu / dept / loginlog / auditlog / auth / other
+    /// 模块码：admin / role / menu / dept / dict / loginlog / auditlog / auth / other
     #[bee(len = 32)]
     pub module: String,
     /// 动作中文名，如「新增管理员」
