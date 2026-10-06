@@ -5,15 +5,11 @@ import type { ColumnsType } from 'antd/es/table';
 import { noticeApi, type NoticeForm, type NoticeQuery } from '../../../api/notice';
 import type { Notice } from '../../../api/types';
 import Auth from '../../../auth/Auth';
-
-const STATUS_OPTIONS = [{ value: 1, label: '已发布' }, { value: 0, label: '草稿' }];
-
-const statusTag = (v: number) => (
-  <Tag color={v === 1 ? 'green' : 'default'}>{v === 1 ? '已发布' : '草稿'}</Tag>
-);
+import { useI18n } from '../../../i18n';
 
 export default function NoticePage() {
   const { message } = App.useApp();
+  const { t } = useI18n();
   const [form] = Form.useForm<Pick<NoticeForm, 'title' | 'content'>>();
   const [query, setQuery] = useState<NoticeQuery>({ page: 1, size: 10 });
   const [rows, setRows] = useState<Notice[]>([]);
@@ -21,6 +17,14 @@ export default function NoticePage() {
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState<Notice | null>(null);
   const [modal, setModal] = useState(false);
+
+  const statusOptions = [
+    { value: 1, label: t('notice.published') },
+    { value: 0, label: t('notice.draft') },
+  ];
+  const statusTag = (v: number) => (
+    <Tag color={v === 1 ? 'green' : 'default'}>{v === 1 ? t('notice.published') : t('notice.draft')}</Tag>
+  );
 
   const load = useCallback(async (q: NoticeQuery) => {
     setLoading(true);
@@ -53,10 +57,10 @@ export default function NoticePage() {
     const body: NoticeForm = { ...v, status: editing ? editing.status : 0 };
     if (editing) {
       await noticeApi.update(editing.id, body);
-      message.success('已保存');
+      message.success(t('common.saved'));
     } else {
       await noticeApi.create(body);
-      message.success('已保存为草稿，确认无误后再发布');
+      message.success(t('notice.saved_as_draft'));
     }
     setModal(false);
     void load(query);
@@ -64,57 +68,57 @@ export default function NoticePage() {
 
   const setStatus = async (row: Notice, status: number) => {
     await noticeApi.update(row.id, { title: row.title, content: row.content, status });
-    message.success(status === 1 ? '已发布' : '已取消发布');
+    message.success(status === 1 ? t('notice.published') : t('notice.unpublish_done'));
     void load(query);
   };
 
   const remove = async (row: Notice) => {
     await noticeApi.remove(row.id);
-    message.success('已删除');
+    message.success(t('common.deleted'));
     void load(query);
   };
 
   const columns: ColumnsType<Notice> = [
-    { title: 'ID', dataIndex: 'id', width: 70 },
-    { title: '标题', dataIndex: 'title' },
-    { title: '状态', dataIndex: 'status', width: 90, render: statusTag },
+    { title: t('field.id'), dataIndex: 'id', width: 70 },
+    { title: t('field.title'), dataIndex: 'title' },
+    { title: t('field.status'), dataIndex: 'status', width: 90, render: statusTag },
     {
-      title: '发布时间', dataIndex: 'published_at', width: 170,
+      title: t('field.published_at'), dataIndex: 'published_at', width: 170,
       // 取消发布不清 published_at（留痕：曾发布过），所以草稿行也可能有值
       render: (v: string | null) => v || '-',
     },
-    { title: '更新时间', dataIndex: 'updated_at', width: 170 },
+    { title: t('field.updated_at'), dataIndex: 'updated_at', width: 170 },
     {
-      title: '操作', width: 200, fixed: 'right',
+      title: t('common.actions'), width: 200, fixed: 'right',
       render: (_, row) => (
         <Space>
           <Auth code="system:notice:edit">
-            <Button size="small" type="link" onClick={() => openEdit(row)}>编辑</Button>
+            <Button size="small" type="link" onClick={() => openEdit(row)}>{t('common.edit')}</Button>
           </Auth>
           {row.status === 1 ? (
             <Auth code="system:notice:edit">
               <Popconfirm
-                title="取消发布后，登录用户将不再在未读里看到它。"
-                okText="取消发布"
+                title={t('notice.unpublish_confirm')}
+                okText={t('notice.unpublish')}
                 onConfirm={() => void setStatus(row, 0)}
               >
-                <Button size="small" type="link">取消发布</Button>
+                <Button size="small" type="link">{t('notice.unpublish')}</Button>
               </Popconfirm>
             </Auth>
           ) : (
             <Auth code="system:notice:edit">
-              <Button size="small" type="link" onClick={() => void setStatus(row, 1)}>发布</Button>
+              <Button size="small" type="link" onClick={() => void setStatus(row, 1)}>{t('notice.publish')}</Button>
             </Auth>
           )}
           <Auth code="system:notice:remove">
             <Popconfirm
-              title={`确认删除公告「${row.title}」？`}
-              description="已读记录会一并删除。"
-              okText="删除"
+              title={t('notice.delete_confirm', { title: row.title })}
+              description={t('notice.delete_desc')}
+              okText={t('common.delete')}
               okButtonProps={{ danger: true }}
               onConfirm={() => void remove(row)}
             >
-              <Button size="small" type="link" danger>删除</Button>
+              <Button size="small" type="link" danger>{t('common.delete')}</Button>
             </Popconfirm>
           </Auth>
         </Space>
@@ -126,21 +130,21 @@ export default function NoticePage() {
     <>
       <Space style={{ marginBottom: 12 }} wrap>
         <Input.Search
-          placeholder="标题" allowClear style={{ width: 200 }}
+          placeholder={t('field.title')} allowClear style={{ width: 200 }}
           onSearch={(v) => setQuery((q) => ({ ...q, title: v || undefined, page: 1 }))}
         />
         <Select
-          placeholder="状态" allowClear style={{ width: 120 }}
-          options={STATUS_OPTIONS}
+          placeholder={t('field.status')} allowClear style={{ width: 120 }}
+          options={statusOptions}
           onChange={(v) => setQuery((q) => ({ ...q, status: v, page: 1 }))}
         />
-        <Button icon={<ReloadOutlined />} onClick={() => void load(query)}>刷新</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => void load(query)}>{t('common.refresh')}</Button>
         <Auth code="system:notice:add">
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新增</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{t('common.add')}</Button>
         </Auth>
       </Space>
       <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-        新建的公告先存成草稿，草稿对普通用户完全不可见；「发布」之后登录用户才会在顶栏铃铛里收到未读提示。
+        {t('notice.hint')}
       </Typography.Paragraph>
 
       <Table<Notice>
@@ -157,7 +161,7 @@ export default function NoticePage() {
       />
 
       <Modal
-        title={editing ? `编辑公告：${editing.title}` : '新增公告'}
+        title={editing ? t('notice.edit_title', { title: editing.title }) : t('notice.create_title')}
         open={modal}
         onCancel={() => setModal(false)}
         onOk={() => void submit()}
@@ -166,19 +170,19 @@ export default function NoticePage() {
       >
         <Form form={form} labelCol={{ span: 4 }} wrapperCol={{ span: 19 }}>
           <Form.Item
-            name="title" label="标题"
+            name="title" label={t('field.title')}
             rules={[
-              { required: true, whitespace: true, message: '请输入标题' },
-              { max: 128, message: '标题最长 128 个字' },
+              { required: true, whitespace: true, message: t('validate.required', { field: t('field.title') }) },
+              { max: 128, message: t('notice.title_max') },
             ]}
           >
             <Input maxLength={128} />
           </Form.Item>
           <Form.Item
-            name="content" label="内容"
-            rules={[{ required: true, whitespace: true, message: '请输入内容' }]}
+            name="content" label={t('field.content')}
+            rules={[{ required: true, whitespace: true, message: t('validate.required', { field: t('field.content') }) }]}
           >
-            <Input.TextArea rows={10} placeholder="纯文本，换行会原样保留" />
+            <Input.TextArea rows={10} placeholder={t('notice.content_placeholder')} />
           </Form.Item>
         </Form>
       </Modal>

@@ -7,24 +7,23 @@ import type { ColumnsType } from 'antd/es/table';
 import { jobApi, type JobLogQuery, type JobQuery } from '../../../api/job';
 import type { Job, JobLog } from '../../../api/types';
 import Auth from '../../../auth/Auth';
+import { useI18n, type TFunc } from '../../../i18n';
 import { intervalText, runResult } from './format';
 
 /** 表单里间隔用 InputNumber（number），提交时再转成协议要求的字符串秒数 */
 type JobFormValues = { cron: number; status: number };
 
-const STATUS_OPTIONS = [{ value: 1, label: '启用' }, { value: 0, label: '停用' }];
-const RUN_STATUS_OPTIONS = [{ value: 1, label: '成功' }, { value: 0, label: '失败' }];
-
-const runTag = (v: number | null) => (v == null ? '-' : (
-  <Tag color={v === 1 ? 'green' : 'red'}>{v === 1 ? '成功' : '失败'}</Tag>
+const runTag = (t: TFunc, v: number | null) => (v == null ? '-' : (
+  <Tag color={v === 1 ? 'green' : 'red'}>{v === 1 ? t('common.success') : t('common.failed')}</Tag>
 ));
 
 export default function JobPage() {
+  const { t } = useI18n();
   return (
     <Tabs
       items={[
-        { key: 'jobs', label: '任务列表', children: <JobList /> },
-        { key: 'logs', label: '执行记录', children: <JobLogs /> },
+        { key: 'jobs', label: t('job.tab_list'), children: <JobList /> },
+        { key: 'logs', label: t('job.tab_logs'), children: <JobLogs /> },
       ]}
     />
   );
@@ -32,6 +31,11 @@ export default function JobPage() {
 
 function JobList() {
   const { message } = App.useApp();
+  const { t } = useI18n();
+  const statusOptions = [
+    { value: 1, label: t('common.enabled') },
+    { value: 0, label: t('job.stopped') },
+  ];
   const [form] = Form.useForm<JobFormValues>();
   const [query, setQuery] = useState<JobQuery>({ page: 1, size: 10 });
   const [rows, setRows] = useState<Job[]>([]);
@@ -64,7 +68,7 @@ function JobList() {
     if (!editing) return;
     const v = await form.validateFields();
     await jobApi.update(editing.id, { cron: String(v.cron), status: v.status });
-    message.success('已保存');
+    message.success(t('common.saved'));
     setModal(false);
     void load(query);
   };
@@ -83,23 +87,25 @@ function JobList() {
   };
 
   const columns: ColumnsType<Job> = [
-    { title: 'ID', dataIndex: 'id', width: 70 },
-    { title: '名称', dataIndex: 'name', width: 160 },
-    { title: 'code', dataIndex: 'code', width: 180 },
-    { title: '间隔', dataIndex: 'cron', width: 100, render: (v: string) => intervalText(v) },
+    { title: t('field.id'), dataIndex: 'id', width: 70 },
+    { title: t('field.job_name'), dataIndex: 'name', width: 160 },
+    { title: t('field.job_code'), dataIndex: 'code', width: 180 },
+    { title: t('field.job_interval'), dataIndex: 'cron', width: 100, render: (v: string) => intervalText(v) },
     {
-      title: '状态', dataIndex: 'status', width: 80,
-      render: (v: number) => <Tag color={v === 1 ? 'green' : 'red'}>{v === 1 ? '启用' : '停用'}</Tag>,
+      title: t('field.status'), dataIndex: 'status', width: 80,
+      render: (v: number) => (
+        <Tag color={v === 1 ? 'green' : 'red'}>{v === 1 ? t('common.enabled') : t('job.stopped')}</Tag>
+      ),
     },
-    { title: '上次运行', dataIndex: 'last_run_at', width: 170, render: (v: string | null) => v || '从未运行' },
-    { title: '上次结果', dataIndex: 'last_status', width: 90, render: runTag },
-    { title: '消息', dataIndex: 'last_msg', ellipsis: true },
+    { title: t('field.last_run'), dataIndex: 'last_run_at', width: 170, render: (v: string | null) => v || t('job.never_run') },
+    { title: t('field.last_result'), dataIndex: 'last_status', width: 90, render: (v: number | null) => runTag(t, v) },
+    { title: t('field.msg'), dataIndex: 'last_msg', ellipsis: true },
     {
-      title: '操作', width: 160, fixed: 'right',
+      title: t('common.actions'), width: 160, fixed: 'right',
       render: (_, row) => (
         <Space>
           <Auth code="system:job:edit">
-            <Button size="small" type="link" onClick={() => openEdit(row)}>编辑</Button>
+            <Button size="small" type="link" onClick={() => openEdit(row)}>{t('common.edit')}</Button>
           </Auth>
           <Auth code="system:job:edit">
             <Button
@@ -109,7 +115,7 @@ function JobList() {
               loading={runningId === row.id}
               onClick={() => void run(row)}
             >
-              触发一次
+              {t('job.trigger')}
             </Button>
           </Auth>
         </Space>
@@ -121,18 +127,18 @@ function JobList() {
     <>
       <Space style={{ marginBottom: 12 }} wrap>
         <Input.Search
-          placeholder="名称" allowClear style={{ width: 180 }}
+          placeholder={t('field.job_name')} allowClear style={{ width: 180 }}
           onSearch={(v) => setQuery((q) => ({ ...q, name: v || undefined, page: 1 }))}
         />
         <Select
-          placeholder="状态" allowClear style={{ width: 110 }}
-          options={STATUS_OPTIONS}
+          placeholder={t('field.status')} allowClear style={{ width: 110 }}
+          options={statusOptions}
           onChange={(v) => setQuery((q) => ({ ...q, status: v, page: 1 }))}
         />
-        <Button icon={<ReloadOutlined />} onClick={() => void load(query)}>刷新</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => void load(query)}>{t('common.refresh')}</Button>
       </Space>
       <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-        任务由代码注册（code 是注册键，库里只放调度与执行记录），这里只能改间隔与启停，不能新增或改名。
+        {t('job.hint')}
       </Typography.Paragraph>
 
       <Table<Job>
@@ -149,7 +155,7 @@ function JobList() {
       />
 
       <Modal
-        title={editing ? `编辑任务：${editing.name}` : '编辑任务'}
+        title={editing ? t('job.edit_title', { name: editing.name }) : t('job.edit_title_plain')}
         open={modal}
         onCancel={() => setModal(false)}
         onOk={() => void submit()}
@@ -157,22 +163,24 @@ function JobList() {
         width={480}
       >
         <Form form={form} labelCol={{ span: 6 }} wrapperCol={{ span: 16 }}>
-          <Form.Item label="名称">{editing?.name}</Form.Item>
-          <Form.Item label="code">{editing?.code}</Form.Item>
+          <Form.Item label={t('field.job_name')}>{editing?.name}</Form.Item>
+          <Form.Item label={t('field.job_code')}>{editing?.code}</Form.Item>
           <Form.Item
-            name="cron" label="间隔（秒）"
+            name="cron" label={t('field.job_interval')}
             rules={[
-              { required: true, message: '请输入间隔秒数' },
+              { required: true, message: t('job.interval_required') },
               {
                 validator: (_, v: number) => (
-                  Number.isInteger(v) && v > 0 ? Promise.resolve() : Promise.reject(new Error('间隔得是大于 0 的整数秒'))
+                  Number.isInteger(v) && v > 0
+                    ? Promise.resolve()
+                    : Promise.reject(new Error(t('job.interval_invalid')))
                 ),
               },
             ]}
           >
             <InputNumber min={1} step={60} style={{ width: 180 }} />
           </Form.Item>
-          <Form.Item name="status" label="状态"><Select options={STATUS_OPTIONS} /></Form.Item>
+          <Form.Item name="status" label={t('field.status')}><Select options={statusOptions} /></Form.Item>
         </Form>
       </Modal>
     </>
@@ -180,6 +188,7 @@ function JobList() {
 }
 
 function JobLogs() {
+  const { t } = useI18n();
   const [query, setQuery] = useState<JobLogQuery>({ page: 1, size: 10 });
   const [rows, setRows] = useState<JobLog[]>([]);
   const [total, setTotal] = useState(0);
@@ -199,29 +208,29 @@ function JobLogs() {
   useEffect(() => { void load(query); }, [query, load]);
 
   const columns: ColumnsType<JobLog> = [
-    { title: 'ID', dataIndex: 'id', width: 70 },
-    { title: '任务', dataIndex: 'job_code', width: 180 },
-    { title: '开始时间', dataIndex: 'started_at', width: 170 },
-    { title: '耗时', dataIndex: 'duration_ms', width: 90, render: (v: number) => `${v} ms` },
-    { title: '状态', dataIndex: 'status', width: 80, render: runTag },
-    { title: '消息', dataIndex: 'msg', ellipsis: true },
+    { title: t('field.id'), dataIndex: 'id', width: 70 },
+    { title: t('field.job_code'), dataIndex: 'job_code', width: 180 },
+    { title: t('field.started_at'), dataIndex: 'started_at', width: 170 },
+    { title: t('field.duration'), dataIndex: 'duration_ms', width: 90, render: (v: number) => `${v} ms` },
+    { title: t('field.status'), dataIndex: 'status', width: 80, render: (v: number | null) => runTag(t, v) },
+    { title: t('field.msg'), dataIndex: 'msg', ellipsis: true },
   ];
 
   return (
     <>
       <Space style={{ marginBottom: 12 }} wrap>
         <Input.Search
-          placeholder="任务 code" allowClear style={{ width: 180 }}
+          placeholder={t('job.code_placeholder')} allowClear style={{ width: 180 }}
           onSearch={(v) => setQuery((q) => ({ ...q, job_code: v || undefined, page: 1 }))}
         />
         <Select
-          placeholder="状态" allowClear style={{ width: 110 }}
-          options={RUN_STATUS_OPTIONS}
+          placeholder={t('field.status')} allowClear style={{ width: 110 }}
+          options={[{ value: 1, label: t('common.success') }, { value: 0, label: t('common.failed') }]}
           onChange={(v) => setQuery((q) => ({ ...q, status: v, page: 1 }))}
         />
         <DatePicker.RangePicker
           showTime
-          placeholder={['开始时间', '结束时间']}
+          placeholder={[t('field.started_at'), t('field.ended_at')]}
           onChange={(v) => setQuery((q) => ({
             ...q,
             start: v?.[0]?.format('YYYY-MM-DD HH:mm:ss'),
@@ -229,7 +238,7 @@ function JobLogs() {
             page: 1,
           }))}
         />
-        <Button icon={<ReloadOutlined />} onClick={() => void load(query)}>刷新</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => void load(query)}>{t('common.refresh')}</Button>
       </Space>
 
       <Table<JobLog>

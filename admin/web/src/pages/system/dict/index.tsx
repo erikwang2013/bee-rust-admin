@@ -11,15 +11,21 @@ import {
 import type { DictItem, DictType } from '../../../api/types';
 import { dictCache } from '../../../hooks/useDict';
 import Auth from '../../../auth/Auth';
-
-const STATUS_OPTIONS = [{ value: 1, label: '启用' }, { value: 0, label: '禁用' }];
-
-const statusTag = (v: number) => <Tag color={v === 1 ? 'green' : 'red'}>{v === 1 ? '启用' : '禁用'}</Tag>;
+import { useI18n } from '../../../i18n';
 
 export default function DictPage() {
   const { message } = App.useApp();
+  const { t } = useI18n();
   const [typeForm] = Form.useForm<DictTypeForm>();
   const [itemForm] = Form.useForm<DictItemForm>();
+
+  const STATUS_OPTIONS = [
+    { value: 1, label: t('common.enabled') },
+    { value: 0, label: t('common.disabled') },
+  ];
+  const statusTag = (v: number) => (
+    <Tag color={v === 1 ? 'green' : 'red'}>{v === 1 ? t('common.enabled') : t('common.disabled')}</Tag>
+  );
 
   // 左栏：字典类型
   const [typeQuery, setTypeQuery] = useState<DictTypeQuery>({ page: 1, size: 10 });
@@ -89,11 +95,11 @@ export default function DictPage() {
     if (editingType) {
       const rest = { name: v.name, status: v.status, remark: v.remark };
       await dictApi.update(editingType.id, rest);
-      message.success('已保存');
+      message.success(t('common.saved'));
       setSelected((s) => (s && s.id === editingType.id ? { ...s, ...rest } : s));
     } else {
       await dictApi.create(v);
-      message.success('已创建');
+      message.success(t('common.created'));
     }
     setTypeModal(false);
     void loadTypes(typeQuery);
@@ -101,7 +107,7 @@ export default function DictPage() {
 
   const removeType = async (row: DictType) => {
     await dictApi.remove(row.id);
-    message.success('已删除');
+    message.success(t('common.deleted'));
     if (selected?.id === row.id) {
       setSelected(null);
       setItemQuery((q) => ({ page: 1, size: q.size, type_code: undefined }));
@@ -129,10 +135,10 @@ export default function DictPage() {
     const v = await itemForm.validateFields();
     if (editingItem) {
       await dictApi.itemUpdate(editingItem.id, v);
-      message.success('已保存');
+      message.success(t('common.saved'));
     } else {
       await dictApi.itemCreate(v);
-      message.success('已创建');
+      message.success(t('common.created'));
     }
     dictCache.delete(v.type_code); // 别处下拉若已缓存该 code，丢弃旧选项
     setItemModal(false);
@@ -140,26 +146,26 @@ export default function DictPage() {
   };
 
   const typeColumns: ColumnsType<DictType> = [
-    { title: '名称', dataIndex: 'name' },
-    { title: '编码', dataIndex: 'code' },
-    { title: '状态', dataIndex: 'status', width: 80, render: statusTag },
-    { title: '备注', dataIndex: 'remark', ellipsis: true },
+    { title: t('field.name'), dataIndex: 'name' },
+    { title: t('field.code'), dataIndex: 'code' },
+    { title: t('field.status'), dataIndex: 'status', width: 80, render: statusTag },
+    { title: t('field.remark'), dataIndex: 'remark', ellipsis: true },
     {
-      title: '操作', width: 110, fixed: 'right',
+      title: t('common.actions'), width: 110, fixed: 'right',
       render: (_, row) => (
         <Space>
           <Auth code="system:dict:edit">
-            <Button size="small" type="link" onClick={() => openEditType(row)}>编辑</Button>
+            <Button size="small" type="link" onClick={() => openEditType(row)}>{t('common.edit')}</Button>
           </Auth>
           <Auth code="system:dict:remove">
             <Popconfirm
-              title={`确认删除字典类型「${row.name}」？`}
-              description="该类型下的所有字典项会一并删除。"
-              okText="删除"
+              title={t('dict.type_delete_confirm', { name: row.name })}
+              description={t('dict.type_delete_desc')}
+              okText={t('common.delete')}
               okButtonProps={{ danger: true }}
               onConfirm={() => void removeType(row)}
             >
-              <Button size="small" type="link" danger>删除</Button>
+              <Button size="small" type="link" danger>{t('common.delete')}</Button>
             </Popconfirm>
           </Auth>
         </Space>
@@ -168,31 +174,31 @@ export default function DictPage() {
   ];
 
   const itemColumns: ColumnsType<DictItem> = [
-    { title: '标签', dataIndex: 'label' },
-    { title: '值', dataIndex: 'value' },
-    { title: '排序', dataIndex: 'sort', width: 70 },
-    { title: '状态', dataIndex: 'status', width: 80, render: statusTag },
-    { title: '备注', dataIndex: 'remark', ellipsis: true },
+    { title: t('field.label'), dataIndex: 'label' },
+    { title: t('field.value'), dataIndex: 'value' },
+    { title: t('field.sort'), dataIndex: 'sort', width: 70 },
+    { title: t('field.status'), dataIndex: 'status', width: 80, render: statusTag },
+    { title: t('field.remark'), dataIndex: 'remark', ellipsis: true },
     {
-      title: '操作', width: 110, fixed: 'right',
+      title: t('common.actions'), width: 110, fixed: 'right',
       render: (_, row) => (
         <Space>
           <Auth code="system:dict:edit">
-            <Button size="small" type="link" onClick={() => openEditItem(row)}>编辑</Button>
+            <Button size="small" type="link" onClick={() => openEditItem(row)}>{t('common.edit')}</Button>
           </Auth>
           <Auth code="system:dict:remove">
             <Popconfirm
-              title="确认删除该字典项？"
-              okText="删除"
+              title={t('dict.item_delete_confirm')}
+              okText={t('common.delete')}
               okButtonProps={{ danger: true }}
               onConfirm={async () => {
                 await dictApi.itemRemove(row.id);
-                message.success('已删除');
+                message.success(t('common.deleted'));
                 dictCache.delete(row.type_code);
                 void loadItems(itemQuery);
               }}
             >
-              <Button size="small" type="link" danger>删除</Button>
+              <Button size="small" type="link" danger>{t('common.delete')}</Button>
             </Popconfirm>
           </Auth>
         </Space>
@@ -203,20 +209,20 @@ export default function DictPage() {
   return (
     <Row gutter={16}>
       <Col xs={24} xl={10}>
-        <Typography.Title level={5}>字典类型</Typography.Title>
+        <Typography.Title level={5}>{t('dict.types_title')}</Typography.Title>
         <Space style={{ marginBottom: 12 }} wrap>
           <Input.Search
-            placeholder="名称" allowClear style={{ width: 160 }}
+            placeholder={t('field.name')} allowClear style={{ width: 160 }}
             onSearch={(v) => setTypeQuery((q) => ({ ...q, name: v || undefined, page: 1 }))}
           />
           <Select
-            placeholder="状态" allowClear style={{ width: 100 }}
+            placeholder={t('field.status')} allowClear style={{ width: 100 }}
             options={STATUS_OPTIONS}
             onChange={(v) => setTypeQuery((q) => ({ ...q, status: v, page: 1 }))}
           />
-          <Button icon={<ReloadOutlined />} onClick={() => void loadTypes(typeQuery)}>刷新</Button>
+          <Button icon={<ReloadOutlined />} onClick={() => void loadTypes(typeQuery)}>{t('common.refresh')}</Button>
           <Auth code="system:dict:add">
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreateType}>新增</Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreateType}>{t('common.add')}</Button>
           </Auth>
         </Space>
 
@@ -242,30 +248,32 @@ export default function DictPage() {
 
       <Col xs={24} xl={14}>
         <Typography.Title level={5}>
-          字典项{selected ? `：${selected.name}（${selected.code}）` : ''}
+          {selected
+            ? t('dict.items_title_selected', { name: selected.name, code: selected.code })
+            : t('dict.items_title')}
         </Typography.Title>
 
         {selected ? (
           <>
             <Space style={{ marginBottom: 12 }} wrap>
               <Input.Search
-                placeholder="标签" allowClear style={{ width: 160 }}
+                placeholder={t('field.label')} allowClear style={{ width: 160 }}
                 onSearch={(v) => setItemQuery((q) => ({ ...q, label: v || undefined, page: 1 }))}
               />
               <Select
-                placeholder="状态" allowClear style={{ width: 100 }}
+                placeholder={t('field.status')} allowClear style={{ width: 100 }}
                 options={STATUS_OPTIONS}
                 onChange={(v) => setItemQuery((q) => ({ ...q, status: v, page: 1 }))}
               />
-              <Button icon={<ReloadOutlined />} onClick={() => void loadItems(itemQuery)}>刷新</Button>
+              <Button icon={<ReloadOutlined />} onClick={() => void loadItems(itemQuery)}>{t('common.refresh')}</Button>
               <Auth code="system:dict:add">
-                <Button type="primary" icon={<PlusOutlined />} onClick={openCreateItem}>新增</Button>
+                <Button type="primary" icon={<PlusOutlined />} onClick={openCreateItem}>{t('common.add')}</Button>
               </Auth>
               <Button
                 icon={<DownloadOutlined />}
                 onClick={() => void dictApi.itemExport(itemQuery)}
               >
-                导出
+                {t('common.export')}
               </Button>
             </Space>
 
@@ -284,13 +292,15 @@ export default function DictPage() {
           </>
         ) : (
           <Typography.Text type="secondary">
-            请在左侧选择一个字典类型；还没有类型的话，点左栏的「新增」建一个。
+            {t('dict.empty_hint')}
           </Typography.Text>
         )}
       </Col>
 
       <Modal
-        title={editingType ? `编辑字典类型：${editingType.name}` : '新增字典类型'}
+        title={editingType
+          ? t('dict.type_edit_title', { name: editingType.name })
+          : t('dict.type_create_title')}
         open={typeModal}
         onCancel={() => setTypeModal(false)}
         onOk={() => void submitType()}
@@ -298,23 +308,28 @@ export default function DictPage() {
         width={520}
       >
         <Form form={typeForm} labelCol={{ span: 5 }} wrapperCol={{ span: 18 }}>
-          <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]}>
-            <Input placeholder="如 用户性别" />
+          <Form.Item
+            name="name" label={t('field.name')}
+            rules={[{ required: true, message: t('validate.required', { field: t('field.name') }) }]}
+          >
+            <Input placeholder={t('dict.name_example')} />
           </Form.Item>
           <Form.Item
-            name="code" label="编码"
-            rules={[{ required: true, message: '请输入编码' }]}
-            extra={editingType ? '编码是字典项的关联键，创建后不可修改' : '如 user_sex'}
+            name="code" label={t('field.code')}
+            rules={[{ required: true, message: t('validate.required', { field: t('field.code') }) }]}
+            extra={editingType ? t('dict.code_hint_locked') : t('dict.code_example')}
           >
             <Input disabled={!!editingType} />
           </Form.Item>
-          <Form.Item name="status" label="状态"><Select options={STATUS_OPTIONS} /></Form.Item>
-          <Form.Item name="remark" label="备注"><Input.TextArea rows={2} /></Form.Item>
+          <Form.Item name="status" label={t('field.status')}><Select options={STATUS_OPTIONS} /></Form.Item>
+          <Form.Item name="remark" label={t('field.remark')}><Input.TextArea rows={2} /></Form.Item>
         </Form>
       </Modal>
 
       <Modal
-        title={editingItem ? `编辑字典项：${editingItem.label}` : '新增字典项'}
+        title={editingItem
+          ? t('dict.item_edit_title', { label: editingItem.label })
+          : t('dict.item_create_title')}
         open={itemModal}
         onCancel={() => setItemModal(false)}
         onOk={() => void submitItem()}
@@ -322,16 +337,22 @@ export default function DictPage() {
         width={520}
       >
         <Form form={itemForm} labelCol={{ span: 5 }} wrapperCol={{ span: 18 }}>
-          <Form.Item name="type_code" label="类型"><Input disabled /></Form.Item>
-          <Form.Item name="label" label="标签" rules={[{ required: true, message: '请输入标签' }]}>
-            <Input placeholder="下拉里显示的文字" />
+          <Form.Item name="type_code" label={t('field.dict_type')}><Input disabled /></Form.Item>
+          <Form.Item
+            name="label" label={t('field.label')}
+            rules={[{ required: true, message: t('validate.required', { field: t('field.label') }) }]}
+          >
+            <Input placeholder={t('dict.label_placeholder')} />
           </Form.Item>
-          <Form.Item name="value" label="值" rules={[{ required: true, message: '请输入值' }]}>
-            <Input placeholder="存库的值，同类型内不可重复" />
+          <Form.Item
+            name="value" label={t('field.value')}
+            rules={[{ required: true, message: t('validate.required', { field: t('field.value') }) }]}
+          >
+            <Input placeholder={t('dict.value_placeholder')} />
           </Form.Item>
-          <Form.Item name="sort" label="排序"><InputNumber min={0} /></Form.Item>
-          <Form.Item name="status" label="状态"><Select options={STATUS_OPTIONS} /></Form.Item>
-          <Form.Item name="remark" label="备注"><Input.TextArea rows={2} /></Form.Item>
+          <Form.Item name="sort" label={t('field.sort')}><InputNumber min={0} /></Form.Item>
+          <Form.Item name="status" label={t('field.status')}><Select options={STATUS_OPTIONS} /></Form.Item>
+          <Form.Item name="remark" label={t('field.remark')}><Input.TextArea rows={2} /></Form.Item>
         </Form>
       </Modal>
     </Row>

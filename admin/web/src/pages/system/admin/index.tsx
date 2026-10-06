@@ -12,6 +12,7 @@ import { deptApi } from '../../../api/dept';
 import type { Dept } from '../../../api/types';
 import Auth from '../../../auth/Auth';
 import { useAuth } from '../../../auth/AuthContext';
+import { useI18n } from '../../../i18n';
 
 /** 部门树 → 扁平选项（带父级路径，子部门也能选到）。 */
 function toDeptOptions(nodes: Dept[], prefix = ''): { value: number; label: string }[] {
@@ -24,6 +25,7 @@ function toDeptOptions(nodes: Dept[], prefix = ''): { value: number; label: stri
 export default function AdminPage() {
   const { message } = App.useApp();
   const { user: me } = useAuth();
+  const { t } = useI18n();
   const [form] = Form.useForm<AdminForm>();
   const [query, setQuery] = useState<AdminQuery>({ page: 1, size: 10 });
   const [rows, setRows] = useState<Admin[]>([]);
@@ -73,27 +75,27 @@ export default function AdminPage() {
     const v = await form.validateFields();
     if (editing) {
       await adminApi.update(editing.id, v);
-      message.success('已保存');
+      message.success(t('common.saved'));
     } else {
       await adminApi.create(v);
-      message.success('已创建');
+      message.success(t('common.created'));
     }
     setModalOpen(false);
     void load(query);
   };
 
   const columns: ColumnsType<Admin> = [
-    { title: 'ID', dataIndex: 'id', width: 70 },
-    { title: '用户名', dataIndex: 'username' },
-    { title: '昵称', dataIndex: 'nickname' },
-    { title: '部门', dataIndex: 'dept_name', render: (v) => v || '-' },
+    { title: t('field.id'), dataIndex: 'id', width: 70 },
+    { title: t('field.username'), dataIndex: 'username' },
+    { title: t('field.nickname'), dataIndex: 'nickname' },
+    { title: t('field.dept'), dataIndex: 'dept_name', render: (v) => v || '-' },
     {
-      title: '角色', dataIndex: 'role_names',
+      title: t('field.roles'), dataIndex: 'role_names',
       render: (v: string[], row) =>
-        row.is_super ? <Tag color="gold">超级管理员</Tag> : (v ?? []).map((n) => <Tag key={n}>{n}</Tag>),
+        row.is_super ? <Tag color="gold">{t('admin.super')}</Tag> : (v ?? []).map((n) => <Tag key={n}>{n}</Tag>),
     },
     {
-      title: '状态', dataIndex: 'status', width: 90,
+      title: t('field.status'), dataIndex: 'status', width: 90,
       render: (v: number, row) => (
         <Auth code="system:admin:edit">
           <Switch
@@ -101,20 +103,20 @@ export default function AdminPage() {
             disabled={row.id === me?.id || row.is_super}
             onChange={async (checked) => {
               await adminApi.setStatus(row.id, checked ? 1 : 0);
-              message.success('已更新');
+              message.success(t('common.updated'));
               void load(query);
             }}
           />
         </Auth>
       ),
     },
-    { title: '创建时间', dataIndex: 'created_at', width: 170 },
+    { title: t('field.created_at'), dataIndex: 'created_at', width: 170 },
     {
-      title: '操作', width: 240, fixed: 'right',
+      title: t('common.actions'), width: 240, fixed: 'right',
       render: (_, row) => (
         <Space>
           <Auth code="system:admin:edit">
-            <Button size="small" type="link" onClick={() => void openEdit(row)}>编辑</Button>
+            <Button size="small" type="link" onClick={() => void openEdit(row)}>{t('common.edit')}</Button>
           </Auth>
           <Auth code="system:admin:resetPwd">
             <Button
@@ -123,34 +125,34 @@ export default function AdminPage() {
               onClick={() => {
                 let pwd = '';
                 Modal.confirm({
-                  title: `重置 ${row.username} 的密码`,
+                  title: t('admin.reset_pwd_title', { username: row.username }),
                   content: (
-                    <Input.Password placeholder="新密码（至少 6 位）" onChange={(e) => { pwd = e.target.value; }} />
+                    <Input.Password placeholder={t('admin.reset_pwd_placeholder')} onChange={(e) => { pwd = e.target.value; }} />
                   ),
                   onOk: async () => {
                     if (pwd.length < 6) {
-                      message.error('密码至少 6 位');
+                      message.error(t('validate.min_len', { field: t('field.password'), n: 6 }));
                       return Promise.reject(new Error('too short'));
                     }
                     await adminApi.resetPassword(row.id, pwd);
-                    message.success('已重置');
+                    message.success(t('admin.reset_done'));
                   },
                 });
               }}
             >
-              重置密码
+              {t('admin.reset_pwd')}
             </Button>
           </Auth>
           <Auth code="system:admin:remove">
             <Popconfirm
-              title="确认删除该管理员？"
-              onConfirm={async () => { await adminApi.remove(row.id); message.success('已删除'); void load(query); }}
+              title={t('admin.delete_confirm')}
+              onConfirm={async () => { await adminApi.remove(row.id); message.success(t('common.deleted')); void load(query); }}
             >
               <Button
                 size="small" type="link" danger
                 disabled={row.id === me?.id || row.is_super}
               >
-                删除
+                {t('common.delete')}
               </Button>
             </Popconfirm>
           </Auth>
@@ -166,20 +168,20 @@ export default function AdminPage() {
     <>
       <Space style={{ marginBottom: 16 }} wrap>
         <Input.Search
-          placeholder="用户名" allowClear style={{ width: 200 }}
+          placeholder={t('field.username')} allowClear style={{ width: 200 }}
           onSearch={(v) => setQuery((q) => ({ ...q, username: v || undefined, page: 1 }))}
         />
         <Select
-          placeholder="状态" allowClear style={{ width: 120 }}
-          options={[{ value: 1, label: '启用' }, { value: 0, label: '禁用' }]}
+          placeholder={t('field.status')} allowClear style={{ width: 120 }}
+          options={[{ value: 1, label: t('common.enabled') }, { value: 0, label: t('common.disabled') }]}
           onChange={(v) => setQuery((q) => ({ ...q, status: v, page: 1 }))}
         />
-        <Button icon={<ReloadOutlined />} onClick={() => void load(query)}>刷新</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => void load(query)}>{t('common.refresh')}</Button>
         <Button icon={<DownloadOutlined />} onClick={() => void downloadCsv('/admins/export', query, 'admins')}>
-          导出
+          {t('common.export')}
         </Button>
         <Auth code="system:admin:add">
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新增</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{t('common.add')}</Button>
         </Auth>
       </Space>
 
@@ -197,7 +199,7 @@ export default function AdminPage() {
       />
 
       <Modal
-        title={editing ? `编辑管理员：${editing.username}` : '新增管理员'}
+        title={editing ? t('admin.edit_title', { username: editing.username }) : t('admin.create_title')}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onOk={() => void submit()}
@@ -207,44 +209,57 @@ export default function AdminPage() {
         <Form form={form} labelCol={{ span: 5 }} wrapperCol={{ span: 18 }}>
           {!editing && (
             <>
-              <Form.Item name="username" label="用户名" rules={[{ required: true, min: 3, message: '至少 3 位' }]}>
+              <Form.Item
+                name="username" label={t('field.username')}
+                rules={[{ required: true, min: 3, message: t('validate.min_len', { field: t('field.username'), n: 3 }) }]}
+              >
                 <Input autoComplete="off" />
               </Form.Item>
-              <Form.Item name="password" label="初始密码" rules={[{ required: true, min: 6, message: '至少 6 位' }]}>
+              <Form.Item
+                name="password" label={t('field.initial_password')}
+                rules={[{ required: true, min: 6, message: t('validate.min_len', { field: t('field.password'), n: 6 }) }]}
+              >
                 <Input.Password autoComplete="new-password" />
               </Form.Item>
             </>
           )}
-          <Form.Item name="nickname" label="昵称" rules={[{ required: true, message: '请输入昵称' }]}>
+          <Form.Item
+            name="nickname" label={t('field.nickname')}
+            rules={[{ required: true, message: t('validate.required', { field: t('field.nickname') }) }]}
+          >
             <Input />
           </Form.Item>
-          <Form.Item name="dept_id" label="部门">
+          <Form.Item name="dept_id" label={t('field.dept')}>
             <Select
-              allowClear placeholder="选择部门"
-              options={[{ value: 0, label: '（无）' }, ...toDeptOptions(depts)]}
+              allowClear placeholder={t('admin.pick_dept')}
+              options={[{ value: 0, label: t('common.none') }, ...toDeptOptions(depts)]}
             />
           </Form.Item>
           <Form.Item
-            name="role_ids" label="角色"
-            extra={hasUngrantable ? '灰掉的角色超出你的数据权限，无法授予' : undefined}
+            name="role_ids" label={t('field.roles')}
+            extra={hasUngrantable ? t('admin.grant_hint') : undefined}
           >
             <Select
-              mode="multiple" allowClear placeholder="选择角色"
+              mode="multiple" allowClear placeholder={t('admin.pick_roles')}
               // 授不出去的角色不隐藏、只禁用：让人看见它存在，也知道为什么点不动。
               // 实测：已选中的禁用项仍显示为已选（编辑别人授过宽角色的人不会丢），
               // 但标签上没有 ×，要清掉只能走选择框的 allowClear。
               options={roles.map((r) => ({ value: r.id, label: r.name, disabled: r.grantable === false }))}
             />
           </Form.Item>
-          <Form.Item name="email" label="邮箱"><Input /></Form.Item>
-          <Form.Item name="phone" label="手机号"><Input /></Form.Item>
-          <Form.Item name="sex" label="性别">
-            <Select options={[{ value: 0, label: '未知' }, { value: 1, label: '男' }, { value: 2, label: '女' }]} />
+          <Form.Item name="email" label={t('field.email')}><Input /></Form.Item>
+          <Form.Item name="phone" label={t('field.phone')}><Input /></Form.Item>
+          <Form.Item name="sex" label={t('field.sex')}>
+            <Select options={[
+              { value: 0, label: t('field.sex_unknown') },
+              { value: 1, label: t('field.sex_male') },
+              { value: 2, label: t('field.sex_female') },
+            ]} />
           </Form.Item>
-          <Form.Item name="status" label="状态">
-            <Select options={[{ value: 1, label: '启用' }, { value: 0, label: '禁用' }]} />
+          <Form.Item name="status" label={t('field.status')}>
+            <Select options={[{ value: 1, label: t('common.enabled') }, { value: 0, label: t('common.disabled') }]} />
           </Form.Item>
-          <Form.Item name="remark" label="备注"><Input.TextArea rows={2} /></Form.Item>
+          <Form.Item name="remark" label={t('field.remark')}><Input.TextArea rows={2} /></Form.Item>
         </Form>
       </Modal>
     </>

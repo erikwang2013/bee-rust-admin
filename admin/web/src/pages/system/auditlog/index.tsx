@@ -6,21 +6,23 @@ import { auditLogApi, type AuditLogQuery } from '../../../api/auditLog';
 import { downloadCsv } from '../../../api/download';
 import type { AuditLog } from '../../../api/types';
 import Auth from '../../../auth/Auth';
+import { useI18n, type I18nKey } from '../../../i18n';
 
 /** 与后端 audit.rs 的 module_action 取值一一对应（未列出的路径归 other）。 */
-const MODULES = [
-  { value: 'admin', label: '管理员' },
-  { value: 'role', label: '角色' },
-  { value: 'menu', label: '菜单' },
-  { value: 'dept', label: '部门' },
-  { value: 'loginlog', label: '登录记录' },
-  { value: 'auditlog', label: '操作日志' },
-  { value: 'auth', label: '认证' },
-  { value: 'other', label: '其他' },
-];
+const MODULE_KEYS: Record<string, I18nKey> = {
+  admin: 'auditlog.module.admin',
+  role: 'auditlog.module.role',
+  menu: 'auditlog.module.menu',
+  dept: 'auditlog.module.dept',
+  loginlog: 'auditlog.module.loginlog',
+  auditlog: 'auditlog.module.auditlog',
+  auth: 'auditlog.module.auth',
+  other: 'auditlog.module.other',
+};
 
 export default function AuditLogPage() {
   const { message } = App.useApp();
+  const { t } = useI18n();
   const [query, setQuery] = useState<AuditLogQuery>({ page: 1, size: 10 });
   const [rows, setRows] = useState<AuditLog[]>([]);
   const [total, setTotal] = useState(0);
@@ -41,52 +43,54 @@ export default function AuditLogPage() {
 
   const clear = async () => {
     const res = await auditLogApi.clear(query);
-    message.success(`已清空 ${res.deleted} 条`);
+    message.success(t('auditlog.cleared', { n: res.deleted }));
     void load(query);
   };
 
   const columns: ColumnsType<AuditLog> = [
-    { title: 'ID', dataIndex: 'id', width: 70 },
-    { title: '用户名', dataIndex: 'username' },
-    { title: '模块', dataIndex: 'module', width: 100 },
-    { title: '动作', dataIndex: 'action', width: 140 },
+    { title: t('field.id'), dataIndex: 'id', width: 70 },
+    { title: t('field.username'), dataIndex: 'username' },
+    { title: t('field.module'), dataIndex: 'module', width: 100 },
+    { title: t('field.action'), dataIndex: 'action', width: 140 },
     {
-      title: '请求', dataIndex: 'path', width: 260, ellipsis: true,
+      title: t('field.request'), dataIndex: 'path', width: 260, ellipsis: true,
       render: (v: string, row) => <span>{row.method} {v}</span>,
     },
     {
-      title: '状态', dataIndex: 'status', width: 80,
-      render: (v: number) => <Tag color={v === 1 ? 'green' : 'red'}>{v === 1 ? '成功' : '失败'}</Tag>,
+      title: t('field.status'), dataIndex: 'status', width: 80,
+      render: (v: number) => (
+        <Tag color={v === 1 ? 'green' : 'red'}>{v === 1 ? t('common.success') : t('common.failed')}</Tag>
+      ),
     },
-    { title: '说明', dataIndex: 'msg' },
+    { title: t('field.desc'), dataIndex: 'msg' },
     {
-      title: '耗时', dataIndex: 'duration_ms', width: 90,
+      title: t('field.duration'), dataIndex: 'duration_ms', width: 90,
       render: (v: number) => `${v} ms`,
     },
-    { title: 'IP', dataIndex: 'ip', width: 140 },
-    { title: '时间', dataIndex: 'created_at', width: 170 },
+    { title: t('field.ip'), dataIndex: 'ip', width: 140 },
+    { title: t('field.time'), dataIndex: 'created_at', width: 170 },
   ];
 
   return (
     <>
       <Space style={{ marginBottom: 16 }} wrap>
         <Input.Search
-          placeholder="用户名" allowClear style={{ width: 200 }}
+          placeholder={t('field.username')} allowClear style={{ width: 200 }}
           onSearch={(v) => setQuery((q) => ({ ...q, username: v || undefined, page: 1 }))}
         />
         <Select
-          placeholder="模块" allowClear style={{ width: 140 }}
-          options={MODULES}
+          placeholder={t('field.module')} allowClear style={{ width: 140 }}
+          options={Object.entries(MODULE_KEYS).map(([value, key]) => ({ value, label: t(key) }))}
           onChange={(v) => setQuery((q) => ({ ...q, module: v, page: 1 }))}
         />
         <Select
-          placeholder="状态" allowClear style={{ width: 120 }}
-          options={[{ value: 1, label: '成功' }, { value: 0, label: '失败' }]}
+          placeholder={t('field.status')} allowClear style={{ width: 120 }}
+          options={[{ value: 1, label: t('common.success') }, { value: 0, label: t('common.failed') }]}
           onChange={(v) => setQuery((q) => ({ ...q, status: v, page: 1 }))}
         />
         <DatePicker.RangePicker
           showTime
-          placeholder={['开始时间', '结束时间']}
+          placeholder={[t('field.started_at'), t('field.ended_at')]}
           onChange={(v) => setQuery((q) => ({
             ...q,
             start: v?.[0]?.format('YYYY-MM-DD HH:mm:ss'),
@@ -94,13 +98,13 @@ export default function AuditLogPage() {
             page: 1,
           }))}
         />
-        <Button icon={<ReloadOutlined />} onClick={() => void load(query)}>刷新</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => void load(query)}>{t('common.refresh')}</Button>
         <Button icon={<DownloadOutlined />} onClick={() => void downloadCsv('/audit-logs/export', query, 'audit-logs')}>
-          导出
+          {t('common.export')}
         </Button>
         <Auth code="system:auditlog:remove">
-          <Popconfirm title="确认清空当前筛选条件下的操作日志？" onConfirm={() => void clear()}>
-            <Button danger icon={<DeleteOutlined />}>清空</Button>
+          <Popconfirm title={t('auditlog.clear_confirm')} onConfirm={() => void clear()}>
+            <Button danger icon={<DeleteOutlined />}>{t('common.clear')}</Button>
           </Popconfirm>
         </Auth>
       </Space>

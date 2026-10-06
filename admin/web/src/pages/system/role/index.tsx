@@ -8,27 +8,33 @@ import type { ColumnsType } from 'antd/es/table';
 import { roleApi, type RoleForm, type RoleQuery } from '../../../api/role';
 import { menuApi } from '../../../api/menu';
 import { deptApi } from '../../../api/dept';
-import { DATA_SCOPE_LABELS, type Dept, type Menu, type Role } from '../../../api/types';
+import type { Dept, Menu, Role } from '../../../api/types';
 import Auth from '../../../auth/Auth';
+import { useI18n, type I18nKey, type TFunc } from '../../../i18n';
+
+/** 数据范围取值 1-5 → 词表键（标签在词表里，业务数据（角色名/菜单名）才来自库）。 */
+const SCOPE_KEYS: Record<number, I18nKey> = {
+  1: 'scope.all',
+  2: 'scope.dept_below',
+  3: 'scope.dept',
+  4: 'scope.self',
+  5: 'scope.custom',
+};
 
 /** 菜单树 → antd Tree；按钮类型标注出来便于区分。 */
-const toMenuTree = (nodes: Menu[]): DataNode[] =>
+const toMenuTree = (nodes: Menu[], t: TFunc): DataNode[] =>
   nodes.map((n) => ({
     key: n.id,
-    title: `${n.name}${n.type === 'F' ? '（按钮）' : ''}`,
-    children: n.children ? toMenuTree(n.children) : undefined,
+    title: `${n.name}${n.type === 'F' ? t('role.button_tag') : ''}`,
+    children: n.children ? toMenuTree(n.children, t) : undefined,
   }));
 
 const toDeptTree = (nodes: Dept[]): DataNode[] =>
   nodes.map((d) => ({ key: d.id, title: d.name, children: d.children ? toDeptTree(d.children) : undefined }));
 
-const SCOPE_OPTIONS = Object.entries(DATA_SCOPE_LABELS).map(([value, label]) => ({
-  value: Number(value),
-  label,
-}));
-
 export default function RolePage() {
   const { message } = App.useApp();
+  const { t } = useI18n();
   const [form] = Form.useForm<RoleForm>();
   const [query, setQuery] = useState<RoleQuery>({ page: 1, size: 10 });
   const [rows, setRows] = useState<Role[]>([]);
@@ -74,10 +80,10 @@ export default function RolePage() {
     const v = await form.validateFields();
     if (editing) {
       await roleApi.update(editing.id, v);
-      message.success('已保存');
+      message.success(t('common.saved'));
     } else {
       await roleApi.create(v);
-      message.success('已创建');
+      message.success(t('common.created'));
     }
     setModalOpen(false);
     void load(query);
@@ -99,37 +105,41 @@ export default function RolePage() {
     if (!permRole) return;
     await roleApi.setMenus(permRole.id, checked);
     if (permRole.data_scope === 5) await roleApi.setDepts(permRole.id, deptChecked);
-    message.success('权限已保存');
+    message.success(t('role.perm_saved'));
     setPermOpen(false);
   };
 
+  const scopeText = (v: number) => (SCOPE_KEYS[v] ? t(SCOPE_KEYS[v]) : String(v));
+
   const columns: ColumnsType<Role> = [
-    { title: 'ID', dataIndex: 'id', width: 70 },
-    { title: '角色名', dataIndex: 'name' },
-    { title: '角色标识', dataIndex: 'code' },
-    { title: '排序', dataIndex: 'sort', width: 80 },
-    { title: '数据范围', dataIndex: 'data_scope', render: (v: number) => DATA_SCOPE_LABELS[v] ?? v },
+    { title: t('field.id'), dataIndex: 'id', width: 70 },
+    { title: t('field.role_name'), dataIndex: 'name' },
+    { title: t('field.role_code'), dataIndex: 'code' },
+    { title: t('field.sort'), dataIndex: 'sort', width: 80 },
+    { title: t('field.data_scope'), dataIndex: 'data_scope', render: scopeText },
     {
-      title: '状态', dataIndex: 'status', width: 90,
-      render: (v: number) => <Tag color={v === 1 ? 'green' : 'red'}>{v === 1 ? '启用' : '禁用'}</Tag>,
+      title: t('field.status'), dataIndex: 'status', width: 90,
+      render: (v: number) => (
+        <Tag color={v === 1 ? 'green' : 'red'}>{v === 1 ? t('common.enabled') : t('common.disabled')}</Tag>
+      ),
     },
-    { title: '创建时间', dataIndex: 'created_at', width: 170 },
+    { title: t('field.created_at'), dataIndex: 'created_at', width: 170 },
     {
-      title: '操作', width: 200, fixed: 'right',
+      title: t('common.actions'), width: 200, fixed: 'right',
       render: (_, row) => (
         <Space>
           <Auth code="system:role:edit">
-            <Button size="small" type="link" onClick={() => openEdit(row)}>编辑</Button>
+            <Button size="small" type="link" onClick={() => openEdit(row)}>{t('common.edit')}</Button>
           </Auth>
           <Auth code="system:role:edit">
-            <Button size="small" type="link" onClick={() => void openPerm(row)}>权限</Button>
+            <Button size="small" type="link" onClick={() => void openPerm(row)}>{t('role.perm_button')}</Button>
           </Auth>
           <Auth code="system:role:remove">
             <Popconfirm
-              title="确认删除该角色？"
-              onConfirm={async () => { await roleApi.remove(row.id); message.success('已删除'); void load(query); }}
+              title={t('role.delete_confirm')}
+              onConfirm={async () => { await roleApi.remove(row.id); message.success(t('common.deleted')); void load(query); }}
             >
-              <Button size="small" type="link" danger>删除</Button>
+              <Button size="small" type="link" danger>{t('common.delete')}</Button>
             </Popconfirm>
           </Auth>
         </Space>
@@ -141,17 +151,17 @@ export default function RolePage() {
     <>
       <Space style={{ marginBottom: 16 }} wrap>
         <Input.Search
-          placeholder="角色名" allowClear style={{ width: 200 }}
+          placeholder={t('field.role_name')} allowClear style={{ width: 200 }}
           onSearch={(v) => setQuery((q) => ({ ...q, name: v || undefined, page: 1 }))}
         />
         <Select
-          placeholder="状态" allowClear style={{ width: 120 }}
-          options={[{ value: 1, label: '启用' }, { value: 0, label: '禁用' }]}
+          placeholder={t('field.status')} allowClear style={{ width: 120 }}
+          options={[{ value: 1, label: t('common.enabled') }, { value: 0, label: t('common.disabled') }]}
           onChange={(v) => setQuery((q) => ({ ...q, status: v, page: 1 }))}
         />
-        <Button icon={<ReloadOutlined />} onClick={() => void load(query)}>刷新</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => void load(query)}>{t('common.refresh')}</Button>
         <Auth code="system:role:add">
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新增</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{t('common.add')}</Button>
         </Auth>
       </Space>
 
@@ -169,7 +179,7 @@ export default function RolePage() {
       />
 
       <Modal
-        title={editing ? `编辑角色：${editing.name}` : '新增角色'}
+        title={editing ? t('role.edit_title', { name: editing.name }) : t('role.create_title')}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onOk={() => void submit()}
@@ -177,40 +187,46 @@ export default function RolePage() {
         width={520}
       >
         <Form form={form} labelCol={{ span: 5 }} wrapperCol={{ span: 18 }}>
-          <Form.Item name="name" label="角色名" rules={[{ required: true, message: '请输入角色名' }]}>
+          <Form.Item
+            name="name" label={t('field.role_name')}
+            rules={[{ required: true, message: t('validate.required', { field: t('field.role_name') }) }]}
+          >
             <Input />
           </Form.Item>
-          <Form.Item name="code" label="角色标识" rules={[{ required: true, message: '请输入角色标识' }]}>
-            <Input disabled={!!editing} placeholder="如 admin" />
+          <Form.Item
+            name="code" label={t('field.role_code')}
+            rules={[{ required: true, message: t('validate.required', { field: t('field.role_code') }) }]}
+          >
+            <Input disabled={!!editing} placeholder={t('role.code_example')} />
           </Form.Item>
-          <Form.Item name="sort" label="排序"><InputNumber min={0} /></Form.Item>
-          <Form.Item name="data_scope" label="数据范围">
-            <Select options={SCOPE_OPTIONS} />
+          <Form.Item name="sort" label={t('field.sort')}><InputNumber min={0} /></Form.Item>
+          <Form.Item name="data_scope" label={t('field.data_scope')}>
+            <Select options={Object.entries(SCOPE_KEYS).map(([v, k]) => ({ value: Number(v), label: t(k) }))} />
           </Form.Item>
-          <Form.Item name="status" label="状态">
-            <Select options={[{ value: 1, label: '启用' }, { value: 0, label: '禁用' }]} />
+          <Form.Item name="status" label={t('field.status')}>
+            <Select options={[{ value: 1, label: t('common.enabled') }, { value: 0, label: t('common.disabled') }]} />
           </Form.Item>
-          <Form.Item name="remark" label="备注"><Input.TextArea rows={2} /></Form.Item>
+          <Form.Item name="remark" label={t('field.remark')}><Input.TextArea rows={2} /></Form.Item>
         </Form>
       </Modal>
 
       <Drawer
-        title={`分配权限：${permRole?.name ?? ''}`}
+        title={t('role.perm_title', { name: permRole?.name ?? '' })}
         width={420}
         open={permOpen}
         onClose={() => setPermOpen(false)}
-        extra={<Button type="primary" onClick={() => void savePerm()}>保存</Button>}
+        extra={<Button type="primary" onClick={() => void savePerm()}>{t('common.save')}</Button>}
       >
         <Tree
           checkable
           defaultExpandAll
-          treeData={toMenuTree(treeData)}
+          treeData={toMenuTree(treeData, t)}
           checkedKeys={checked}
           onCheck={(keys) => setChecked((Array.isArray(keys) ? keys : keys.checked) as number[])}
         />
         {permRole?.data_scope === 5 && (
           <>
-            <Divider orientation="left">数据权限</Divider>
+            <Divider orientation="left">{t('role.data_perm')}</Divider>
             <Tree
               checkable
               defaultExpandAll

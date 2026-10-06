@@ -4,12 +4,14 @@ import { LockOutlined, UserOutlined } from '@ant-design/icons';
 import { useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../../auth/AuthContext';
 import { ThemeToggle } from '../../theme';
+import { LanguageToggle, useI18n } from '../../i18n';
 
 export default function LoginPage() {
   const { login } = useAuth();
   const nav = useNavigate();
   const loc = useLocation();
   const { token } = theme.useToken();
+  const { t } = useI18n();
   const [loading, setLoading] = useState(false);
 
   const onFinish = async (v: { username: string; password: string }) => {
@@ -28,26 +30,27 @@ export default function LoginPage() {
 
   return (
     <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: token.colorBgLayout }}>
-      <div style={{ position: 'fixed', top: 16, right: 16 }}>
+      <div style={{ position: 'fixed', top: 16, right: 16, display: 'flex', gap: 12 }}>
+        <LanguageToggle />
         <ThemeToggle />
       </div>
       <Card style={{ width: 380 }}>
         <div style={{ textAlign: 'center' }}>
-          <img src="/keeper.svg" alt="阿守" width={132} height={132} />
+          <img src="/keeper.svg" alt={t('common.mascot_alt')} width={132} height={132} />
         </div>
         <Typography.Title level={3} style={{ textAlign: 'center', marginTop: 0, marginBottom: 24 }}>
-          BRD · 管理后台
+          {t('login.title')}
         </Typography.Title>
         <Form onFinish={onFinish} size="large">
-          <Form.Item name="username" rules={[{ required: true, message: '请输入用户名' }]}>
-            <Input prefix={<UserOutlined />} placeholder="用户名" autoComplete="username" />
+          <Form.Item name="username" rules={[{ required: true, message: t('validate.required', { field: t('field.username') }) }]}>
+            <Input prefix={<UserOutlined />} placeholder={t('field.username')} autoComplete="username" />
           </Form.Item>
-          <Form.Item name="password" rules={[{ required: true, message: '请输入密码' }]}>
-            <Input.Password prefix={<LockOutlined />} placeholder="密码" autoComplete="current-password" />
+          <Form.Item name="password" rules={[{ required: true, message: t('validate.required', { field: t('field.password') }) }]}>
+            <Input.Password prefix={<LockOutlined />} placeholder={t('field.password')} autoComplete="current-password" />
           </Form.Item>
           <Form.Item>
             <Button type="primary" htmlType="submit" block loading={loading}>
-              登录
+              {t('login.submit')}
             </Button>
           </Form.Item>
         </Form>

@@ -3,6 +3,7 @@ import { Badge, Button, Empty, Popover, Spin, Typography } from 'antd';
 import { BellOutlined } from '@ant-design/icons';
 import { noticeApi } from '../api/notice';
 import { applyRead } from '../hooks/noticeUnread';
+import { useI18n } from '../i18n';
 import type { Notice, NoticeUnread } from '../api/types';
 
 /**
@@ -12,6 +13,7 @@ import type { Notice, NoticeUnread } from '../api/types';
  * 角标用接口的 total 而不是 list.length —— list 只给最近 50 条，超了会少报。
  */
 export default function NoticeBell() {
+  const { t } = useI18n();
   const [data, setData] = useState<NoticeUnread>({ total: 0, list: [] });
   const [loading, setLoading] = useState(true);
   const [marking, setMarking] = useState<number | null>(null);
@@ -49,7 +51,7 @@ export default function NoticeBell() {
       {loading && data.list.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 16 }}><Spin /></div>
       ) : data.list.length === 0 ? (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无未读公告" />
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('notice.unread_empty')} />
       ) : (
         data.list.map((n) => (
           <div key={n.id} style={{ borderBottom: '1px solid rgba(5,5,5,0.06)', padding: '8px 0' }}>
@@ -69,21 +71,21 @@ export default function NoticeBell() {
               loading={marking === n.id}
               onClick={() => void markRead(n)}
             >
-              标记已读
+              {t('notice.mark_read')}
             </Button>
           </div>
         ))
       )}
       {rest > 0 && (
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          还有 {rest} 条未读，这里只列出最近 50 条。
+          {t('notice.unread_rest', { n: rest })}
         </Typography.Text>
       )}
     </div>
   );
 
   return (
-    <Popover content={content} title={`未读公告（${data.total}）`} trigger="click" placement="bottomRight">
+    <Popover content={content} title={t('notice.unread_title', { n: data.total })} trigger="click" placement="bottomRight">
       <Badge count={data.total} size="small" overflowCount={99} offset={[-2, 2]}>
         <BellOutlined style={{ fontSize: 18, cursor: 'pointer' }} />
       </Badge>

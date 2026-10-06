@@ -4,8 +4,12 @@ import { UploadOutlined } from '@ant-design/icons';
 import { authApi } from '../../api/auth';
 import { TOKEN_KEY } from '../../api/client';
 import { avatarUrl, useAuth } from '../../auth/AuthContext';
+import { useI18n } from '../../i18n';
 
 const MAX_DATA_URL = 512 * 1024; // 后端对 data_url 与解码后字节双重卡 512KB
+
+/** 压到极限仍超 512KB：调用方要单独提示，别和「读不出来」混成一句。 */
+class AvatarTooLarge extends Error {}
 
 /** 缩到最长边 512px，再降 JPEG 质量，直到 data_url 不超过 512KB。 */
 async function compressToDataUrl(file: File): Promise<string> {
@@ -30,13 +34,14 @@ async function compressToDataUrl(file: File): Promise<string> {
     quality = Math.max(0.3, quality - 0.15);
     url = canvas.toDataURL('image/jpeg', quality);
   }
-  if (url.length > MAX_DATA_URL) throw new Error('图片过大');
+  if (url.length > MAX_DATA_URL) throw new AvatarTooLarge();
   return url;
 }
 
 export default function ProfilePage() {
   const { user, logout, reload, version } = useAuth();
   const { message } = App.useApp();
+  const { t } = useI18n();
   const [pwdForm] = Form.useForm();
   const [infoForm] = Form.useForm();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -52,15 +57,16 @@ export default function ProfilePage() {
     let data_url: string;
     try {
       data_url = await compressToDataUrl(file);
-    } catch {
-      message.error('图片读取失败，请换一张 PNG/JPEG');
+    } catch (e) {
+      // canvas 不可用等环境问题也走这里，统一按「读不出来」提示
+      message.error(t(e instanceof AvatarTooLarge ? 'profile.avatar_too_large' : 'profile.avatar_failed'));
       return;
     }
     setUploading(true);
     try {
       await authApi.uploadAvatar(data_url);
       await reload();
-      message.success('头像已更新');
+      message.success(t('profile.avatar_updated'));
     } finally {
       setUploading(false);
     }
@@ -75,7 +81,7 @@ export default function ProfilePage() {
         phone: v.phone ?? '',
       });
       await reload();
-      message.success('资料已保存');
+      message.success(t('profile.info_saved'));
     } finally {
       setSavingInfo(false);
     }
@@ -85,7 +91,7 @@ export default function ProfilePage() {
     setSavingPwd(true);
     try {
       await authApi.changePassword(v.old_password, v.new_password);
-      message.success('密码已修改，请重新登录');
+      message.success(t('profile.pwd_changed'));
       pwdForm.resetFields();
       await logout();
       window.location.href = '/login';
@@ -104,19 +110,19 @@ export default function ProfilePage() {
       const { token } = await authApi.logoutOthers();
       localStorage.setItem(TOKEN_KEY, token); // 先落新 token，reload 才能带着它拉 profile
       await reload();
-      message.success('其他设备已退出登录');
+      message.success(t('profile.kicked'));
     } finally {
       setKicking(false);
     }
   };
 
   return (
-    <Card title="个人中心" style={{ maxWidth: 640 }}>
+    <Card title={t('profile.title')} style={{ maxWidth: 640 }}>
       <Space size={16} align="center" style={{ marginBottom: 24 }}>
         <Avatar
           size={64}
           src={avatarUrl(user?.avatar, version)}
-          icon={<img src="/keeper-head.svg" alt="" width={52} height={52} />}
+          icon={<img src="/keeper-head.svg" alt={t('common.mascot_alt')} width={52} height={52} />}
         />
         <div>
           <input
@@ -127,10 +133,10 @@ export default function ProfilePage() {
             onChange={(e) => void onPickAvatar(e)}
           />
           <Button icon={<UploadOutlined />} loading={uploading} onClick={() => fileRef.current?.click()}>
-            更换头像
+            {t('profile.change_avatar')}
           </Button>
           <div style={{ marginTop: 4, color: 'rgba(128,128,128,1)', fontSize: 12 }}>
-            PNG / JPEG，超过 512KB 会自动压缩
+            {t('profile.avatar_hint')}
           </div>
         </div>
       </Space>
@@ -142,16 +148,20 @@ export default function ProfilePage() {
         initialValues={{ nickname: user?.nickname, email: user?.email, phone: user?.phone }}
         onFinish={(v) => void onSaveInfo(v)}
       >
-        <Form.Item name="nickname" label="昵称" rules={[{ required: true, max: 64, message: '请输入昵称（最多 64 字）' }]}>
+        <Form.Item
+          name="nickname"
+          label={t('field.nickname')}
+          rules={[{ required: true, max: 64, message: t('validate.required_max', { field: t('field.nickname'), max: 64 }) }]}
+        >
           <Input />
         </Form.Item>
-        <Form.Item name="email" label="邮箱" rules={[{ type: 'email', message: '邮箱格式不正确' }]}>
+        <Form.Item name="email" label={t('field.email')} rules={[{ type: 'email', message: t('validate.email') }]}>
           <Input />
         </Form.Item>
-        <Form.Item name="phone" label="手机号">
+        <Form.Item name="phone" label={t('field.phone')}>
           <Input />
         </Form.Item>
-        <Button type="primary" htmlType="submit" loading={savingInfo}>保存资料</Button>
+        <Button type="primary" htmlType="submit" loading={savingInfo}>{t('profile.save_info')}</Button>
       </Form>
 
       <Divider />
@@ -162,46 +172,50 @@ export default function ProfilePage() {
         style={{ maxWidth: 360 }}
         onFinish={(v) => void onChangePwd(v)}
       >
-        <Form.Item name="old_password" label="原密码" rules={[{ required: true, message: '请输入原密码' }]}>
+        <Form.Item
+          name="old_password"
+          label={t('field.old_password')}
+          rules={[{ required: true, message: t('validate.required', { field: t('field.old_password') }) }]}
+        >
           <Input.Password autoComplete="current-password" />
         </Form.Item>
         <Form.Item
           name="new_password"
-          label="新密码"
-          rules={[{ required: true, min: 6, message: '新密码至少 6 位' }]}
+          label={t('field.new_password')}
+          rules={[{ required: true, min: 6, message: t('validate.min_len', { field: t('field.new_password'), n: 6 }) }]}
         >
           <Input.Password autoComplete="new-password" />
         </Form.Item>
         <Form.Item
           name="confirm"
-          label="确认新密码"
+          label={t('field.confirm_password')}
           dependencies={['new_password']}
           rules={[
-            { required: true, message: '请再次输入新密码' },
+            { required: true, message: t('profile.confirm_required') },
             ({ getFieldValue }) => ({
               validator: (_, value) =>
                 !value || getFieldValue('new_password') === value
                   ? Promise.resolve()
-                  : Promise.reject(new Error('两次输入不一致')),
+                  : Promise.reject(new Error(t('validate.mismatch'))),
             }),
           ]}
         >
           <Input.Password autoComplete="new-password" />
         </Form.Item>
-        <Button type="primary" htmlType="submit" loading={savingPwd}>修改密码</Button>
+        <Button type="primary" htmlType="submit" loading={savingPwd}>{t('profile.change_pwd')}</Button>
       </Form>
 
       <Divider />
 
       <Popconfirm
-        title="退出其他设备"
-        description="其他设备上的登录会立即失效，需要重新登录；当前设备保持登录。"
-        okText="确认退出"
-        cancelText="取消"
+        title={t('profile.kick_others')}
+        description={t('profile.kick_confirm')}
+        okText={t('profile.kick_ok')}
+        cancelText={t('common.cancel')}
         okButtonProps={{ danger: true }}
         onConfirm={() => void onLogoutOthers()}
       >
-        <Button danger loading={kicking}>退出其他设备</Button>
+        <Button danger loading={kicking}>{t('profile.kick_others')}</Button>
       </Popconfirm>
     </Card>
   );

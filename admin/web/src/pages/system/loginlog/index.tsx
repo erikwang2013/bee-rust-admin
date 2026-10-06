@@ -6,9 +6,11 @@ import { loginLogApi, type LoginLogQuery } from '../../../api/loginLog';
 import { downloadCsv } from '../../../api/download';
 import type { LoginLog } from '../../../api/types';
 import Auth from '../../../auth/Auth';
+import { useI18n } from '../../../i18n';
 
 export default function LoginLogPage() {
   const { message } = App.useApp();
+  const { t } = useI18n();
   const [query, setQuery] = useState<LoginLogQuery>({ page: 1, size: 10 });
   const [rows, setRows] = useState<LoginLog[]>([]);
   const [total, setTotal] = useState(0);
@@ -29,38 +31,40 @@ export default function LoginLogPage() {
 
   const clear = async () => {
     await loginLogApi.clear(query);
-    message.success('已清空');
+    message.success(t('loginlog.cleared'));
     void load(query);
   };
 
   const columns: ColumnsType<LoginLog> = [
-    { title: 'ID', dataIndex: 'id', width: 70 },
-    { title: '用户名', dataIndex: 'username' },
-    { title: 'IP', dataIndex: 'ip', width: 140 },
+    { title: t('field.id'), dataIndex: 'id', width: 70 },
+    { title: t('field.username'), dataIndex: 'username' },
+    { title: t('field.ip'), dataIndex: 'ip', width: 140 },
     {
-      title: '状态', dataIndex: 'status', width: 80,
-      render: (v: number) => <Tag color={v === 1 ? 'green' : 'red'}>{v === 1 ? '成功' : '失败'}</Tag>,
+      title: t('field.status'), dataIndex: 'status', width: 80,
+      render: (v: number) => (
+        <Tag color={v === 1 ? 'green' : 'red'}>{v === 1 ? t('common.success') : t('common.failed')}</Tag>
+      ),
     },
-    { title: '说明', dataIndex: 'msg' },
-    { title: 'User-Agent', dataIndex: 'user_agent', width: 260, ellipsis: true },
-    { title: '时间', dataIndex: 'created_at', width: 170 },
+    { title: t('field.desc'), dataIndex: 'msg' },
+    { title: t('field.user_agent'), dataIndex: 'user_agent', width: 260, ellipsis: true },
+    { title: t('field.time'), dataIndex: 'created_at', width: 170 },
   ];
 
   return (
     <>
       <Space style={{ marginBottom: 16 }} wrap>
         <Input.Search
-          placeholder="用户名" allowClear style={{ width: 200 }}
+          placeholder={t('field.username')} allowClear style={{ width: 200 }}
           onSearch={(v) => setQuery((q) => ({ ...q, username: v || undefined, page: 1 }))}
         />
         <Select
-          placeholder="状态" allowClear style={{ width: 120 }}
-          options={[{ value: 1, label: '成功' }, { value: 0, label: '失败' }]}
+          placeholder={t('field.status')} allowClear style={{ width: 120 }}
+          options={[{ value: 1, label: t('common.success') }, { value: 0, label: t('common.failed') }]}
           onChange={(v) => setQuery((q) => ({ ...q, status: v, page: 1 }))}
         />
         <DatePicker.RangePicker
           showTime
-          placeholder={['开始时间', '结束时间']}
+          placeholder={[t('field.started_at'), t('field.ended_at')]}
           onChange={(v) => setQuery((q) => ({
             ...q,
             start: v?.[0]?.format('YYYY-MM-DD HH:mm:ss'),
@@ -68,13 +72,13 @@ export default function LoginLogPage() {
             page: 1,
           }))}
         />
-        <Button icon={<ReloadOutlined />} onClick={() => void load(query)}>刷新</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => void load(query)}>{t('common.refresh')}</Button>
         <Button icon={<DownloadOutlined />} onClick={() => void downloadCsv('/login-logs/export', query, 'login-logs')}>
-          导出
+          {t('common.export')}
         </Button>
         <Auth code="system:loginlog:remove">
-          <Popconfirm title="确认清空当前筛选条件下的登录记录？" onConfirm={() => void clear()}>
-            <Button danger icon={<DeleteOutlined />}>清空</Button>
+          <Popconfirm title={t('loginlog.clear_confirm')} onConfirm={() => void clear()}>
+            <Button danger icon={<DeleteOutlined />}>{t('common.clear')}</Button>
           </Popconfirm>
         </Auth>
       </Space>

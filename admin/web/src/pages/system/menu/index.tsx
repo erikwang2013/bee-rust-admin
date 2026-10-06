@@ -8,8 +8,11 @@ import type { ColumnsType } from 'antd/es/table';
 import { menuApi, type MenuForm } from '../../../api/menu';
 import type { Menu } from '../../../api/types';
 import Auth from '../../../auth/Auth';
+import { useI18n, type I18nKey } from '../../../i18n';
 
-const TYPE_LABELS: Record<Menu['type'], string> = { M: '目录', C: '菜单', F: '按钮' };
+const TYPE_KEYS: Record<Menu['type'], I18nKey> = {
+  M: 'menu.type_dir', C: 'menu.type_menu', F: 'menu.type_button',
+};
 const TYPE_COLORS: Record<Menu['type'], string> = { M: 'blue', C: 'green', F: 'orange' };
 
 type TreeNode = NonNullable<TreeSelectProps['treeData']>[number];
@@ -42,6 +45,7 @@ function toTreeData(nodes: Menu[], blocked: Set<number> = new Set()): TreeNode[]
 
 export default function MenuPage() {
   const { message } = App.useApp();
+  const { t } = useI18n();
   const [form] = Form.useForm<MenuForm>();
   const [rows, setRows] = useState<Menu[]>([]);
   const [loading, setLoading] = useState(false);
@@ -84,44 +88,46 @@ export default function MenuPage() {
     };
     if (editing) {
       await menuApi.update(editing.id, data);
-      message.success('已保存');
+      message.success(t('common.saved'));
     } else {
       await menuApi.create(data);
-      message.success('已创建');
+      message.success(t('common.created'));
     }
     setModalOpen(false);
     void load();
   };
 
   const columns: ColumnsType<Menu> = [
-    { title: '名称', dataIndex: 'name' },
+    { title: t('field.name'), dataIndex: 'name' },
     {
-      title: '类型', dataIndex: 'type', width: 90,
-      render: (v: Menu['type']) => <Tag color={TYPE_COLORS[v]}>{TYPE_LABELS[v]}</Tag>,
+      title: t('field.type'), dataIndex: 'type', width: 90,
+      render: (v: Menu['type']) => <Tag color={TYPE_COLORS[v]}>{t(TYPE_KEYS[v])}</Tag>,
     },
-    { title: '权限码', dataIndex: 'perm' },
-    { title: '路径', dataIndex: 'path' },
-    { title: '排序', dataIndex: 'sort', width: 80 },
+    { title: t('field.perm'), dataIndex: 'perm' },
+    { title: t('field.path'), dataIndex: 'path' },
+    { title: t('field.sort'), dataIndex: 'sort', width: 80 },
     {
-      title: '状态', dataIndex: 'status', width: 90,
-      render: (v: number) => <Tag color={v === 1 ? 'green' : 'red'}>{v === 1 ? '启用' : '禁用'}</Tag>,
+      title: t('field.status'), dataIndex: 'status', width: 90,
+      render: (v: number) => (
+        <Tag color={v === 1 ? 'green' : 'red'}>{v === 1 ? t('common.enabled') : t('common.disabled')}</Tag>
+      ),
     },
     {
-      title: '操作', width: 200,
+      title: t('common.actions'), width: 200,
       render: (_, row) => (
         <Space>
           <Auth code="system:menu:add">
-            <Button size="small" type="link" onClick={() => openCreate(row.id)}>新增子项</Button>
+            <Button size="small" type="link" onClick={() => openCreate(row.id)}>{t('menu.add_child')}</Button>
           </Auth>
           <Auth code="system:menu:edit">
-            <Button size="small" type="link" onClick={() => openEdit(row)}>编辑</Button>
+            <Button size="small" type="link" onClick={() => openEdit(row)}>{t('common.edit')}</Button>
           </Auth>
           <Auth code="system:menu:remove">
             <Popconfirm
-              title="确认删除该菜单？"
-              onConfirm={async () => { await menuApi.remove(row.id); message.success('已删除'); void load(); }}
+              title={t('menu.delete_confirm')}
+              onConfirm={async () => { await menuApi.remove(row.id); message.success(t('common.deleted')); void load(); }}
             >
-              <Button size="small" type="link" danger>删除</Button>
+              <Button size="small" type="link" danger>{t('common.delete')}</Button>
             </Popconfirm>
           </Auth>
         </Space>
@@ -132,9 +138,9 @@ export default function MenuPage() {
   return (
     <>
       <Space style={{ marginBottom: 16 }} wrap>
-        <Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => void load()}>{t('common.refresh')}</Button>
         <Auth code="system:menu:add">
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate(0)}>新增</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate(0)}>{t('common.add')}</Button>
         </Auth>
       </Space>
 
@@ -149,7 +155,7 @@ export default function MenuPage() {
       />
 
       <Modal
-        title={editing ? `编辑菜单：${editing.name}` : '新增菜单'}
+        title={editing ? t('menu.edit_title', { name: editing.name }) : t('menu.create_title')}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onOk={() => void submit()}
@@ -157,54 +163,64 @@ export default function MenuPage() {
         width={560}
       >
         <Form form={form} labelCol={{ span: 5 }} wrapperCol={{ span: 18 }}>
-          <Form.Item name="parent_id" label="上级菜单">
+          <Form.Item name="parent_id" label={t('field.parent_menu')}>
             <TreeSelect
-              allowClear placeholder="顶级" treeDefaultExpandAll
-              treeData={[{ value: 0, title: '顶级', children: toTreeData(rows, editing ? subtreeIds(rows, editing.id) : undefined) }]}
+              allowClear placeholder={t('common.top')} treeDefaultExpandAll
+              treeData={[{
+                value: 0,
+                title: t('common.top'),
+                children: toTreeData(rows, editing ? subtreeIds(rows, editing.id) : undefined),
+              }]}
             />
           </Form.Item>
-          <Form.Item name="type" label="类型">
+          <Form.Item name="type" label={t('field.type')}>
             <Radio.Group
-              options={[
-                { value: 'M', label: '目录' },
-                { value: 'C', label: '菜单' },
-                { value: 'F', label: '按钮' },
-              ]}
+              options={(['M', 'C', 'F'] as const).map((v) => ({ value: v, label: t(TYPE_KEYS[v]) }))}
             />
           </Form.Item>
-          <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]}>
+          <Form.Item
+            name="name" label={t('field.name')}
+            rules={[{ required: true, message: t('validate.required', { field: t('field.name') }) }]}
+          >
             <Input />
           </Form.Item>
           {(type === 'M' || type === 'C') && (
-            <Form.Item name="path" label="路由路径" rules={[{ required: true, message: '请输入路由路径' }]}>
-              <Input placeholder="如 /system/admin" />
+            <Form.Item
+              name="path" label={t('field.route_path')}
+              rules={[{ required: true, message: t('validate.required', { field: t('field.route_path') }) }]}
+            >
+              <Input placeholder={t('menu.path_example')} />
             </Form.Item>
           )}
           {type === 'C' && (
-            <Form.Item name="component" label="组件">
-              <Input placeholder="前端组件路径，可留空" />
+            <Form.Item name="component" label={t('field.component')}>
+              <Input placeholder={t('menu.component_hint')} />
             </Form.Item>
           )}
           {(type === 'C' || type === 'F') && (
             <Form.Item
               name="perm"
-              label="权限码"
-              rules={type === 'F' ? [{ required: true, message: '请输入权限码' }] : []}
+              label={t('field.perm')}
+              rules={type === 'F'
+                ? [{ required: true, message: t('validate.required', { field: t('field.perm') }) }]
+                : []}
             >
-              <Input placeholder="如 system:admin:add" />
+              <Input placeholder={t('menu.perm_example')} />
             </Form.Item>
           )}
           {(type === 'M' || type === 'C') && (
-            <Form.Item name="icon" label="图标"><Input placeholder="如 SettingOutlined" /></Form.Item>
-          )}
-          <Form.Item name="sort" label="排序"><InputNumber min={0} /></Form.Item>
-          {(type === 'M' || type === 'C') && (
-            <Form.Item name="visible" label="显示">
-              <Select options={[{ value: 1, label: '显示' }, { value: 0, label: '隐藏' }]} />
+            <Form.Item name="icon" label={t('field.icon')}>
+              <Input placeholder={t('menu.icon_example')} />
             </Form.Item>
           )}
-          <Form.Item name="status" label="状态">
-            <Select options={[{ value: 1, label: '启用' }, { value: 0, label: '禁用' }]} />
+          <Form.Item name="sort" label={t('field.sort')}><InputNumber min={0} /></Form.Item>
+          {(type === 'M' || type === 'C') && (
+            <Form.Item name="visible" label={t('field.visible')}>
+              <Select options={[{ value: 1, label: t('menu.show') }, { value: 0, label: t('menu.hide') }]} />
+            </Form.Item>
+          )}
+          <Form.Item name="status" label={t('field.status')}>
+            <Select options={[{ value: 1, label: t('common.enabled') }, { value: 0, label: t('common.disabled') }]} />
           </Form.Item>
         </Form>
       </Modal>

@@ -5,6 +5,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router';
 import { menuIcon } from '../icons';
 import { avatarUrl, useAuth } from '../auth/AuthContext';
 import { ThemeToggle } from '../theme';
+import { LanguageToggle, useI18n } from '../i18n';
 import NoticeBell from './NoticeBell';
 import type { MenuNode } from '../api/types';
 
@@ -39,6 +40,7 @@ export default function BasicLayout() {
   const loc = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const { token } = theme.useToken();
+  const { t } = useI18n();
 
   const items = useMemo(() => toItems(menus), [menus]);
   const names = useMemo(() => flatten(menus), [menus]);
@@ -55,9 +57,9 @@ export default function BasicLayout() {
 
   const userMenu = {
     items: [
-      { key: 'profile', icon: <UserOutlined />, label: '个人中心' },
+      { key: 'profile', icon: <UserOutlined />, label: t('profile.title') },
       { type: 'divider' as const },
-      { key: 'logout', icon: <LogoutOutlined />, label: '退出登录' },
+      { key: 'logout', icon: <LogoutOutlined />, label: t('layout.logout') },
     ],
     onClick: async ({ key }: { key: string }) => {
       if (key === 'profile') nav('/profile');
@@ -73,9 +75,9 @@ export default function BasicLayout() {
       <Sider collapsible collapsed={collapsed} onCollapse={setCollapsed} theme="dark" width={220}>
         <div style={{ height: 48, margin: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
           <span style={{ display: 'inline-flex', background: '#fff', borderRadius: '50%', padding: 2 }}>
-            <img src="/keeper-head.svg" alt="阿守" width={collapsed ? 30 : 26} height={collapsed ? 30 : 26} />
+            <img src="/keeper-head.svg" alt={t('common.mascot_alt')} width={collapsed ? 30 : 26} height={collapsed ? 30 : 26} />
           </span>
-          {!collapsed && <span style={{ color: '#fff', fontWeight: 600 }}>BRD 管理后台</span>}
+          {!collapsed && <span style={{ color: '#fff', fontWeight: 600 }}>{t('layout.app_name')}</span>}
         </div>
         <Menu
           theme="dark"
@@ -90,6 +92,7 @@ export default function BasicLayout() {
         <Header style={{ background: token.colorBgContainer, padding: '0 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Breadcrumb items={crumbs.map((c) => ({ title: c }))} />
           <Space size={16}>
+            <LanguageToggle />
             <ThemeToggle />
             <NoticeBell />
             <Dropdown menu={userMenu}>
