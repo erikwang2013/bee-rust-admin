@@ -5,6 +5,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router';
 import { menuIcon } from '../icons';
 import { avatarUrl, useAuth } from '../auth/AuthContext';
 import { ThemeToggle } from '../theme';
+import NoticeBell from './NoticeBell';
 import type { MenuNode } from '../api/types';
 
 const { Header, Sider, Content } = Layout;
@@ -90,6 +91,7 @@ export default function BasicLayout() {
           <Breadcrumb items={crumbs.map((c) => ({ title: c }))} />
           <Space size={16}>
             <ThemeToggle />
+            <NoticeBell />
             <Dropdown menu={userMenu}>
               <span style={{ cursor: 'pointer' }}>
                 <Avatar
