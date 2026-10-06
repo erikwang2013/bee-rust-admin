@@ -104,10 +104,7 @@ pub async fn run(
 
     // 库里残留的旧 code（任务已从代码里下线）：不可手动触发，避免点到不认识的任务
     let Some(spec) = jobs::spec(&job.code) else {
-        return Err(ApiError::Conflict(format!(
-            "任务 {} 未在代码中注册，不可手动触发",
-            job.code
-        )));
+        return Err(ApiError::job_not_registered(&job.code));
     };
     let (status, msg, duration_ms) = jobs::run(&state, job, spec).await;
     Ok(ok(json!({ "status": status, "msg": msg, "duration_ms": duration_ms })))

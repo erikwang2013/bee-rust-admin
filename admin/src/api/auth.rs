@@ -158,10 +158,7 @@ pub async fn login(
         ) {
             write_login_log(&state, 0, username, &headers, 0, "请求过于频繁").await;
             // 封禁时长 = 窗口 = lock_minutes，额度耗尽最晚也是等窗口滑完
-            return Err(ApiError::TooManyRequests(format!(
-                "尝试过于频繁，请 {} 分钟后再试",
-                state.cfg.lock_minutes
-            )));
+            return Err(ApiError::throttled(state.cfg.lock_minutes));
         }
         // 存储故障不 fail-closed（库有意如此）：限流是纵深防御，主认证闸门在后面
         if decision == ThrottleDecision::Unavailable {
@@ -367,9 +364,9 @@ pub async fn update_profile(
     auth: Auth,
     AppJson(body): AppJson<ProfileBody>,
 ) -> Result<Json<Value>, ApiError> {
-    crate::api::check_len("昵称", &body.nickname, 64)?;
-    crate::api::check_len("邮箱", &body.email, 128)?;
-    crate::api::check_len("手机号", &body.phone, 20)?;
+    crate::api::check_len("nickname", &body.nickname, 64)?;
+    crate::api::check_len("email", &body.email, 128)?;
+    crate::api::check_len("phone", &body.phone, 20)?;
 
     let mut admin = auth.admin.clone();
     admin.nickname = body.nickname;

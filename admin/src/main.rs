@@ -30,7 +30,7 @@ fn in_api(path: &str) -> bool {
 /// 路由级 404（A1）：未匹配的路径也回 `{code,msg,data}` 信封。
 async fn api_not_found(uri: axum::http::Uri) -> axum::response::Response {
     if in_api(uri.path()) {
-        error::envelope(axum::http::StatusCode::NOT_FOUND, "接口不存在")
+        error::envelope(axum::http::StatusCode::NOT_FOUND, "接口不存在", Some("common.not_found"))
     } else {
         axum::http::StatusCode::NOT_FOUND.into_response()
     }
@@ -39,7 +39,7 @@ async fn api_not_found(uri: axum::http::Uri) -> axum::response::Response {
 /// 路由级 405（A1）：路径存在但方法不对，同样回信封。
 async fn api_method_not_allowed(uri: axum::http::Uri) -> axum::response::Response {
     if in_api(uri.path()) {
-        error::envelope(axum::http::StatusCode::METHOD_NOT_ALLOWED, "方法不允许")
+        error::envelope(axum::http::StatusCode::METHOD_NOT_ALLOWED, "方法不允许", None)
     } else {
         axum::http::StatusCode::METHOD_NOT_ALLOWED.into_response()
     }

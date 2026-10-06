@@ -59,7 +59,7 @@ impl Auth {
         if self.is_super || self.perms.contains(code) {
             return Ok(());
         }
-        Err(ApiError::Forbidden(format!("缺少权限：{code}")))
+        Err(ApiError::missing_permission(code))
     }
 }
 
