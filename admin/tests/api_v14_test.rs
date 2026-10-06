@@ -284,6 +284,7 @@ async fn v14_backend_features() {
     let op_role = make_role(&c, &base, &admin, "b5_scope3", 3, 1, &op_menus).await;
     // 更宽的角色（scope=1）：只有超管能授
     let wide_role = make_role(&c, &base, &admin, "b5_wide", 1, 1, &[]).await;
+    let wide2_role = make_role(&c, &base, &admin, "b5_wide2", 1, 1, &[]).await;
     // 含操作者没有的权限码（system:role:edit）的角色
     let alien_role = make_role(&c, &base, &admin, "b5_alien", 4, 1, &[perm_menu("system:role:edit")]).await;
     // scope=4 且权限是操作者子集：可以授
@@ -389,6 +390,29 @@ async fn v14_backend_features() {
     let (st, vd) = call(&c, Method::GET, api(&format!("/roles/{wide_role}")), Some(&op), None).await;
     assert_eq!(st, 200, "角色详情: {vd}");
     assert_eq!(vd["data"]["grantable"], false, "详情同样带标记: {vd}");
+
+    // 保留已有的不算授予：超管给 t1 授过 scope=1 的角色之后，操作者改 t1 的昵称
+    // （编辑表单会把现有 role_ids 一起提交）不能被整个拒掉
+    let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{t1}/roles")), Some(&admin),
+        Some(json!({"role_ids": [wide_role]}))).await;
+    assert_eq!(st, 200, "超管先给 t1 授一个 scope=1 的角色: {v}");
+    let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{t1}")), Some(&op), Some(json!({
+        "nickname": "改个昵称", "dept_id": dept_a, "status": 1, "role_ids": [wide_role],
+    }))).await;
+    assert_eq!(st, 200, "原样带上已有的宽角色改昵称必须放行: {v}");
+    let (st, v) = call(&c, Method::GET, api(&format!("/admins/{t1}")), Some(&op), None).await;
+    assert_eq!(st, 200);
+    assert_eq!(v["data"]["nickname"], "改个昵称", "昵称确实改了: {v}");
+
+    // 差集只放过「已有」的那部分：新增宽角色照样 403
+    let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{t1}/roles")), Some(&op),
+        Some(json!({"role_ids": [wide_role, wide2_role]}))).await;
+    assert_eq!(st, 403, "新增的宽角色仍要 403（原有保护不能被削掉）: {v}");
+    assert_eq!(v["msg"], "不能授予数据范围更宽的角色", "{v}");
+    // 移除已有角色不算越权：收窄权限不需要谁的许可
+    let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{t1}/roles")), Some(&op),
+        Some(json!({"role_ids": []}))).await;
+    assert_eq!(st, 200, "移除已有角色放行: {v}");
 
     // 建人：部门与角色同样受限
     let (st, v) = call(&c, Method::POST, api("/admins"), Some(&op), Some(json!({
