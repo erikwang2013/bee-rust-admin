@@ -23,9 +23,14 @@ export default defineConfig({
     rollupOptions: {
       output: {
         // 框架与组件库单独成块：业务代码改动不会让用户重下这两坨（内容哈希不变即可命中缓存）
+        //
+        // 这里**不能**再列 '@ant-design/icons'：数组写法会把这个包连同它的整棵依赖树
+        // （836 个图标模块）全部并进 antd 块，而 antd 块是首屏静态加载的 —— 那样
+        // src/icons.ts 里的按需引入就白做了。antd 自己用到的图标会由依赖关系自然
+        // 并入 antd 块，剩下没用到的归入懒加载块，只有运维填了映射外的 icon 名才下载。
         manualChunks: {
           react: ['react', 'react-dom', 'react-router'],
-          antd: ['antd', '@ant-design/icons'],
+          antd: ['antd'],
         },
       },
     },
