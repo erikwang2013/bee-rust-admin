@@ -8,10 +8,17 @@ interface AuthState {
   perms: string[];
   menus: MenuNode[];
   ready: boolean;
+  /** 每次 reload 自增，给头像等固定 URL 的资源做缓存失效 */
+  version: number;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   reload: () => Promise<void>;
   has: (code: string) => boolean;
+}
+
+/** 头像地址固定是 /avatar/{id}，不带版本号换头像后浏览器会一直用旧缓存。 */
+export function avatarUrl(avatar: string | undefined, version: number) {
+  return avatar ? `${avatar}?v=${version}` : '/keeper-head.svg';
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -21,6 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [perms, setPerms] = useState<string[]>([]);
   const [menus, setMenus] = useState<MenuNode[]>([]);
   const [ready, setReady] = useState(false);
+  const [version, setVersion] = useState(0);
 
   const reload = useCallback(async () => {
     if (!localStorage.getItem(TOKEN_KEY)) {
@@ -33,6 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(profile.user);
       setPerms(profile.perms);
       setMenus(tree);
+      setVersion((v) => v + 1);
     } catch {
       localStorage.removeItem(TOKEN_KEY);
       setUser(null);
@@ -51,6 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(profile.user);
     setPerms(profile.perms);
     setMenus(tree);
+    setVersion((v) => v + 1);
     setReady(true);
   }, []);
 
@@ -66,8 +76,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ user, perms, menus, ready, login, logout, reload, has }),
-    [user, perms, menus, ready, login, logout, reload, has],
+    () => ({ user, perms, menus, ready, version, login, logout, reload, has }),
+    [user, perms, menus, ready, version, login, logout, reload, has],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

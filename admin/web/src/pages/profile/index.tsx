@@ -2,7 +2,7 @@ import { useRef, useState, type ChangeEvent } from 'react';
 import { App, Avatar, Button, Card, Divider, Form, Input, Space } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
 import { authApi } from '../../api/auth';
-import { useAuth } from '../../auth/AuthContext';
+import { avatarUrl, useAuth } from '../../auth/AuthContext';
 
 const MAX_DATA_URL = 512 * 1024; // 后端对 data_url 与解码后字节双重卡 512KB
 
@@ -34,7 +34,7 @@ async function compressToDataUrl(file: File): Promise<string> {
 }
 
 export default function ProfilePage() {
-  const { user, logout, reload } = useAuth();
+  const { user, logout, reload, version } = useAuth();
   const { message } = App.useApp();
   const [pwdForm] = Form.useForm();
   const [infoForm] = Form.useForm();
@@ -95,7 +95,7 @@ export default function ProfilePage() {
   return (
     <Card title="个人中心" style={{ maxWidth: 640 }}>
       <Space size={16} align="center" style={{ marginBottom: 24 }}>
-        <Avatar size={64} src={user?.avatar || '/keeper-head.svg'} />
+        <Avatar size={64} src={avatarUrl(user?.avatar, version)} />
         <div>
           <input
             ref={fileRef}

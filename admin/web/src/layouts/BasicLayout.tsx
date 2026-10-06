@@ -3,7 +3,7 @@ import { Avatar, Breadcrumb, Dropdown, Layout, Menu, Space, theme, type MenuProp
 import { LogoutOutlined, UserOutlined } from '@ant-design/icons';
 import { Outlet, useLocation, useNavigate } from 'react-router';
 import { menuIcon } from '../icons';
-import { useAuth } from '../auth/AuthContext';
+import { avatarUrl, useAuth } from '../auth/AuthContext';
 import { ThemeToggle } from '../theme';
 import type { MenuNode } from '../api/types';
 
@@ -33,7 +33,7 @@ function flatten(nodes: MenuNode[], map: Record<string, string> = {}) {
 }
 
 export default function BasicLayout() {
-  const { user, menus, logout } = useAuth();
+  const { user, menus, logout, version } = useAuth();
   const nav = useNavigate();
   const loc = useLocation();
   const [collapsed, setCollapsed] = useState(false);
@@ -92,7 +92,7 @@ export default function BasicLayout() {
             <ThemeToggle />
             <Dropdown menu={userMenu}>
               <span style={{ cursor: 'pointer' }}>
-                <Avatar size="small" src={user?.avatar || '/keeper-head.svg'} />
+                <Avatar size="small" src={avatarUrl(user?.avatar, version)} />
                 <span style={{ marginLeft: 8 }}>{user?.nickname || user?.username}</span>
               </span>
             </Dropdown>
