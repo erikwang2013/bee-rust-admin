@@ -191,13 +191,31 @@ pub async fn type_remove(
     Ok(ok(json!({ "items_deleted": items.len() })))
 }
 
+/// 类型必须存在：不建外键，至少别让手滑的 `type_code` 造出孤儿项（下拉里永远看不到）。
+async fn type_exists(state: &AppState, code: &str) -> Result<bool, ApiError> {
+    Ok(DictType::query()
+        .filter_eq("code", code)
+        .map_err(ApiError::from)?
+        .fetch_one(&state.db)
+        .await
+        .map_err(ApiError::from)?
+        .is_some())
+}
+
 /// 下拉数据源：只认登录，不要求 `system:dict:list`（任何登录用户都要能取字典）。
 /// 只回启用项，按 `sort, id` 排序；字段只留前端要的 `label` / `value`。
+///
+/// 类型不存在回 404（拼错 code 的人该看到「类型不存在」而不是一个空下拉，
+/// 分不清「没配数据」和「写错了」）；类型在但没启用项回 200 + `[]`——那是合法状态。
 pub async fn type_items(
     State(state): State<AppState>,
     _auth: Auth,
     AppPath(code): AppPath<String>,
 ) -> Result<Json<Value>, ApiError> {
+    if !type_exists(&state, &code).await? {
+        return Err(ApiError::NotFoundMsg("字典类型不存在".into()));
+    }
+
     let rows = DictItem::query()
         .filter_eq("type_code", &code)
         .map_err(ApiError::from)?
@@ -297,10 +315,14 @@ pub async fn item_create(
     check_label(&body.label)?;
     check_value(&body.value)?;
     check_len("备注", &body.remark, 255)?;
+    let type_code = body.type_code.trim();
+    if !type_exists(&state, type_code).await? {
+        return Err(ApiError::BadRequest("字典类型不存在".into()));
+    }
 
     let mut it = DictItem {
         id: 0,
-        type_code: body.type_code.trim().to_string(),
+        type_code: type_code.to_string(),
         label: body.label.trim().to_string(),
         value: body.value.trim().to_string(),
         sort: body.sort,
