@@ -167,11 +167,17 @@ export default function NoticePage() {
         <Form form={form} labelCol={{ span: 4 }} wrapperCol={{ span: 19 }}>
           <Form.Item
             name="title" label="标题"
-            rules={[{ required: true, message: '请输入标题' }, { max: 128, message: '标题最长 128 个字' }]}
+            rules={[
+              { required: true, whitespace: true, message: '请输入标题' },
+              { max: 128, message: '标题最长 128 个字' },
+            ]}
           >
             <Input maxLength={128} />
           </Form.Item>
-          <Form.Item name="content" label="内容" rules={[{ required: true, message: '请输入内容' }]}>
+          <Form.Item
+            name="content" label="内容"
+            rules={[{ required: true, whitespace: true, message: '请输入内容' }]}
+          >
             <Input.TextArea rows={10} placeholder="纯文本，换行会原样保留" />
           </Form.Item>
         </Form>
