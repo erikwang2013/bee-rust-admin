@@ -41,10 +41,14 @@ jobs:
 
       - name: 真库集成测试（后台全链路）
         env:
-          # 这两个测试会先 DROP 测试库里的表再重建；集成测试自带护栏：
+          # 这些测试会先 DROP 测试库里的表再重建；集成测试自带护栏：
           # DSN 指向的库名不以 _test 结尾时直接拒绝执行
           BEE_ADMIN_DB_DSN: mysql://root:testpass@127.0.0.1:3306/bee_admin_test
-        run: cargo test -p bee_admin --test api_core_test --test api_flow_test -- --nocapture
+        # 不逐个列 --test 名字：列了就注定腐烂 —— v1.2 / v1.4 / v1.5 三个套件
+        # 之前正因为没被列进来而从未在 CI 里跑过。整个包一起跑是安全的：
+        # cargo 串行执行各测试二进制（每个集成测试文件只放 1 个 #[tokio::test]，
+        # 就是为了避免同库上的 reset_db 互踩）。
+        run: cargo test -p bee_admin -- --nocapture
 
   web:
     runs-on: ubuntu-latest
