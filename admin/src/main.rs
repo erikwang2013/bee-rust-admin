@@ -45,8 +45,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db = bee_orm::Db::connect(&cfg.db_dsn).await?;
     seed::migrate(&db).await?;
     seed::seed(&db, &cfg).await?;
-    let state = AppState { db, cfg: std::sync::Arc::new(cfg) };
+    let throttle = api::auth::login_throttle(&cfg);
+    let state = AppState { db, cfg: std::sync::Arc::new(cfg), throttle };
     let addr = state.cfg.http_addr.clone();
+
+    // 内存限流的条目只在写路径顺手清窗口内的失败，桶本身（每个用户名/IP 一个）不会
+    // 自己消失 —— 库要求按窗口量级定时 purge，否则 key 基数会一直吃内存。
+    if let Some(throttle) = state.throttle.clone() {
+        let period = std::time::Duration::from_secs((state.cfg.lock_minutes * 60) as u64);
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(period);
+            loop {
+                tick.tick().await;
+                match throttle.purge_expired(util::now_unix()) {
+                    Ok(n) if n > 0 => tracing::debug!("清理过期限流条目 {n} 条"),
+                    Ok(_) => {}
+                    Err(e) => tracing::warn!("清理限流条目失败: {e}"),
+                }
+            }
+        });
+    }
 
     let router = bee_rust::bee_router::Router::new()
         .ns("/api/v1", |ns| ns.get("/health", health))

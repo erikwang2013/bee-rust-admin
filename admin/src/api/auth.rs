@@ -1,17 +1,20 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use crate::auth::{Auth, sign_token};
+use crate::config::AppConfig;
 use crate::error::{ApiError, AppJson, AppPath, ok};
 use crate::models::{Admin, LoginLog, Menu};
 use crate::state::AppState;
-use crate::util::{hash_password, now, verify_password};
+use crate::util::{hash_password, now, now_unix, verify_password};
 use axum::Json;
 use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use base64::Engine;
+use security_rust::throttle::{MemoryThrottleStore, Throttle, ThrottleConfig, ThrottleDecision};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 #[derive(Deserialize)]
 pub struct LoginBody {
@@ -77,65 +80,50 @@ pub async fn write_login_log(
     }
 }
 
-/// 阈值判定（纯函数，便于单测）：`limit <= 0` = 关闭该限制。
-/// 账号锁定与 IP 限流共用这套语义，所以两边都走它。
-fn is_locked(fails: u64, limit: i64) -> bool {
-    limit > 0 && fails >= limit as u64
-}
-
-/// 滑动窗口起点（`minutes` 分钟前）的 MySQL DATETIME 文本。
-fn window_start(minutes: i64) -> String {
-    (chrono::Local::now() - chrono::Duration::minutes(minutes))
-        .naive_local()
-        .format("%Y-%m-%d %H:%M:%S")
-        .to_string()
-}
-
-/// 该用户名是否已锁定：只数**上次成功登录之后**且在窗口内的失败。
-/// 不减去上次成功登录的话，4 次失败 + 1 次成功 + 1 次失败就会把刚登录成功的人立刻锁死
-/// （成功登录不清窗口）。锁定状态不额外存列，全部由 login_log 推导；锁定期间的失败照记
-/// （时间戳在最近一次成功之后），所以锁定期会随每次尝试顺延（滚动窗口），不用额外清零逻辑。
-async fn locked_now(state: &AppState, username: &str) -> Result<bool, ApiError> {
-    let (max_fail, minutes) = (state.cfg.max_fail, state.cfg.lock_minutes);
-    if max_fail <= 0 || minutes <= 0 || username.is_empty() {
-        return Ok(false);
+/// 登录限流闸门：`max_fail` 次窗口内失败即封 `lock_minutes` 分钟，账号与 IP 同一阈值。
+/// 两个维度同阈值是有意的：IP 桶比账号桶宽松时，攻击者能用「不触发自己上限」的
+/// 失败量反复把别人的账号刷封，而自己不被拦。
+/// `max_fail <= 0` 或 `lock_minutes <= 0` = 关闭（沿用既有配置约定）。
+pub fn login_throttle(cfg: &AppConfig) -> Option<Arc<Throttle<MemoryThrottleStore>>> {
+    if cfg.max_fail <= 0 || cfg.lock_minutes <= 0 {
+        return None;
     }
-    let fails = LoginLog::query()
-        .filter_eq("username", username)
-        .map_err(ApiError::from)?
-        .filter_eq("status", 0)
-        .map_err(ApiError::from)?
-        // 上次成功登录的时间；从没成功过 → 1970，即窗口内所有失败都算
-        .filter_raw(
-            "created_at > COALESCE((SELECT MAX(created_at) FROM login_log \
-             WHERE username = ? AND status = 1), '1970-01-01 00:00:00')",
-            &[username],
-        )
-        .filter_raw("created_at >= ?", &[window_start(minutes)])
-        .count(&state.db)
-        .await
-        .map_err(ApiError::from)?;
-    Ok(is_locked(fails, max_fail))
+    let secs = cfg.lock_minutes.saturating_mul(60).min(u64::MAX as i64) as u64;
+    Some(Arc::new(Throttle::new(
+        MemoryThrottleStore::new(),
+        ThrottleConfig {
+            threshold: cfg.max_fail.min(u32::MAX as i64) as u32,
+            window_secs: secs,
+            ban_secs: secs,
+        },
+    )))
 }
 
-/// 该 IP 是否已被限流：窗口内失败次数（不分用户名，含 429 拦截留下的记录）达阈值。
-/// 无 X-Real-IP / X-Forwarded-For 时 `client_ip()` 返回 "unknown"：直连（没走反向代理）
-/// 场景下所有客户端都会落进这一个桶，按它限流等于误伤全体用户 → 宁可跳过。
-async fn ip_throttled_now(state: &AppState, ip: &str) -> Result<bool, ApiError> {
-    let (ip_max_fail, minutes) = (state.cfg.ip_max_fail, state.cfg.lock_minutes);
-    if ip_max_fail <= 0 || minutes <= 0 || ip == "unknown" {
-        return Ok(false);
+/// 账号维度的桶名。截断到与 `login_log.username` 同样的 64 字符：
+/// 库要求 key 有界（否则人人换一个超长用户名就能撑爆内存）。
+fn user_key(username: &str) -> String {
+    format!("user:{}", username.chars().take(64).collect::<String>())
+}
+
+/// IP 维度的桶名。无 X-Real-IP / X-Forwarded-For（直连）时 `client_ip()` 返回
+/// "unknown"：所有人会挤进同一个桶，按它限流等于误伤全体用户 → 这一维直接不做。
+fn ip_key(ip: &str) -> Option<String> {
+    (ip != "unknown").then(|| format!("ip:{ip}"))
+}
+
+/// 一次登录失败计两个维度：账号（谁被猜）+ IP（从哪猜的）。
+/// 计数写失败不影响响应 —— 限流是纵深防御，不是主认证闸门。
+fn record_login_failure(state: &AppState, username: &str, ip: &str) {
+    let Some(throttle) = &state.throttle else { return };
+    let now = now_unix();
+    // 达到阈值的判定由库在 record_failure 内部做（返回 Banned），这里不用再算
+    let mut keys = vec![user_key(username)];
+    keys.extend(ip_key(ip));
+    for key in keys {
+        if let Err(e) = throttle.record_failure(&key, now) {
+            tracing::error!("登录限流计数失败 ({key}): {e}");
+        }
     }
-    let fails = LoginLog::query()
-        .filter_eq("ip", ip)
-        .map_err(ApiError::from)?
-        .filter_eq("status", 0)
-        .map_err(ApiError::from)?
-        .filter_raw("created_at >= ?", &[window_start(minutes)])
-        .count(&state.db)
-        .await
-        .map_err(ApiError::from)?;
-    Ok(is_locked(fails, ip_max_fail))
 }
 
 pub async fn login(
@@ -147,32 +135,31 @@ pub async fn login(
         return Err(ApiError::BadRequest("用户名和密码不能为空".into()));
     }
     let username = body.username.trim();
+    let ip = client_ip(&headers);
 
-    // IP 限流在最外层：同一个来源刷得太狠时，先于任何账号判定拦下（429）
-    if ip_throttled_now(&state, &client_ip(&headers)).await? {
-        // 这条记录 username 列**留空**，只留 ip：写进被尝试的用户名下会替那个账号
-        // 把失败窗口续上（每次 429 都是一条新失败），那 (b)「攻击者拖住受害者账号」
-        // 等于没修。反过来 ip 必须写：它让攻击者的限流窗口随其尝试滚动，真正停住他。
-        // 尝试的用户名留在 msg 里，事后仍可追查。
-        write_login_log(
-            &state,
-            0,
-            "",
-            &headers,
-            0,
-            &format!("请求过于频繁（尝试用户名: {username}）"),
-        )
-        .await;
-        return Err(ApiError::TooManyRequests);
-    }
-
-    // 锁定检查在验密之前：锁定期间不比对密码，响应也不泄露密码是否正确
-    if locked_now(&state, username).await? {
-        write_login_log(&state, 0, username, &headers, 0, "账号已锁定").await;
-        return Err(ApiError::BadRequest(format!(
-            "账号已锁定，请 {} 分钟后再试",
-            state.cfg.lock_minutes
-        )));
+    // 限流闸门在验密之前：过不去就不比对密码，响应也不泄露密码是否正确
+    if let Some(throttle) = &state.throttle {
+        let now = now_unix();
+        let uk = user_key(username);
+        let ik = ip_key(&ip);
+        let keys: Vec<&str> = std::iter::once(uk.as_str()).chain(ik.as_deref()).collect();
+        let decision = throttle.check_any(&keys, now);
+        // `Allow { remaining: 0 }` 是「额度已耗尽、本请求应被拒绝」，不是「还能再试一次」
+        if matches!(
+            decision,
+            ThrottleDecision::Banned { .. } | ThrottleDecision::Allow { remaining: 0 }
+        ) {
+            write_login_log(&state, 0, username, &headers, 0, "请求过于频繁").await;
+            // 封禁时长 = 窗口 = lock_minutes，额度耗尽最晚也是等窗口滑完
+            return Err(ApiError::TooManyRequests(format!(
+                "尝试过于频繁，请 {} 分钟后再试",
+                state.cfg.lock_minutes
+            )));
+        }
+        // 存储故障不 fail-closed（库有意如此）：限流是纵深防御，主认证闸门在后面
+        if decision == ThrottleDecision::Unavailable {
+            tracing::warn!("登录限流存储不可用，本次放行");
+        }
     }
 
     let admin = Admin::query()
@@ -184,14 +171,17 @@ pub async fn login(
 
     let Some(admin) = admin else {
         write_login_log(&state, 0, username, &headers, 0, "用户不存在").await;
+        record_login_failure(&state, username, &ip);
         return Err(ApiError::BadRequest("用户名或密码错误".into()));
     };
     if !verify_password(&body.password, &admin.password) {
         write_login_log(&state, admin.id, &admin.username, &headers, 0, "密码错误").await;
+        record_login_failure(&state, username, &ip);
         return Err(ApiError::BadRequest("用户名或密码错误".into()));
     }
     if admin.status != 1 {
         write_login_log(&state, admin.id, &admin.username, &headers, 0, "账号已禁用").await;
+        record_login_failure(&state, username, &ip);
         return Err(ApiError::BadRequest("账号已被禁用".into()));
     }
 
@@ -202,6 +192,15 @@ pub async fn login(
     updated.last_login_ip = client_ip(&headers);
     updated.updated_at = now();
     state.db.update(&updated).await.map_err(ApiError::from)?;
+
+    // 成功即清掉该账号的失败计数（修复①：4 次失败 + 1 次成功 + 1 次失败不该锁死）。
+    // IP 桶**不清**：桶是共享的，攻击者拿自己账号登录一次就能替爆破者洗掉计数，
+    // 封禁也会被顺手解除 —— 库的 record_success 只清计数不清封禁，正是为此。
+    if let Some(throttle) = &state.throttle {
+        if let Err(e) = throttle.record_success(&user_key(username)) {
+            tracing::error!("登录成功后清零限流计数失败: {e}");
+        }
+    }
 
     write_login_log(&state, admin.id, &admin.username, &headers, 1, "登录成功").await;
 
@@ -459,16 +458,6 @@ pub async fn change_password(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn lockout_threshold_and_disable() {
-        assert!(!is_locked(4, 5), "4 次未达阈值");
-        assert!(is_locked(5, 5), "5 次即锁定");
-        assert!(is_locked(6, 5), "超过也算");
-        // max_fail <= 0 = 关闭锁定
-        assert!(!is_locked(999, 0));
-        assert!(!is_locked(999, -1));
-    }
 
     /// 1x1 PNG（真实文件字节）。
     const PNG_B64: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";

@@ -22,6 +22,11 @@ pub fn now() -> NaiveDateTime {
     chrono::Local::now().naive_local()
 }
 
+/// 当前 unix 秒（限流模块的时间基准）。
+pub fn now_unix() -> u64 {
+    chrono::Utc::now().timestamp().max(0) as u64
+}
+
 /// argon2id 哈希（随机盐）。
 pub fn hash_password(plain: &str) -> String {
     let salt = SaltString::generate(&mut OsRng);

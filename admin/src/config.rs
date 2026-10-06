@@ -27,8 +27,6 @@ pub struct AppConfig {
     pub max_fail: i64,
     /// 登录失败锁定时长（分钟）；0 = 关闭锁定
     pub lock_minutes: i64,
-    /// 同一 IP 在窗口内的失败次数上限；0 = 关闭 IP 限流
-    pub ip_max_fail: i64,
 }
 
 impl AppConfig {
@@ -89,7 +87,6 @@ impl AppConfig {
             upload_dir: opt("app", "upload_dir", "uploads"),
             max_fail: num("auth", "max_fail", 5)?,
             lock_minutes: num("auth", "lock_minutes", 10)?,
-            ip_max_fail: num("auth", "ip_max_fail", 20)?,
         })
     }
 }
@@ -137,30 +134,24 @@ initial_admin_password = admin123
 
     #[test]
     fn optional_keys_default_for_old_confs() {
-        // 老 app.conf 没有 [auth] / upload_dir / ip_max_fail，必须仍能启动
+        // 老 app.conf 没有 [auth] / upload_dir，必须仍能启动
         let cfg = AppConfig::from_ini(&parse()).unwrap();
         assert_eq!(cfg.upload_dir, "uploads");
         assert_eq!(cfg.max_fail, 5);
         assert_eq!(cfg.lock_minutes, 10);
-        assert_eq!(cfg.ip_max_fail, 20);
 
         let mut map = parse();
         map.insert(
             "auth".into(),
-            [
-                ("max_fail".to_string(), "3".to_string()),
-                ("lock_minutes".to_string(), "1".to_string()),
-                ("ip_max_fail".to_string(), "7".to_string()),
-            ]
-            .into_iter()
-            .collect(),
+            [("max_fail".to_string(), "3".to_string()), ("lock_minutes".to_string(), "1".to_string())]
+                .into_iter()
+                .collect(),
         );
         map.get_mut("app").unwrap().insert("upload_dir".into(), "/data/up".into());
         let cfg = AppConfig::from_ini(&map).unwrap();
         assert_eq!(cfg.upload_dir, "/data/up");
         assert_eq!(cfg.max_fail, 3);
         assert_eq!(cfg.lock_minutes, 1);
-        assert_eq!(cfg.ip_max_fail, 7);
     }
 
     #[test]

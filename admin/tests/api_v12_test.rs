@@ -269,7 +269,7 @@ async fn v12_backend_features() {
     let (st, v) = call(&c, Method::GET, api("/depts/tree"), Some(&gate), None).await;
     assert_eq!(st, 403, "禁用后对应接口 403: {v}");
 
-    // ── B4 登录失败锁定 ─────────────────────────────────────
+    // ── B4 登录失败锁定（security-rust throttle，状态在进程内存里）──
     let (st, _v) = call(&c, Method::POST, api("/admins"), Some(&admin),
         Some(json!({"username": "lockme", "password": "lockme123"}))).await;
     assert_eq!(st, 200);
@@ -280,21 +280,19 @@ async fn v12_backend_features() {
         assert!(v["msg"].as_str().unwrap().contains("用户名或密码错误"),
             "未达阈值前仍提示密码错（不暴露锁定逻辑）: {v}");
     }
+    // 第 5 次失败当场记入封禁，但这一发的响应已经定了 —— 下一个请求才吃 429
     let (st, v) = call(&c, Method::POST, api("/auth/login"), None,
         Some(json!({"username": "lockme", "password": "lockme123"}))).await;
-    assert_eq!(st, 400, "锁定后正确密码也拒绝: {v}");
-    assert!(v["msg"].as_str().unwrap().contains("账号已锁定"), "提示要说明锁定: {v}");
-    assert!(common::login(&base, "lockme", "lockme123").await.is_none(), "锁定期内登不进去");
+    assert_eq!(st, 429, "封禁后正确密码也拒绝: {v}");
+    assert!(v["msg"].as_str().unwrap().contains("频繁"), "提示要说明限流: {v}");
+    assert!(common::login(&base, "lockme", "lockme123").await.is_none(), "封禁期内登不进去");
 
-    // 另一个用户不受影响（按用户名分别计数）
-    assert!(common::login(&base, "admin", "admin123").await.is_some(), "锁定只针对该账号");
+    // 另一个用户不受影响（账号维度按用户名分桶）。这一发同时也验证了直连不做 IP 维度：
+    // 无 X-Real-IP 时所有人都是 "unknown"，若照收进 IP 桶，它此刻已有 lockme 的 5 次失败
+    assert!(common::login(&base, "admin", "admin123").await.is_some(),
+        "锁定只针对该账号；直连（无 IP 头）也不该被并进同一个 IP 桶");
 
-    // 把失败记录挪到 11 分钟前 → 窗口（10 分钟）过期，可以登录
-    sqlx::query("UPDATE login_log SET created_at = created_at - INTERVAL 11 MINUTE WHERE username = 'lockme'")
-        .execute(&pool).await.unwrap();
-    assert!(common::login(&base, "lockme", "lockme123").await.is_some(), "窗口过后可登录");
-
-    // ── B4 修正 (a)：成功登录清掉失败窗口 ────────────────────
+    // 修 (a)：成功登录清掉该账号的失败计数
     let (st, _v) = call(&c, Method::POST, api("/admins"), Some(&admin),
         Some(json!({"username": "clearwind", "password": "clearwind123"}))).await;
     assert_eq!(st, 200);
@@ -308,48 +306,32 @@ async fn v12_backend_features() {
         Some(json!({"username": "clearwind", "password": "wrong"}))).await;
     assert_eq!(st, 400, "成功后再错一次: {v}");
     assert!(v["msg"].as_str().unwrap().contains("用户名或密码错误"),
-        "这一发不该被算成锁定: {v}");
+        "这一发不该被算成封禁: {v}");
     assert!(common::login(&base, "clearwind", "clearwind123").await.is_some(),
-        "4 失败 + 1 成功 + 1 失败后必须还能登录：失败窗口从上次成功登录起算");
+        "4 失败 + 1 成功 + 1 失败后必须还能登录：成功登录已清零计数");
 
-    // ── B4 修正 (b)：按 IP 限流 ──────────────────────────────
-    // 直连（无 X-Real-IP）不进 IP 桶：clearwind 的 5 次失败已在 "unknown" 桶里，
-    // 再加 1 次刚好到 ip_max_fail(6)，下一发仍必须是密码错而不是 429，
-    // 否则所有直连客户端会被并成一个桶互相拖死
-    let (st, _v) = call(&c, Method::POST, api("/auth/login"), None,
-        Some(json!({"username": "ghost_direct", "password": "nope"}))).await;
-    assert_eq!(st, 400);
-    let (st, v) = call(&c, Method::POST, api("/auth/login"), None,
-        Some(json!({"username": "ghost_direct2", "password": "nope"}))).await;
-    assert_eq!(st, 400, "unknown 桶攒够 ip_max_fail 后直连仍不限流（跳过而不是并桶）: {v}");
-
-    // 固定 IP 连续失败：每次换用户名（不触发账号锁定），只让 1.1.1.1 的计数涨
-    for i in 0..6 {
+    // 修 (b)：按 IP 限流。同一条 IP 连续失败（每次换用户名，不触发账号维度）
+    for i in 0..5 {
         let (st, v) = login_from(&c, &api("/auth/login"), "1.1.1.1", &format!("ghost{i}"), "nope").await;
-        assert_eq!(st, 400, "第 {i} 次（未达 IP 阈值）: {v}");
+        assert_eq!(st, 400, "第 {i} 次（未达阈值）: {v}");
     }
     let (st, v) = login_from(&c, &api("/auth/login"), "1.1.1.1", "admin", "admin123").await;
-    assert_eq!(st, 429, "同 IP 失败超阈值后，正确的账号密码也必须 429: {v}");
+    assert_eq!(st, 429, "同 IP 失败达阈值后，正确的账号密码也必须 429: {v}");
     assert_eq!(v["code"], 429, "429 也要走 code/msg/data 信封: {v}");
     assert!(v["msg"].as_str().unwrap().contains("频繁"), "提示说明限流: {v}");
-
-    // 限流拦截留痕：ip 列保留（让限流窗口随攻击者滚动），username 列留空
-    // （写进 admin 名下会替 admin 续上失败窗口，等于把 (b) 原样留着）
-    let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM login_log WHERE ip = '1.1.1.1'")
-        .fetch_one(&pool).await.unwrap();
-    assert_eq!(n, 7, "6 次失败 + 1 次限流拦截: {n}");
-    let u: String = sqlx::query_scalar(
-        "SELECT username FROM login_log WHERE ip = '1.1.1.1' AND msg LIKE '%频繁%'")
-        .fetch_one(&pool).await.unwrap();
-    assert_eq!(u, "", "限流记录不落在被尝试的账号名下");
-    let n: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM login_log WHERE username = 'admin' AND status = 0")
-        .fetch_one(&pool).await.unwrap();
-    assert_eq!(n, 0, "admin 一次失败都没有（限流不该算它的）: {n}");
 
     // 换个 IP 不受影响（限流按 IP 分桶）
     let (st, v) = login_from(&c, &api("/auth/login"), "2.2.2.2", "admin", "admin123").await;
     assert_eq!(st, 200, "其他 IP 不受这个桶影响: {v}");
+
+    // login_log 只当历史/审计：被限流拦下的尝试也照写，并留下被尝试的用户名
+    let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM login_log WHERE ip = '1.1.1.1'")
+        .fetch_one(&pool).await.unwrap();
+    assert_eq!(n, 6, "5 次失败 + 1 次限流拦截: {n}");
+    let u: String = sqlx::query_scalar(
+        "SELECT username FROM login_log WHERE ip = '1.1.1.1' AND msg LIKE '%频繁%'")
+        .fetch_one(&pool).await.unwrap();
+    assert_eq!(u, "admin", "被拦的尝试照记被尝试的用户名（库=历史，内存=限流）");
 
     // ── B9 内置菜单幂等补齐 ─────────────────────────────────
     let (st, v) = call(&c, Method::GET, api("/menus/tree"), Some(&admin), None).await;
@@ -374,6 +356,10 @@ async fn v12_backend_features() {
     // 再起一个进程（同一库）：不产生重复行，且缺的被补回来
     let (_server2, base2) = common::start_server().await;
     let admin2 = common::login(&base2, "admin", "admin123").await.expect("第二次启动仍能登录");
+    // 限流状态在进程内存里，换进程就是干净的：lockme 在旧进程里还在封禁期，这里能进。
+    // （封禁到期本身由 security-rust 自己的单测覆盖，这里钉的是「每进程一份状态」）
+    assert!(common::login(&base2, "lockme", "lockme123").await.is_some(),
+        "限流状态不跨进程：重启即清零");
     let (st, v) = call(&c, Method::GET, format!("{base2}/api/v1/menus/tree"), Some(&admin2), None).await;
     assert_eq!(st, 200);
     let mut perms = Vec::new();

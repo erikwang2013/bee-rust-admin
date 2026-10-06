@@ -13,12 +13,10 @@ secret = test-secret-0123456789abcdefghijklmnop
 expire_hours = 1
 
 [auth]
-# 锁定期用「把失败记录时间戳往前挪」来测，不用真等
+# 窗口 10 分钟对测试太长，但限流状态在内存里、随进程重启清零：
+# 需要「解封」的用例换个进程即可（见 api_v12_test 的 B9 段）
 max_fail = 5
 lock_minutes = 10
-# 比默认 20 小：IP 限流测试不用真发 20 个请求。测试里所有不带 X-Real-IP 的登录
-# 都落进 "unknown" 桶并跳过限流，只有显式带头的用例吃这个阈值
-ip_max_fail = 6
 
 [seed]
 initial_admin_password = admin123
