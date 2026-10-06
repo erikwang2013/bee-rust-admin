@@ -1,4 +1,14 @@
-export interface ApiResult<T> { code: number; msg: string; data: T }
+/** 统一响应信封。C3 起错误响应可能多带 `err`/`args`（见 i18n 的错误码表）。 */
+export interface ApiResult<T> {
+  code: number;
+  /** 永远保留的中文原文（日志、curl、下载客户端都还要用） */
+  msg: string;
+  /** 稳定的业务错误码，如 `auth.bad_credentials`；**没有稳定码时整个字段不带**（不是 null） */
+  err?: string;
+  /** 错误码的原始参数（未格式化），只有带参的码才有 */
+  args?: Record<string, unknown>;
+  data: T;
+}
 export interface Page<T> { list: T[]; total: number }
 
 export interface UserInfo {
@@ -71,7 +81,3 @@ export interface Notice {
 }
 /** 未读接口：total 是未读总数（铃铛角标用它），list 只给最近 50 条 */
 export interface NoticeUnread { total: number; list: Notice[] }
-
-export const DATA_SCOPE_LABELS: Record<number, string> = {
-  1: '全部数据', 2: '本部门及以下', 3: '本部门', 4: '仅本人', 5: '自定义',
-};

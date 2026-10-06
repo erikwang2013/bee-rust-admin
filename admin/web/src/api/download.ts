@@ -1,4 +1,5 @@
 import dayjs from 'dayjs';
+import { t } from '../i18n';
 import { http } from './client';
 
 /**
@@ -12,7 +13,7 @@ export async function downloadCsv(url: string, params: object | undefined, name:
   // 后端出错时可能仍以 200 回一个 JSON 信封，直接落盘会得到一份假 CSV
   if (blob.type.includes('json')) {
     const body = JSON.parse(await blob.text()) as { msg?: string };
-    throw new Error(body.msg || '导出失败');
+    throw new Error(body.msg || t('common.export_failed'));
   }
 
   const href = URL.createObjectURL(blob);

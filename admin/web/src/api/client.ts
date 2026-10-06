@@ -1,5 +1,6 @@
 import axios, { type AxiosRequestConfig } from 'axios';
 import { message } from 'antd';
+import { errText, t } from '../i18n';
 import type { ApiResult } from './types';
 
 export const TOKEN_KEY = 'bee_admin_token';
@@ -13,6 +14,20 @@ client.interceptors.request.use((cfg) => {
 });
 
 /**
+ * 后端给的错误文案 → 界面文案。C3 契约：信封里有 `err` 且词表里有 `err.<code>`
+ * 就用本地化文案（`args` 做占位替换，`field` 查 `field.*` 标签）；
+ * 否则回落后端的中文 `msg`。**任何情况都有话可说**。
+ */
+function backendError(data: unknown, fallback: string): string {
+  if (data && typeof data === 'object') {
+    const { msg, err, args } = data as ApiResult<unknown>;
+    const mapped = typeof err === 'string' ? errText(err, args) : null;
+    if (mapped || msg) return mapped || msg;
+  }
+  return fallback;
+}
+
+/**
  * 业务信封判定：HTTP 200 也可能是失败（`code != 0`）。返回错误文案，成功返回 null。
  *
  * 单独抽出来是为了能在没有网络的情况下测——拦截器只是拿它决定 reject 还是放行。
@@ -20,8 +35,8 @@ client.interceptors.request.use((cfg) => {
  */
 export function envelopeError(body: unknown): string | null {
   if (!body || typeof body !== 'object') return null;
-  const { code, msg } = body as ApiResult<unknown>;
-  return typeof code === 'number' && code !== 0 ? msg || '请求失败' : null;
+  const { code } = body as ApiResult<unknown>;
+  return typeof code === 'number' && code !== 0 ? backendError(body, t('common.request_failed')) : null;
 }
 
 client.interceptors.response.use(
@@ -41,9 +56,9 @@ client.interceptors.response.use(
         window.location.href = '/login';
       }
     } else if (status === 403) {
-      message.error(err.response?.data?.msg || '没有权限');
+      message.error(backendError(err.response?.data, t('common.no_permission')));
     } else {
-      message.error(err.response?.data?.msg || err.message || '网络错误');
+      message.error(backendError(err.response?.data, err.message || t('common.network_error')));
     }
     return Promise.reject(err);
   },
