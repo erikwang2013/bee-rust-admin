@@ -1,12 +1,38 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use crate::error::ApiError;
+use crate::state::AppState;
 
 pub mod admin;
+pub mod audit_log;
 pub mod auth;
+pub mod csv;
 pub mod dept;
 pub mod login_log;
 pub mod menu;
 pub mod role;
+
+/// 按 id 分批删（ORM 无按条件批量删）；返回删除条数。
+/// `table` 只传调用方写死的常量，id 来自数据库，不拼用户输入。
+pub(crate) async fn delete_by_ids(
+    state: &AppState,
+    table: &str,
+    ids: &[u64],
+) -> Result<u64, ApiError> {
+    let mut deleted = 0u64;
+    for chunk in ids.chunks(500) {
+        let placeholders = vec!["?"; chunk.len()].join(", ");
+        let sql = format!("DELETE FROM {table} WHERE id IN ({placeholders})");
+        let mut q = sqlx::query(&sql);
+        for id in chunk {
+            q = q.bind(id);
+        }
+        q.execute(state.db.pool())
+            .await
+            .map_err(|e| ApiError::from(bee_orm::OrmError::from(e)))?;
+        deleted += chunk.len() as u64;
+    }
+    Ok(deleted)
+}
 
 /// (1 起始页码, 每页条数)；size 上限 100。
 pub(crate) fn page_size(page: Option<u32>, size: Option<u32>) -> (usize, usize) {
