@@ -1,14 +1,15 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-use crate::api::{check_len, dedup_ids, page_size};
+use crate::api::{check_len, csv, dedup_ids, page_size};
 use crate::auth::Auth;
 use crate::datascope;
-use crate::error::{ApiError, AppJson, ok};
+use crate::error::{ApiError, AppJson, AppPath, AppQuery, ok};
 use crate::models::{Admin, Dept, Role};
 use crate::state::AppState;
 use crate::util::{hash_password, now};
 use axum::Json;
-use axum::extract::{Path, Query, State};
-use bee_orm::OrmError;
+use axum::extract::State;
+use axum::response::Response;
+use bee_orm::{OrmError, QuerySet};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -114,15 +115,12 @@ fn validate_profile(
     check_len("备注", remark, 255)
 }
 
-/// 列表：筛选 + 数据权限 + 分页；补 dept_name / role_names。
-pub async fn list(
-    State(state): State<AppState>,
-    auth: Auth,
-    Query(q): Query<AdminListQuery>,
-) -> Result<Json<Value>, ApiError> {
-    auth.require("system:admin:list")?;
-    let (page, size) = page_size(q.page, q.size);
-
+/// 列表与导出共用的筛选 + 数据权限。
+async fn filtered(
+    q: &AdminListQuery,
+    auth: &Auth,
+    state: &AppState,
+) -> Result<QuerySet<Admin>, ApiError> {
     let mut qs = Admin::query();
     if let Some(u) = q.username.as_deref().filter(|s| !s.trim().is_empty()) {
         qs = qs.filter_contains("username", u.trim()).map_err(ApiError::from)?;
@@ -133,16 +131,12 @@ pub async fn list(
     if let Some(d) = q.dept_id {
         qs = qs.filter_eq("dept_id", d).map_err(ApiError::from)?;
     }
+    let scope = datascope::resolve(auth, &state.db).await?;
+    Ok(datascope::apply(qs, &scope, "dept_id", "id"))
+}
 
-    let scope = datascope::resolve(&auth, &state.db).await?;
-    qs = datascope::apply(qs, &scope, "dept_id", "id");
-
-    let (rows, total) = qs
-        .order_by("id DESC")
-        .fetch_page(&state.db, page, size)
-        .await
-        .map_err(ApiError::from)?;
-
+/// 补 dept_name / role_names / role_ids / is_super（列表与导出共用）。
+async fn decorate(state: &AppState, rows: Vec<Admin>) -> Result<Vec<Value>, ApiError> {
     let dept_names: HashMap<u64, String> = Dept::query()
         .fetch_all(&state.db)
         .await
@@ -175,14 +169,68 @@ pub async fn list(
         v["is_super"] = json!(a.is_super == 1); // 前端契约：bool
         list.push(v);
     }
+    Ok(list)
+}
 
+/// 列表：筛选 + 数据权限 + 分页；补 dept_name / role_names。
+pub async fn list(
+    State(state): State<AppState>,
+    auth: Auth,
+    AppQuery(q): AppQuery<AdminListQuery>,
+) -> Result<Json<Value>, ApiError> {
+    auth.require("system:admin:list")?;
+    let (page, size) = page_size(q.page, q.size);
+    let (rows, total) = filtered(&q, &auth, &state)
+        .await?
+        .order_by("id DESC")
+        .fetch_page(&state.db, page, size)
+        .await
+        .map_err(ApiError::from)?;
+    let list = decorate(&state, rows).await?;
     Ok(ok(json!({ "list": list, "total": total })))
+}
+
+/// 导出当前筛选结果（不含分页）；鉴权复用 list 权限码。
+/// ponytail: 一次全量进内存，十万行级没问题；再大要走流式导出。
+pub async fn export(
+    State(state): State<AppState>,
+    auth: Auth,
+    AppQuery(q): AppQuery<AdminListQuery>,
+) -> Result<Response, ApiError> {
+    auth.require("system:admin:list")?;
+    let rows = filtered(&q, &auth, &state)
+        .await?
+        .order_by("id DESC")
+        .fetch_all(&state.db)
+        .await
+        .map_err(ApiError::from)?;
+
+    let mut out = csv::row(
+        &["ID", "用户名", "昵称", "部门", "角色", "邮箱", "手机号", "状态", "最后登录", "创建时间"]
+            .map(String::from)
+            .to_vec(),
+    );
+    for v in decorate(&state, rows).await? {
+        out.push_str(&csv::row(&[
+            csv::jcell(&v["id"]),
+            csv::jcell(&v["username"]),
+            csv::jcell(&v["nickname"]),
+            csv::jcell(&v["dept_name"]),
+            csv::jcell(&v["role_names"]),
+            csv::jcell(&v["email"]),
+            csv::jcell(&v["phone"]),
+            if v["status"].as_i64() == Some(1) { "启用".into() } else { "禁用".into() },
+            csv::jcell(&v["last_login_at"]),
+            csv::jcell(&v["created_at"]),
+        ]));
+    }
+    Ok(csv::response(format!("admins-{}.csv", csv::today()), out))
 }
 
 pub async fn detail(
     State(state): State<AppState>,
     auth: Auth,
-    Path(id): Path<u64>,
+    AppPath(id): AppPath<u64>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:admin:list")?;
     let a = Admin::query()
@@ -249,7 +297,7 @@ pub async fn create(
 pub async fn update(
     State(state): State<AppState>,
     auth: Auth,
-    Path(id): Path<u64>,
+    AppPath(id): AppPath<u64>,
     AppJson(body): AppJson<AdminUpdateBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:admin:edit")?;
@@ -297,7 +345,7 @@ pub async fn update(
 pub async fn remove(
     State(state): State<AppState>,
     auth: Auth,
-    Path(id): Path<u64>,
+    AppPath(id): AppPath<u64>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:admin:remove")?;
     if id == auth.admin.id {
@@ -325,7 +373,7 @@ pub async fn remove(
 pub async fn set_status(
     State(state): State<AppState>,
     auth: Auth,
-    Path(id): Path<u64>,
+    AppPath(id): AppPath<u64>,
     AppJson(body): AppJson<StatusBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:admin:edit")?;
@@ -354,7 +402,7 @@ pub async fn set_status(
 pub async fn reset_password(
     State(state): State<AppState>,
     auth: Auth,
-    Path(id): Path<u64>,
+    AppPath(id): AppPath<u64>,
     AppJson(body): AppJson<PasswordBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:admin:resetPwd")?;
@@ -379,7 +427,7 @@ pub async fn reset_password(
 pub async fn set_roles(
     State(state): State<AppState>,
     auth: Auth,
-    Path(id): Path<u64>,
+    AppPath(id): AppPath<u64>,
     AppJson(body): AppJson<RolesBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:admin:edit")?;
