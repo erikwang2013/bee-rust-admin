@@ -23,6 +23,8 @@ argon2 = { version = "0.5", features = ["std"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
 thiserror = "2"
 tracing = "0.1"
+# 登录限流用它的 throttle 模块；bee_rust 不转发这个依赖（只转发了 bee_* 系列）
+security-rust = { workspace = true }
 # 头像上传：解 data URL 里的 base64
 base64 = "0.22"
 
