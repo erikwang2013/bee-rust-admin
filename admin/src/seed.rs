@@ -1,6 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use crate::config::AppConfig;
-use crate::models::{Admin, Menu};
+use crate::models::{Admin, Job, Menu};
 use crate::util::{hash_password, now};
 use bee_orm::{Db, Model, SyncdbMode};
 
@@ -27,6 +27,22 @@ pub async fn migrate(db: &Db) -> Result<(), bee_orm::OrmError> {
     )
     .await?;
 
+    // job_log 的复合索引 `idx_code_time(job_code, started_at)` syncdb 表达不了
+    // （模型属性只支持单列索引），同样先裸 DDL 建表，理由与 dict_item 一致。
+    db.exec_sql(
+        "CREATE TABLE IF NOT EXISTS job_log (
+           id BIGINT UNSIGNED AUTO_INCREMENT NOT NULL,
+           job_code VARCHAR(64) NOT NULL DEFAULT '',
+           started_at DATETIME NOT NULL,
+           duration_ms BIGINT UNSIGNED NOT NULL DEFAULT 0,
+           status TINYINT NOT NULL DEFAULT 0,
+           msg VARCHAR(255) NOT NULL DEFAULT '',
+           PRIMARY KEY (id),
+           KEY idx_code_time (job_code, started_at)
+         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+    )
+    .await?;
+
     db.syncdb(
         &[
             Admin::META,
@@ -37,6 +53,9 @@ pub async fn migrate(db: &Db) -> Result<(), bee_orm::OrmError> {
             crate::models::AuditLog::META,
             crate::models::DictType::META,
             crate::models::DictItem::META,
+            crate::models::Job::META,
+            crate::models::JobLog::META,
+            crate::models::Notice::META,
         ],
         SyncdbMode::Safe,
     )
@@ -59,6 +78,13 @@ pub async fn migrate(db: &Db) -> Result<(), bee_orm::OrmError> {
            dept_id BIGINT UNSIGNED NOT NULL,
            PRIMARY KEY (role_id, dept_id)
          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+        // 公告已读：同一公告同一人只有一行（重复标记靠 INSERT IGNORE 幂等）
+        "CREATE TABLE IF NOT EXISTS notice_read (
+           notice_id BIGINT UNSIGNED NOT NULL,
+           admin_id BIGINT UNSIGNED NOT NULL,
+           read_at DATETIME NOT NULL,
+           PRIMARY KEY (notice_id, admin_id)
+         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
     ] {
         db.exec_sql(ddl).await?;
     }
@@ -66,7 +92,7 @@ pub async fn migrate(db: &Db) -> Result<(), bee_orm::OrmError> {
 }
 
 /// 内置菜单定义：(名称, 路径, 组件, 图标, 权限码前缀, 按钮后缀列表)。
-const BUILTIN_MENUS: [(&str, &str, &str, &str, &str, &[&str]); 7] = [
+const BUILTIN_MENUS: [(&str, &str, &str, &str, &str, &[&str]); 9] = [
     (
         "管理员管理",
         "/system/admin",
@@ -121,6 +147,23 @@ const BUILTIN_MENUS: [(&str, &str, &str, &str, &str, &[&str]); 7] = [
         "system/dict/index",
         "ProfileOutlined",
         "system:dict",
+        &["list", "add", "edit", "remove"],
+    ),
+    // 任务只读 + 改间隔/开关 + 手动触发：没有新增/删除（任务是代码注册的）
+    (
+        "定时任务",
+        "/system/job",
+        "system/job/index",
+        "ClockCircleOutlined",
+        "system:job",
+        &["list", "edit"],
+    ),
+    (
+        "通知公告",
+        "/system/notice",
+        "system/notice/index",
+        "BellOutlined",
+        "system:notice",
         &["list", "add", "edit", "remove"],
     ),
 ];
@@ -223,9 +266,40 @@ pub async fn ensure_menus(db: &Db) -> Result<(), bee_orm::OrmError> {
     Ok(())
 }
 
-/// 首次启动（admin 表空）时写入超管；内置菜单由 `ensure_menus` 每次启动补齐。
+/// 幂等补齐代码注册的任务（每次启动都跑）：缺哪个 code 补哪个，已存在的行一律不改写
+/// （运维改过的间隔/开关不被启动流程覆盖）。库里多出来的旧 code 不删——列表里看得到，
+/// 但不可手动触发（409），调度循环也跳过。
+pub async fn ensure_jobs(db: &Db) -> Result<(), bee_orm::OrmError> {
+    for spec in crate::jobs::JOBS {
+        let exists = Job::query()
+            .filter_eq("code", spec.code)?
+            .fetch_one(db)
+            .await?
+            .is_some();
+        if exists {
+            continue;
+        }
+        let mut j = Job {
+            id: 0,
+            name: spec.name.to_string(),
+            code: spec.code.to_string(),
+            cron: spec.interval_secs.to_string(),
+            status: 1,
+            last_run_at: None,
+            last_status: None,
+            last_msg: String::new(),
+            created_at: now(),
+            updated_at: now(),
+        };
+        db.insert(&mut j).await?;
+    }
+    Ok(())
+}
+
+/// 首次启动（admin 表空）时写入超管；内置菜单与任务由 `ensure_*` 每次启动补齐。
 pub async fn seed(db: &Db, cfg: &AppConfig) -> Result<(), bee_orm::OrmError> {
     ensure_menus(db).await?;
+    ensure_jobs(db).await?;
 
     if Admin::query().count(db).await? > 0 {
         return Ok(());

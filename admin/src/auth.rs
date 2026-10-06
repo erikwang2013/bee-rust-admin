@@ -160,6 +160,7 @@ mod tests {
             max_fail: 5,
             lock_minutes: 10,
             retain_days: 90,
+            job_enabled: true,
         }
     }
 

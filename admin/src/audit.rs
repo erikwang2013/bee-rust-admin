@@ -143,6 +143,14 @@ fn module_action(method: &Method, path: &str) -> (String, String) {
         ("PUT", ["dict-items", _]) => ("dict", "编辑字典项"),
         ("DELETE", ["dict-items", _]) => ("dict", "删除字典项"),
 
+        ("PUT", ["jobs", _]) => ("job", "编辑定时任务"),
+        ("POST", ["jobs", _, "run"]) => ("job", "手动执行定时任务"),
+
+        ("POST", ["notices"]) => ("notice", "新增公告"),
+        ("PUT", ["notices", _]) => ("notice", "编辑公告"),
+        ("POST", ["notices", _, "read"]) => ("notice", "标记公告已读"),
+        ("DELETE", ["notices", _]) => ("notice", "删除公告"),
+
         ("DELETE", ["login-logs"]) => ("loginlog", "清空登录记录"),
         ("DELETE", ["audit-logs"]) => ("auditlog", "清空操作日志"),
 
@@ -183,6 +191,22 @@ mod tests {
         assert_eq!(
             module_action(&Method::POST, "/api/v1/dict-items"),
             ("dict".into(), "新增字典项".into())
+        );
+        assert_eq!(
+            module_action(&Method::PUT, "/api/v1/jobs/2"),
+            ("job".into(), "编辑定时任务".into())
+        );
+        assert_eq!(
+            module_action(&Method::POST, "/api/v1/jobs/2/run"),
+            ("job".into(), "手动执行定时任务".into())
+        );
+        assert_eq!(
+            module_action(&Method::POST, "/api/v1/notices/9/read"),
+            ("notice".into(), "标记公告已读".into())
+        );
+        assert_eq!(
+            module_action(&Method::DELETE, "/api/v1/notices/9"),
+            ("notice".into(), "删除公告".into())
         );
     }
 

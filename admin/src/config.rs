@@ -27,8 +27,10 @@ pub struct AppConfig {
     pub max_fail: i64,
     /// 登录失败锁定时长（分钟）；0 = 关闭锁定
     pub lock_minutes: i64,
-    /// 日志保留天数（login_log / audit_log）；0 = 永久保留
+    /// 日志保留天数（login_log / audit_log / job_log）；0 = 永久保留
     pub retain_days: i64,
+    /// 定时任务总开关（`[job] enabled`）：false = 不启动调度循环（手动触发仍可用）
+    pub job_enabled: bool,
 }
 
 impl AppConfig {
@@ -75,6 +77,18 @@ impl AppConfig {
             raw.parse()
                 .map_err(|_| ConfigError::Invalid(format!("[{section}] {key} 必须是整数")))
         };
+        // 布尔开关不接受「非 true/false」的拼写：总开关理解错了（任务默默不跑/照跑）
+        // 比启动时报错更难查，直接拒掉。
+        let flag = |section: &str, key: &str, default: bool| -> Result<bool, ConfigError> {
+            let raw = opt(section, key, if default { "true" } else { "false" });
+            match raw.trim().to_ascii_lowercase().as_str() {
+                "true" | "1" => Ok(true),
+                "false" | "0" => Ok(false),
+                other => Err(ConfigError::Invalid(format!(
+                    "[{section}] {key} 必须是 true/false，得到 {other}"
+                ))),
+            }
+        };
 
         Ok(Self {
             app_name: get("app", "name")?,
@@ -90,6 +104,7 @@ impl AppConfig {
             max_fail: num("auth", "max_fail", 5)?,
             lock_minutes: num("auth", "lock_minutes", 10)?,
             retain_days: num("log", "retain_days", 90)?,
+            job_enabled: flag("job", "enabled", true)?,
         })
     }
 }
@@ -161,6 +176,25 @@ initial_admin_password = admin123
         assert_eq!(cfg.max_fail, 3);
         assert_eq!(cfg.lock_minutes, 1);
         assert_eq!(cfg.retain_days, 0, "0 = 永久保留");
+    }
+
+    #[test]
+    fn job_switch_defaults_on_and_rejects_garbage() {
+        // 老配置文件没有 [job]：默认开着
+        assert!(AppConfig::from_ini(&parse()).unwrap().job_enabled);
+
+        let mut map = parse();
+        map.insert("job".into(), [("enabled".to_string(), "false".to_string())].into_iter().collect());
+        assert!(!AppConfig::from_ini(&map).unwrap().job_enabled, "显式 false 要认");
+        map.get_mut("job").unwrap().insert("enabled".into(), "0".into());
+        assert!(!AppConfig::from_ini(&map).unwrap().job_enabled, "0 也算 false");
+        map.get_mut("job").unwrap().insert("enabled".into(), " TRUE ".into());
+        assert!(AppConfig::from_ini(&map).unwrap().job_enabled, "大小写/空白要容错");
+
+        // 拼错的开关不能默默当成 true（任务照跑或照不跑都难查）——直接报错
+        map.get_mut("job").unwrap().insert("enabled".into(), "yes".into());
+        let err = AppConfig::from_ini(&map).unwrap_err();
+        assert!(format!("{err}").contains("[job] enabled"), "应报出具体键: {err}");
     }
 
     #[test]

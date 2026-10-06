@@ -5,6 +5,7 @@ mod auth;
 mod config;
 mod datascope;
 mod error;
+mod jobs;
 mod models;
 mod retention;
 mod seed;
@@ -92,17 +93,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    // 日志保留（A4）：启动先清一遍积压，然后每 24 小时一次。删的是慢增长的历史
-    // 数据，日频足够；`retain_days = 0` 时不 spawn（永久保留）。
+    // 日志保留（A4）：启动先清一遍积压——这是**启动卫生**，不是定时任务，
+    // 所以不受 `[job] enabled` 影响。每 24 小时的循环改由 `log_retention` 任务承担
+    // （v1.6 C2a：同一个实现在「操作日志」之外还能被手动触发）。
     if state.cfg.retain_days > 0 {
         let db = state.db.clone();
         let retain_days = state.cfg.retain_days;
         tokio::spawn(async move {
-            loop {
-                retention::purge_all(&db, retain_days).await;
-                tokio::time::sleep(std::time::Duration::from_secs(24 * 3600)).await;
-            }
+            retention::purge_all(&db, retain_days).await;
         });
+    }
+
+    // 定时任务调度循环（C2a）：`[job] enabled=false` 时干脆不启动；手动触发不依赖它。
+    if state.cfg.job_enabled {
+        tokio::spawn(jobs::scheduler(state.clone()));
+    } else {
+        tracing::info!("[job] enabled=false，定时任务调度循环未启动（手动触发仍可用）");
     }
 
     let router = bee_rust::bee_router::Router::new()
@@ -167,6 +173,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .get("/export", api::dict::item_export)
                 .put("/{id}", api::dict::item_update)
                 .delete("/{id}", api::dict::item_remove)
+        })
+        .ns("/api/v1/jobs", |ns| {
+            ns.get("", api::job::list)
+                .put("/{id}", api::job::update)
+                .post("/{id}/run", api::job::run)
+        })
+        .ns("/api/v1/job-logs", |ns| ns.get("", api::job::log_list))
+        .ns("/api/v1/notices", |ns| {
+            ns.get("", api::notice::list)
+                .post("", api::notice::create)
+                // 未读/标记已读：登录即可（不挂权限码），静态段优先于 /{id}
+                .get("/unread", api::notice::unread)
+                .post("/{id}/read", api::notice::read)
+                .put("/{id}", api::notice::update)
+                .delete("/{id}", api::notice::remove)
         })
         .ns("/api/v1/login-logs", |ns| {
             ns.get("", api::login_log::list)

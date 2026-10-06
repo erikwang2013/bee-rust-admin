@@ -1,5 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-//! 日志保留策略（A4）：按 `[log] retain_days` 清理超期的 `login_log` / `audit_log`。
+//! 日志保留策略（A4）：按 `[log] retain_days` 清理超期的 `login_log` / `audit_log` / `job_log`。
+//! v1.6 起 `purge_all` 也由 `log_retention` 任务按天调用（启动时仍先清一遍，见 main）。
 use bee_orm::{Db, OrmError};
 use chrono::NaiveDateTime;
 
@@ -14,12 +15,12 @@ pub fn cutoff(retain_days: i64, now: NaiveDateTime) -> String {
         .to_string()
 }
 
-/// 删除 `table` 中 `created_at < cutoff` 的行，按 `LIMIT BATCH` 循环到删完；
-/// 返回删除总行数。`table` 只传本模块写死的常量名。
-pub async fn purge_before(db: &Db, table: &str, cutoff: &str) -> Result<u64, OrmError> {
+/// 删除 `table` 中 `col < cutoff` 的行，按 `LIMIT BATCH` 循环到删完；
+/// 返回删除总行数。`table` / `col` 只传本模块写死的常量名（job_log 的时间列叫 started_at）。
+pub async fn purge_before(db: &Db, table: &str, col: &str, cutoff: &str) -> Result<u64, OrmError> {
     let mut total = 0u64;
     loop {
-        let sql = format!("DELETE FROM {table} WHERE created_at < ? LIMIT {BATCH}");
+        let sql = format!("DELETE FROM {table} WHERE {col} < ? LIMIT {BATCH}");
         let n = sqlx::query(&sql)
             .bind(cutoff)
             .execute(db.pool())
@@ -41,8 +42,9 @@ pub async fn purge_all(db: &Db, retain_days: i64) -> u64 {
     }
     let cutoff = cutoff(retain_days, crate::util::now());
     let mut total = 0;
-    for table in ["login_log", "audit_log"] {
-        match purge_before(db, table, &cutoff).await {
+    // job_log 也按这个窗口清（并入 log_retention），否则执行记录无限涨
+    for (table, col) in [("login_log", "created_at"), ("audit_log", "created_at"), ("job_log", "started_at")] {
+        match purge_before(db, table, col, &cutoff).await {
             Ok(n) => {
                 total += n;
                 tracing::info!("清理 {table} 过期日志 {n} 条（早于 {cutoff}）");
