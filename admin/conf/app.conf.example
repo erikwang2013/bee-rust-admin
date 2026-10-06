@@ -2,6 +2,8 @@
 name = bee-rust-admin
 http_addr = 127.0.0.1:8080
 log_level = info
+# 上传文件根目录（头像落在这里的 avatar/ 下），可用绝对路径
+upload_dir = uploads
 
 [db]
 dsn = mysql://user:password@127.0.0.1:3306/bee_admin
@@ -10,6 +12,11 @@ dsn = mysql://user:password@127.0.0.1:3306/bee_admin
 # 至少 32 字符，且不能是 changeme（否则拒绝启动）
 secret = change-me-to-a-random-string-of-32-chars
 expire_hours = 24
+
+[auth]
+# 登录失败锁定：lock_minutes 分钟内失败 max_fail 次即锁定；填 0 关闭锁定
+max_fail = 5
+lock_minutes = 10
 
 [seed]
 initial_admin_password = admin123

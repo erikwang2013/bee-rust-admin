@@ -2,6 +2,8 @@
 name = bee-rust-admin-test
 http_addr = 127.0.0.1:0
 log_level = warn
+# 头像测试落盘位置（相对 admin/，被 .gitignore 覆盖）
+upload_dir = target/test-uploads
 
 [db]
 dsn = mysql://root:placeholder@127.0.0.1:3306/bee_admin_test
@@ -9,6 +11,11 @@ dsn = mysql://root:placeholder@127.0.0.1:3306/bee_admin_test
 [jwt]
 secret = test-secret-0123456789abcdefghijklmnop
 expire_hours = 1
+
+[auth]
+# 锁定期用「把失败记录时间戳往前挪」来测，不用真等
+max_fail = 5
+lock_minutes = 10
 
 [seed]
 initial_admin_password = admin123
