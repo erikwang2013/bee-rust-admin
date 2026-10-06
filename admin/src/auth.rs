@@ -61,10 +61,6 @@ impl Auth {
         }
         Err(ApiError::Forbidden(format!("缺少权限：{code}")))
     }
-
-    pub fn role_ids(&self) -> Vec<u64> {
-        self.roles.iter().map(|r| r.id).collect()
-    }
 }
 
 impl FromRequestParts<AppState> for Auth {
