@@ -42,6 +42,16 @@ describe('loadDict', () => {
     expect(dictCache.size).toBe(2);
   });
 
+  it('手动失效后重新拉取（字典页改完项要让别处的下拉吃到新值）', async () => {
+    items.mockResolvedValue(SEX);
+
+    await loadDict('user_sex');
+    dictCache.delete('user_sex');
+    await loadDict('user_sex');
+
+    expect(items).toHaveBeenCalledTimes(2);
+  });
+
   it('失败的请求不留缓存，下次重新拉', async () => {
     items.mockRejectedValueOnce(new Error('boom')).mockResolvedValue(SEX);
 

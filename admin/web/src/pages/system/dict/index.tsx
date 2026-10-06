@@ -9,6 +9,7 @@ import {
   type DictItemForm, type DictItemQuery, type DictTypeForm, type DictTypeQuery,
 } from '../../../api/dict';
 import type { DictItem, DictType } from '../../../api/types';
+import { dictCache } from '../../../hooks/useDict';
 import Auth from '../../../auth/Auth';
 
 const STATUS_OPTIONS = [{ value: 1, label: '启用' }, { value: 0, label: '禁用' }];
@@ -133,6 +134,7 @@ export default function DictPage() {
       await dictApi.itemCreate(v);
       message.success('已创建');
     }
+    dictCache.delete(v.type_code); // 别处下拉若已缓存该 code，丢弃旧选项
     setItemModal(false);
     void loadItems(itemQuery);
   };
@@ -186,6 +188,7 @@ export default function DictPage() {
               onConfirm={async () => {
                 await dictApi.itemRemove(row.id);
                 message.success('已删除');
+                dictCache.delete(row.type_code);
                 void loadItems(itemQuery);
               }}
             >

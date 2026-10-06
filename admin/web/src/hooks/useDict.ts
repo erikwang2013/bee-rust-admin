@@ -5,6 +5,9 @@ import { dictApi, type DictOption } from '../api/dict';
  * 模块级缓存：字典是「不改代码就能改的配置」，一次会话里不会变，
  * 每个页面各自拉一次纯属浪费。缓存的是 Promise 而不是结果 —— 同一 tick 里
  * 挂载多个下拉时它们共用一次请求。
+ *
+ * 改字典项的页面（pages/system/dict 的增删改回调）必须 `dictCache.delete(code)` 失效：
+ * 漏了它的表现是「别处下拉还显示旧选项」，不刷新页面查不出来。
  */
 export const dictCache = new Map<string, Promise<DictOption[]>>();
 
