@@ -38,9 +38,15 @@ impl IntoResponse for ApiError {
                 (StatusCode::INTERNAL_SERVER_ERROR, "服务器内部错误".to_string())
             }
         };
-        let body = json!({ "code": status.as_u16(), "msg": msg, "data": Value::Null });
-        (status, Json(body)).into_response()
+        envelope(status, &msg)
     }
+}
+
+/// 统一错误信封 `{"code":…,"msg":…,"data":null}`。`ApiError` 之外的错误路径
+/// （路由级 404/405 兜底，A1）也走它，保证契约「所有错误响应形状一致」没有例外。
+pub fn envelope(status: StatusCode, msg: &str) -> Response {
+    let body = json!({ "code": status.as_u16(), "msg": msg, "data": Value::Null });
+    (status, Json(body)).into_response()
 }
 
 impl From<OrmError> for ApiError {

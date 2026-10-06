@@ -10,12 +10,37 @@ mod seed;
 mod state;
 mod util;
 
+use axum::response::IntoResponse;
 use config::AppConfig;
 use state::AppState;
 use tracing::Level;
 
 async fn health() -> &'static str {
     "OK"
+}
+
+/// 路由级兜底只改 `/api/v1` 树内的响应形状；树外的路径保持 axum 原样
+/// （树外将来可能挂静态资源/别的服务，不该替它们改响应）。
+fn in_api(path: &str) -> bool {
+    path == "/api/v1" || path.starts_with("/api/v1/")
+}
+
+/// 路由级 404（A1）：未匹配的路径也回 `{code,msg,data}` 信封。
+async fn api_not_found(uri: axum::http::Uri) -> axum::response::Response {
+    if in_api(uri.path()) {
+        error::envelope(axum::http::StatusCode::NOT_FOUND, "接口不存在")
+    } else {
+        axum::http::StatusCode::NOT_FOUND.into_response()
+    }
+}
+
+/// 路由级 405（A1）：路径存在但方法不对，同样回信封。
+async fn api_method_not_allowed(uri: axum::http::Uri) -> axum::response::Response {
+    if in_api(uri.path()) {
+        error::envelope(axum::http::StatusCode::METHOD_NOT_ALLOWED, "方法不允许")
+    } else {
+        axum::http::StatusCode::METHOD_NOT_ALLOWED.into_response()
+    }
 }
 
 /// `log_level` 配置 → tracing 等级。非法值告警并回落 info（别因为一个拼写错误起不来）。
@@ -124,6 +149,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .get("/export", api::audit_log::export)
         })
         .with_state(state.clone())
+        // 路由级兜底（A1）挂在 layer 之前：未匹配路径上的写操作照旧被审计留痕
+        .fallback(api_not_found)
+        .method_not_allowed_fallback(api_method_not_allowed)
         // 操作日志中间件（B5）：只记写操作，审计失败不影响业务
         .layer(axum::middleware::from_fn_with_state(state, audit::audit_mw));
 
@@ -148,5 +176,17 @@ mod tests {
         // 非法值回落 info（并 eprintln 告警），不能让进程起不来
         assert_eq!(parse_level("verbose"), Level::INFO);
         assert_eq!(parse_level(""), Level::INFO);
+    }
+
+    /// 兜底的作用域护栏：只认 `/api/v1` 树内，别把 `/api/v10` 这种兄弟路径也算进来。
+    #[test]
+    fn fallback_scope_is_api_v1_only() {
+        assert!(in_api("/api/v1"));
+        assert!(in_api("/api/v1/"));
+        assert!(in_api("/api/v1/nope"));
+        assert!(!in_api("/api/v10"));
+        assert!(!in_api("/api/v10/nope"));
+        assert!(!in_api("/"));
+        assert!(!in_api("/static/app.js"));
     }
 }
