@@ -67,6 +67,7 @@ async fn v12_backend_features() {
     let c = reqwest::Client::new();
     let api = |p: &str| format!("{base}/api/v1{p}");
     let admin = common::login(&base, "admin", "admin123").await.expect("超管登录失败");
+    let pool = sqlx::MySqlPool::connect(&dsn).await.unwrap();
 
     // ── B7 个人资料 ─────────────────────────────────────────
     let (st, v) = call(&c, Method::PUT, api("/auth/profile"), Some(&admin),
@@ -77,6 +78,13 @@ async fn v12_backend_features() {
     assert_eq!(v["data"]["user"]["nickname"], "新昵称", "回读一致: {v}");
     assert_eq!(v["data"]["user"]["email"], "a@b.c", "邮箱回读: {v}");
     assert_eq!(v["data"]["user"]["phone"], "13800000000", "手机号回读: {v}");
+    // …而且真的落库了（GET 回填的字段必须能原样 PUT 回去，否则表单会静默清数据）
+    let (db_email, db_phone): (String, String) =
+        sqlx::query_as("SELECT email, phone FROM admin WHERE id = 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!((db_email.as_str(), db_phone.as_str()), ("a@b.c", "13800000000"), "库里与回读一致");
     // 改资料不作废 token（改个昵称不该被踢下线）：上面的 admin token 一直有效
     let (st, v) = call(&c, Method::PUT, api("/auth/profile"), Some(&admin),
         Some(json!({"nickname": "角".repeat(65)}))).await;
@@ -261,7 +269,6 @@ async fn v12_backend_features() {
     assert!(common::login(&base, "admin", "admin123").await.is_some(), "锁定只针对该账号");
 
     // 把失败记录挪到 11 分钟前 → 窗口（10 分钟）过期，可以登录
-    let pool = sqlx::MySqlPool::connect(&dsn).await.unwrap();
     sqlx::query("UPDATE login_log SET created_at = created_at - INTERVAL 11 MINUTE WHERE username = 'lockme'")
         .execute(&pool).await.unwrap();
     assert!(common::login(&base, "lockme", "lockme123").await.is_some(), "窗口过后可登录");
