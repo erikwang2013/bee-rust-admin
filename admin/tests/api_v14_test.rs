@@ -46,6 +46,51 @@ async fn csv_lines(c: &reqwest::Client, url: String, token: &str) -> Vec<String>
         .collect()
 }
 
+/// 菜单树里按权限码取菜单 id（B5 造角色要勾菜单）。
+fn menu_id(menus: &Value, perm: &str) -> Option<u64> {
+    for m in menus.as_array()? {
+        if m["perm"].as_str() == Some(perm) {
+            return m["id"].as_u64();
+        }
+        if let Some(id) = menu_id(&m["children"], perm) {
+            return Some(id);
+        }
+    }
+    None
+}
+
+/// 建角色 + 勾菜单，返回角色 id（B5 造场景用）。
+async fn make_role(
+    c: &reqwest::Client,
+    base: &str,
+    token: &str,
+    name: &str,
+    scope: i8,
+    status: i8,
+    menu_ids: &[u64],
+) -> u64 {
+    let (st, v) = call(
+        c,
+        Method::POST,
+        format!("{base}/api/v1/roles"),
+        Some(token),
+        Some(json!({"name": name, "code": name, "data_scope": scope, "status": status})),
+    )
+    .await;
+    assert_eq!(st, 200, "建角色 {name}: {v}");
+    let id = v["data"]["id"].as_u64().unwrap();
+    let (st, v) = call(
+        c,
+        Method::PUT,
+        format!("{base}/api/v1/roles/{id}/menus"),
+        Some(token),
+        Some(json!({"menu_ids": menu_ids})),
+    )
+    .await;
+    assert_eq!(st, 200, "勾菜单 {name}: {v}");
+    id
+}
+
 #[tokio::test]
 async fn v14_backend_features() {
     let Some(dsn) = common::dsn() else { return };
@@ -215,4 +260,134 @@ async fn v14_backend_features() {
     // 触发清理的那个进程也要是能用的
     let r = c.get(format!("{base2}/api/v1/health")).send().await.unwrap();
     assert_eq!(r.status(), 200);
+
+    // ── B5 非列表接口的数据权限 + 反自我提权 ─────────────────
+    // 场景：操作者 b5op 是 scope=3（本部门 A）；目标 t1 在 A 部、t2 在 B 部
+    let (st, v) = call(&c, Method::POST, api("/depts"), Some(&admin), Some(json!({"name": "B5-A部"}))).await;
+    assert_eq!(st, 200, "建部门 A: {v}");
+    let dept_a = v["data"]["id"].as_u64().unwrap();
+    let (st, v) = call(&c, Method::POST, api("/depts"), Some(&admin), Some(json!({"name": "B5-B部"}))).await;
+    assert_eq!(st, 200, "建部门 B: {v}");
+    let dept_b = v["data"]["id"].as_u64().unwrap();
+
+    let (st, v) = call(&c, Method::GET, api("/menus/tree"), Some(&admin), None).await;
+    assert_eq!(st, 200);
+    let tree = v["data"].clone();
+    let perm_menu = |p: &str| menu_id(&tree, p).unwrap_or_else(|| panic!("种子菜单里没有 {p}"));
+
+    // 操作者：管理员管理全套权限（list/add/edit/remove/resetPwd）+ scope=3
+    let op_menus: Vec<u64> = [
+        "system:admin:list", "system:admin:add", "system:admin:edit",
+        "system:admin:remove", "system:admin:resetPwd",
+    ].iter().map(|p| perm_menu(p)).collect();
+    let op_role = make_role(&c, &base, &admin, "b5_scope3", 3, 1, &op_menus).await;
+    // 更宽的角色（scope=1）：只有超管能授
+    let wide_role = make_role(&c, &base, &admin, "b5_wide", 1, 1, &[]).await;
+    // 含操作者没有的权限码（system:role:edit）的角色
+    let alien_role = make_role(&c, &base, &admin, "b5_alien", 4, 1, &[perm_menu("system:role:edit")]).await;
+    // scope=4 且权限是操作者子集：可以授
+    let ok_role = make_role(&c, &base, &admin, "b5_ok", 4, 1, &[perm_menu("system:admin:list")]).await;
+    let off_role = make_role(&c, &base, &admin, "b5_off", 4, 0, &[]).await;
+
+    let (st, v) = call(&c, Method::POST, api("/admins"), Some(&admin), Some(json!({
+        "username": "b5op", "password": "b5op12345", "dept_id": dept_a, "role_ids": [op_role],
+    }))).await;
+    assert_eq!(st, 200, "建操作者: {v}");
+    let op_id = v["data"]["id"].as_u64().unwrap();
+    let (st, v) = call(&c, Method::POST, api("/admins"), Some(&admin), Some(json!({
+        "username": "b5t1", "password": "b5t12345", "dept_id": dept_a,
+    }))).await;
+    assert_eq!(st, 200, "建 A 部目标: {v}");
+    let t1 = v["data"]["id"].as_u64().unwrap();
+    let (st, v) = call(&c, Method::POST, api("/admins"), Some(&admin), Some(json!({
+        "username": "b5t2", "password": "b5t12345", "dept_id": dept_b,
+    }))).await;
+    assert_eq!(st, 200, "建 B 部目标: {v}");
+    let t2 = v["data"]["id"].as_u64().unwrap();
+
+    let op = common::login(&base, "b5op", "b5op12345").await.expect("操作者登录");
+
+    // 范围内的目标照常可用
+    let (st, v) = call(&c, Method::GET, api(&format!("/admins/{t1}")), Some(&op), None).await;
+    assert_eq!(st, 200, "本部门详情: {v}");
+    let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{t1}")), Some(&op), Some(json!({
+        "nickname": "本部门改的", "dept_id": dept_a, "status": 1, "role_ids": [],
+    }))).await;
+    assert_eq!(st, 200, "本部门编辑（不授角色）: {v}");
+
+    // 范围外的目标：详情/编辑/改状态/改密码/删除/改角色，一个都不许碰
+    // （编辑那条的 dept_id 故意填范围内的，让「目标在不在范围内」成为唯一拦截理由）
+    for (m, path, body) in [
+        (Method::GET, format!("/admins/{t2}"), None),
+        (Method::PUT, format!("/admins/{t2}"),
+            Some(json!({"nickname": "越界", "dept_id": dept_a, "status": 1, "role_ids": []}))),
+        (Method::PUT, format!("/admins/{t2}/status"), Some(json!({"status": 0}))),
+        (Method::PUT, format!("/admins/{t2}/password"), Some(json!({"password": "hacked12345"}))),
+        (Method::DELETE, format!("/admins/{t2}"), None),
+        (Method::PUT, format!("/admins/{t2}/roles"), Some(json!({"role_ids": [ok_role]}))),
+    ] {
+        let (st, v) = call(&c, m.clone(), api(&path), Some(&op), body).await;
+        assert_eq!(st, 403, "{m} {path} 跨部门必须 403: {v}");
+        assert_eq!(v["msg"], "超出你的数据权限范围", "{m} {path}: {v}");
+    }
+    // 范围内的人也不能挪到范围外的部门去（否则能绕开上面的目标判定）
+    let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{t1}")), Some(&op), Some(json!({
+        "nickname": "本部门改的", "dept_id": dept_b, "status": 1, "role_ids": [],
+    }))).await;
+    assert_eq!(st, 403, "不能把人挪到范围外的部门: {v}");
+    assert_eq!(v["msg"], "超出你的数据权限范围", "{v}");
+
+    // 反自我提权：给自己授 data_scope=1 → 403（修复前会成功，这就是提权路径）
+    let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{op_id}/roles")), Some(&op),
+        Some(json!({"role_ids": [wide_role]}))).await;
+    assert_eq!(st, 403, "给自己授 data_scope=1 就是自我提权: {v}");
+    assert_eq!(v["msg"], "不能授予数据范围更宽的角色", "{v}");
+    // 授给本部门的人一样拦：等于给自己发个马甲
+    let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{t1}/roles")), Some(&op),
+        Some(json!({"role_ids": [op_role, wide_role]}))).await;
+    assert_eq!(st, 403, "同部门的人也不能授更宽的角色: {v}");
+
+    // 授自己没有的权限码 → 403
+    let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{t1}/roles")), Some(&op),
+        Some(json!({"role_ids": [alien_role]}))).await;
+    assert_eq!(st, 403, "授自己没有的权限码: {v}");
+    assert_eq!(v["msg"], "不能授予包含你没有的权限的角色", "{v}");
+
+    // 子集 + scope=4 放行；清空角色不是提权，也放行
+    let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{t1}/roles")), Some(&op),
+        Some(json!({"role_ids": [ok_role]}))).await;
+    assert_eq!(st, 200, "scope=4 且权限是子集应放行: {v}");
+    let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{t1}/roles")), Some(&op),
+        Some(json!({"role_ids": []}))).await;
+    assert_eq!(st, 200, "清空角色放行: {v}");
+
+    // 存在性 + 停用（原先不校验，写进去就是脏关系）
+    for bad in [off_role, 999_999] {
+        let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{t1}/roles")), Some(&op),
+            Some(json!({"role_ids": [bad]}))).await;
+        assert_eq!(st, 400, "角色 {bad} 不存在或已停用: {v}");
+        assert_eq!(v["msg"], "角色不存在或已停用", "{v}");
+    }
+
+    // 建人：部门与角色同样受限
+    let (st, v) = call(&c, Method::POST, api("/admins"), Some(&op), Some(json!({
+        "username": "b5new", "password": "b5new12345", "dept_id": dept_b,
+    }))).await;
+    assert_eq!(st, 403, "不能在范围外的部门建人: {v}");
+    let (st, v) = call(&c, Method::POST, api("/admins"), Some(&op), Some(json!({
+        "username": "b5new", "password": "b5new12345", "dept_id": dept_a, "role_ids": [wide_role],
+    }))).await;
+    assert_eq!(st, 403, "建人不能顺手授更宽的角色: {v}");
+    let (st, v) = call(&c, Method::POST, api("/admins"), Some(&op), Some(json!({
+        "username": "b5new", "password": "b5new12345", "dept_id": dept_a, "role_ids": [ok_role],
+    }))).await;
+    assert_eq!(st, 200, "本部门建人 + 子集角色: {v}");
+
+    // 超管全部放行
+    let (st, v) = call(&c, Method::GET, api(&format!("/admins/{t2}")), Some(&admin), None).await;
+    assert_eq!(st, 200, "超管看 B 部的人: {v}");
+    let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{t2}")), Some(&admin), Some(json!({
+        "nickname": "超管改的", "dept_id": dept_b, "status": 1, "role_ids": [wide_role],
+    }))).await;
+    assert_eq!(st, 200, "超管改 B 部的人并授 scope=1: {v}");
 }
