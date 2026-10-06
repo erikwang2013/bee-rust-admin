@@ -1,34 +1,145 @@
-import { useState } from 'react';
-import { App, Button, Card, Descriptions, Form, Input } from 'antd';
+import { useRef, useState, type ChangeEvent } from 'react';
+import { App, Avatar, Button, Card, Divider, Form, Input, Space } from 'antd';
+import { UploadOutlined } from '@ant-design/icons';
 import { authApi } from '../../api/auth';
 import { useAuth } from '../../auth/AuthContext';
 
-export default function ProfilePage() {
-  const { user, logout } = useAuth();
-  const { message } = App.useApp();
-  const [form] = Form.useForm();
-  const [loading, setLoading] = useState(false);
+const MAX_DATA_URL = 512 * 1024; // 后端对 data_url 与解码后字节双重卡 512KB
 
-  const onFinish = async (v: { old_password: string; new_password: string }) => {
-    setLoading(true);
+/** 缩到最长边 512px，再降 JPEG 质量，直到 data_url 不超过 512KB。 */
+async function compressToDataUrl(file: File): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, 512 / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    bitmap.close();
+    throw new Error('canvas 不可用');
+  }
+  ctx.fillStyle = '#fff'; // PNG 透明底转 JPEG 会变黑，先铺白
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+
+  let quality = 0.85;
+  let url = canvas.toDataURL('image/jpeg', quality);
+  while (url.length > MAX_DATA_URL && quality > 0.3) {
+    quality = Math.max(0.3, quality - 0.15);
+    url = canvas.toDataURL('image/jpeg', quality);
+  }
+  if (url.length > MAX_DATA_URL) throw new Error('图片过大');
+  return url;
+}
+
+export default function ProfilePage() {
+  const { user, logout, reload } = useAuth();
+  const { message } = App.useApp();
+  const [pwdForm] = Form.useForm();
+  const [infoForm] = Form.useForm();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [savingInfo, setSavingInfo] = useState(false);
+  const [savingPwd, setSavingPwd] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  const onPickAvatar = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // 允许重复选同一个文件
+    if (!file) return;
+    let data_url: string;
+    try {
+      data_url = await compressToDataUrl(file);
+    } catch {
+      message.error('图片读取失败，请换一张 PNG/JPEG');
+      return;
+    }
+    setUploading(true);
+    try {
+      await authApi.uploadAvatar(data_url);
+      await reload();
+      message.success('头像已更新');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const onSaveInfo = async (v: { nickname: string; email?: string; phone?: string }) => {
+    setSavingInfo(true);
+    try {
+      await authApi.updateProfile({
+        nickname: v.nickname,
+        email: v.email ?? '',
+        phone: v.phone ?? '',
+      });
+      await reload();
+      message.success('资料已保存');
+    } finally {
+      setSavingInfo(false);
+    }
+  };
+
+  const onChangePwd = async (v: { old_password: string; new_password: string }) => {
+    setSavingPwd(true);
     try {
       await authApi.changePassword(v.old_password, v.new_password);
       message.success('密码已修改，请重新登录');
-      form.resetFields();
+      pwdForm.resetFields();
       await logout();
       window.location.href = '/login';
     } finally {
-      setLoading(false);
+      setSavingPwd(false);
     }
   };
 
   return (
     <Card title="个人中心" style={{ maxWidth: 640 }}>
-      <Descriptions column={1} size="small" style={{ marginBottom: 24 }}>
-        <Descriptions.Item label="用户名">{user?.username}</Descriptions.Item>
-        <Descriptions.Item label="昵称">{user?.nickname || '-'}</Descriptions.Item>
-      </Descriptions>
-      <Form form={form} layout="vertical" onFinish={onFinish} style={{ maxWidth: 360 }}>
+      <Space size={16} align="center" style={{ marginBottom: 24 }}>
+        <Avatar size={64} src={user?.avatar || '/keeper-head.svg'} />
+        <div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/png,image/jpeg"
+            style={{ display: 'none' }}
+            onChange={(e) => void onPickAvatar(e)}
+          />
+          <Button icon={<UploadOutlined />} loading={uploading} onClick={() => fileRef.current?.click()}>
+            更换头像
+          </Button>
+          <div style={{ marginTop: 4, color: 'rgba(128,128,128,1)', fontSize: 12 }}>
+            PNG / JPEG，超过 512KB 会自动压缩
+          </div>
+        </div>
+      </Space>
+
+      <Form
+        form={infoForm}
+        layout="vertical"
+        style={{ maxWidth: 360 }}
+        initialValues={{ nickname: user?.nickname, email: user?.email, phone: user?.phone }}
+        onFinish={(v) => void onSaveInfo(v)}
+      >
+        <Form.Item name="nickname" label="昵称" rules={[{ required: true, max: 64, message: '请输入昵称（最多 64 字）' }]}>
+          <Input />
+        </Form.Item>
+        <Form.Item name="email" label="邮箱" rules={[{ type: 'email', message: '邮箱格式不正确' }]}>
+          <Input />
+        </Form.Item>
+        <Form.Item name="phone" label="手机号">
+          <Input />
+        </Form.Item>
+        <Button type="primary" htmlType="submit" loading={savingInfo}>保存资料</Button>
+      </Form>
+
+      <Divider />
+
+      <Form
+        form={pwdForm}
+        layout="vertical"
+        style={{ maxWidth: 360 }}
+        onFinish={(v) => void onChangePwd(v)}
+      >
         <Form.Item name="old_password" label="原密码" rules={[{ required: true, message: '请输入原密码' }]}>
           <Input.Password autoComplete="current-password" />
         </Form.Item>
@@ -55,7 +166,7 @@ export default function ProfilePage() {
         >
           <Input.Password autoComplete="new-password" />
         </Form.Item>
-        <Button type="primary" htmlType="submit" loading={loading}>保存</Button>
+        <Button type="primary" htmlType="submit" loading={savingPwd}>修改密码</Button>
       </Form>
     </Card>
   );

@@ -1,7 +1,11 @@
 export interface ApiResult<T> { code: number; msg: string; data: T }
 export interface Page<T> { list: T[]; total: number }
 
-export interface UserInfo { id: number; username: string; nickname: string; avatar: string; is_super: boolean; dept_id: number }
+export interface UserInfo {
+  id: number; username: string; nickname: string; avatar: string; is_super: boolean; dept_id: number;
+  /** 后端 /auth/profile 返回时回填资料表单；未返回则为空 */
+  email?: string; phone?: string;
+}
 export interface Profile { user: UserInfo; roles: string[]; perms: string[] }
 export interface MenuNode { id: number; parent_id: number; name: string; path: string; icon: string; children?: MenuNode[] }
 
