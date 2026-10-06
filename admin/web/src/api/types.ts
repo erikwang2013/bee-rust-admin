@@ -27,6 +27,11 @@ export interface LoginLog {
   id: number; username: string; ip: string; user_agent: string;
   status: number; msg: string; created_at: string;
 }
+export interface AuditLog {
+  id: number; admin_id: number; username: string; module: string; action: string;
+  method: string; path: string; status: number; msg: string;
+  duration_ms: number; ip: string; created_at: string;
+}
 export const DATA_SCOPE_LABELS: Record<number, string> = {
   1: '全部数据', 2: '本部门及以下', 3: '本部门', 4: '仅本人', 5: '自定义',
 };

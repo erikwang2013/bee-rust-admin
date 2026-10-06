@@ -2,9 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   App, Button, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tag,
 } from 'antd';
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { DownloadOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { adminApi, type AdminForm, type AdminQuery } from '../../../api/admin';
+import { downloadCsv } from '../../../api/download';
 import { roleApi } from '../../../api/role';
 import type { Admin, Role } from '../../../api/types';
 import { deptApi } from '../../../api/dept';
@@ -171,6 +172,9 @@ export default function AdminPage() {
           onChange={(v) => setQuery((q) => ({ ...q, status: v, page: 1 }))}
         />
         <Button icon={<ReloadOutlined />} onClick={() => void load(query)}>刷新</Button>
+        <Button icon={<DownloadOutlined />} onClick={() => void downloadCsv('/admins/export', query, 'admins')}>
+          导出
+        </Button>
         <Auth code="system:admin:add">
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新增</Button>
         </Auth>

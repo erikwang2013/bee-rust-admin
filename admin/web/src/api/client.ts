@@ -48,4 +48,6 @@ export const http = {
   post: <T>(url: string, data?: object) => unwrap<T>(client.post(url, data)),
   put: <T>(url: string, data?: object) => unwrap<T>(client.put(url, data)),
   del: <T>(url: string, params?: object) => unwrap<T>(client.delete(url, { params })),
+  /** 导出等二进制响应：不走 unwrap（响应体不是 JSON 信封）。 */
+  blob: (url: string, params?: object) => client.get<Blob>(url, { params, responseType: 'blob' }),
 };
