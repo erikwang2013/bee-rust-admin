@@ -159,6 +159,9 @@ export default function AdminPage() {
     },
   ];
 
+  // 只有真存在授不出去的角色时才提示；超管（都能授）不该看到这句话
+  const hasUngrantable = roles.some((r) => r.grantable === false);
+
   return (
     <>
       <Space style={{ marginBottom: 16 }} wrap>
@@ -221,10 +224,16 @@ export default function AdminPage() {
               options={[{ value: 0, label: '（无）' }, ...toDeptOptions(depts)]}
             />
           </Form.Item>
-          <Form.Item name="role_ids" label="角色">
+          <Form.Item
+            name="role_ids" label="角色"
+            extra={hasUngrantable ? '灰掉的角色超出你的数据权限，无法授予' : undefined}
+          >
             <Select
               mode="multiple" allowClear placeholder="选择角色"
-              options={roles.map((r) => ({ value: r.id, label: r.name }))}
+              // 授不出去的角色不隐藏、只禁用：让人看见它存在，也知道为什么点不动。
+              // 实测：已选中的禁用项仍显示为已选（编辑别人授过宽角色的人不会丢），
+              // 但标签上没有 ×，要清掉只能走选择框的 allowClear。
+              options={roles.map((r) => ({ value: r.id, label: r.name, disabled: r.grantable === false }))}
             />
           </Form.Item>
           <Form.Item name="email" label="邮箱"><Input /></Form.Item>

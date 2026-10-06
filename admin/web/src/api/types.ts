@@ -17,6 +17,11 @@ export interface Admin {
 export interface Role {
   id: number; name: string; code: string; sort: number; data_scope: number;
   status: number; remark: string; created_at: string;
+  /**
+   * 当前操作者能不能把这个角色授出去（后端角色列表/详情带的权威标记）。
+   * 前端只认这个布尔值，不自己算 data_scope / 权限码；保存时后端还会硬校验一次。
+   */
+  grantable?: boolean;
 }
 export interface Menu {
   id: number; parent_id: number; name: string; type: 'M' | 'C' | 'F'; perm: string;
