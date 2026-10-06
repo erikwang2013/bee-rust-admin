@@ -78,8 +78,39 @@ pub async fn clear(
     Ok(ok(json!({ "deleted": deleted })))
 }
 
+/// 取一批导出数据（keyset：`id < last`，首页不带该条件），行渲染与旧的一次性实现逐字段一致。
+async fn export_batch(
+    state: &AppState,
+    base: &bee_orm::QuerySet<LoginLog>,
+    last: Option<u64>,
+) -> Result<Vec<(u64, String)>, ApiError> {
+    let mut qs = base.clone().order_by("id DESC").limit(csv::BATCH);
+    if let Some(last) = last {
+        qs = qs.filter_raw("id < ?", &[last]);
+    }
+    let rows = qs.fetch_all(&state.db).await.map_err(ApiError::from)?;
+    Ok(rows
+        .into_iter()
+        .map(|r| {
+            (
+                r.id,
+                csv::row(&[
+                    r.id.to_string(),
+                    r.username,
+                    r.ip,
+                    r.user_agent,
+                    if r.status == 1 { "成功".into() } else { "失败".into() },
+                    r.msg,
+                    r.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
+                ]),
+            )
+        })
+        .collect())
+}
+
 /// 导出当前筛选结果（不含分页）；鉴权复用 list 权限码。
-/// ponytail: 一次全量进内存，十万行级没问题；再大要走流式导出。
+/// 流式：筛选条件与 list 共用 `filtered()`（导出范围不会和列表漂移），
+/// 按 keyset 分批取（B6），内存只与一批成正比。
 pub async fn export(
     State(state): State<AppState>,
     auth: Auth,
@@ -87,25 +118,13 @@ pub async fn export(
 ) -> Result<Response, ApiError> {
     auth.require("system:loginlog:list")?;
     let scope = datascope::resolve(&auth, &state.db).await?;
-    let rows = filtered(&q, &scope)?
-        .order_by("id DESC")
-        .fetch_all(&state.db)
-        .await
-        .map_err(ApiError::from)?;
-
-    let mut out = csv::row(&header_cells());
-    for r in rows {
-        out.push_str(&csv::row(&[
-            r.id.to_string(),
-            r.username,
-            r.ip,
-            r.user_agent,
-            if r.status == 1 { "成功".into() } else { "失败".into() },
-            r.msg,
-            r.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
-        ]));
-    }
-    Ok(csv::response(format!("login-logs-{}.csv", csv::today()), out))
+    let base = filtered(&q, &scope)?;
+    csv::streamed(format!("login-logs-{}.csv", csv::today()), header_cells(), move |last| {
+        let state = state.clone();
+        let base = base.clone();
+        async move { export_batch(&state, &base, last).await }
+    })
+    .await
 }
 
 fn header_cells() -> Vec<String> {

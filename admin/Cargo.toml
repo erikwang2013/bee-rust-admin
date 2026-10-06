@@ -11,6 +11,9 @@ bee_rust = { version = "1.1.5", path = "../crates/bee_rust" }
 bee_orm = { version = "1.1.5", path = "../crates/bee_orm" }
 axum = { version = "0.8" }
 tokio = { version = "1", features = ["full"] }
+# CSV 流式导出：Body::from_stream 要一个 Stream，而 tokio 1.5x 的 mpsc::Receiver
+# 不再自带 Stream 实现（tokio 的 stream 特性已移除），用 tokio-stream 的适配器
+tokio-stream = "0.1"
 serde = { version = "1", features = ["derive"] }
 # 登录记录清空需要按条件批量删（ORM 无此能力），直接在 src/ 里用 sqlx
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "mysql", "tls-none"] }

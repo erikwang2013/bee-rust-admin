@@ -1,8 +1,11 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-//! CSV 导出（B6）：BOM + 公式注入防护 + 附件响应。
+//! CSV 导出（B6）：BOM + 公式注入防护 + 附件响应（流式）。
+use crate::error::ApiError;
+use axum::body::{Body, Bytes};
 use axum::http::{HeaderMap, HeaderValue, header};
 use axum::response::{IntoResponse, Response};
 use serde_json::Value;
+use tokio_stream::wrappers::ReceiverStream;
 
 /// 今天（本地时区）`YYYYMMDD`，拼文件名用。
 pub fn today() -> String {
@@ -41,12 +44,11 @@ pub fn jcell(v: &Value) -> String {
     }
 }
 
-/// 附件响应：UTF-8 BOM 开头（Excel 直接打开不乱码）+ `text/csv; charset=utf-8`。
-pub fn response(filename: String, body: String) -> Response {
-    let mut bytes = Vec::with_capacity(body.len() + 3);
-    bytes.extend_from_slice("\u{feff}".as_bytes());
-    bytes.extend_from_slice(body.as_bytes());
+/// UTF-8 BOM：Excel 直接打开不乱码。
+pub const BOM: &str = "\u{feff}";
 
+/// 附件响应头：`text/csv; charset=utf-8` + `Content-Disposition`。
+fn headers(filename: &str) -> HeaderMap {
     let mut headers = HeaderMap::new();
     headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/csv; charset=utf-8"));
     headers.insert(
@@ -54,7 +56,63 @@ pub fn response(filename: String, body: String) -> Response {
         HeaderValue::from_str(&format!("attachment; filename=\"{filename}\""))
             .unwrap_or_else(|_| HeaderValue::from_static("attachment")),
     );
-    (headers, bytes).into_response()
+    headers
+}
+
+/// 流式导出的批大小（B6）：keyset 分页每批行数。内存占用只与它成正比，与总量无关。
+pub const BATCH: usize = 5000;
+
+/// 流式导出：`next(last_id)` 取下一批 `(id, 已渲染行)`，批空即结束
+/// （调用方按 `id < last_id ORDER BY id DESC LIMIT BATCH` 取）。
+///
+/// 首批在返回响应前同步取：首批就失败时还能回统一错误信封，而不是 200 之后断流。
+/// 之后每批渲染成一块 `Bytes` 交给 `Body::from_stream` 边产边发，BOM 在首块里。
+pub async fn streamed<F, Fut>(
+    filename: String,
+    header_cells: Vec<String>,
+    mut next: F,
+) -> Result<Response, ApiError>
+where
+    F: FnMut(Option<u64>) -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = Result<Vec<(u64, String)>, ApiError>> + Send + 'static,
+{
+    let first = next(None).await?;
+    // 通道小一点：生产端本来就是一整批一整批地送，backpressure 让它别跑太远
+    let (tx, rx) = tokio::sync::mpsc::channel::<Result<Bytes, std::io::Error>>(4);
+
+    tokio::spawn(async move {
+        let mut chunk = String::from(BOM);
+        chunk.push_str(&row(&header_cells));
+        let mut rows = first;
+        let mut last = None;
+        loop {
+            let full = rows.len() == BATCH;
+            for (id, line) in rows.drain(..) {
+                last = Some(id);
+                chunk.push_str(&line);
+            }
+            // 发送失败 = 客户端断开：收手，别再继续查库
+            if tx.send(Ok(Bytes::from(std::mem::take(&mut chunk)))).await.is_err() {
+                return;
+            }
+            if !full {
+                return;
+            }
+            match next(last).await {
+                Ok(batch) if !batch.is_empty() => rows = batch,
+                Ok(_) => return,
+                Err(e) => {
+                    // 状态码早已发出、改不了：打日志并中断 body，让客户端看到
+                    // 「传输失败」，而不是一份静默截断的 CSV 被当成完整导出
+                    tracing::error!("导出中断: {e:?}");
+                    let _ = tx.send(Err(std::io::Error::other("export aborted"))).await;
+                    return;
+                }
+            }
+        }
+    });
+
+    Ok((headers(&filename), Body::from_stream(ReceiverStream::new(rx))).into_response())
 }
 
 #[cfg(test)]

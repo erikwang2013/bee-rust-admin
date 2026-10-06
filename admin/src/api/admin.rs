@@ -190,41 +190,63 @@ pub async fn list(
     Ok(ok(json!({ "list": list, "total": total })))
 }
 
+fn export_header() -> Vec<String> {
+    ["ID", "用户名", "昵称", "部门", "角色", "邮箱", "手机号", "状态", "最后登录", "创建时间"]
+        .map(String::from)
+        .to_vec()
+}
+
+/// 取一批导出数据（keyset：`id < last`，首页不带该条件），补字段/渲染与旧的一次性实现一致。
+async fn export_batch(
+    state: &AppState,
+    base: &QuerySet<Admin>,
+    last: Option<u64>,
+) -> Result<Vec<(u64, String)>, ApiError> {
+    let mut qs = base.clone().order_by("id DESC").limit(csv::BATCH);
+    if let Some(last) = last {
+        qs = qs.filter_raw("id < ?", &[last]);
+    }
+    let rows = qs.fetch_all(&state.db).await.map_err(ApiError::from)?;
+    Ok(decorate(state, rows)
+        .await?
+        .into_iter()
+        .map(|v| {
+            let id = v["id"].as_u64().unwrap_or(0);
+            (
+                id,
+                csv::row(&[
+                    csv::jcell(&v["id"]),
+                    csv::jcell(&v["username"]),
+                    csv::jcell(&v["nickname"]),
+                    csv::jcell(&v["dept_name"]),
+                    csv::jcell(&v["role_names"]),
+                    csv::jcell(&v["email"]),
+                    csv::jcell(&v["phone"]),
+                    if v["status"].as_i64() == Some(1) { "启用".into() } else { "禁用".into() },
+                    csv::jcell(&v["last_login_at"]),
+                    csv::jcell(&v["created_at"]),
+                ]),
+            )
+        })
+        .collect())
+}
+
 /// 导出当前筛选结果（不含分页）；鉴权复用 list 权限码。
-/// ponytail: 一次全量进内存，十万行级没问题；再大要走流式导出。
+/// 流式：筛选 + 数据权限与 list 共用 `filtered()`，按 keyset 分批取（B6），
+/// 内存只与一批（含该批的 decorate）成正比。
 pub async fn export(
     State(state): State<AppState>,
     auth: Auth,
     AppQuery(q): AppQuery<AdminListQuery>,
 ) -> Result<Response, ApiError> {
     auth.require("system:admin:list")?;
-    let rows = filtered(&q, &auth, &state)
-        .await?
-        .order_by("id DESC")
-        .fetch_all(&state.db)
-        .await
-        .map_err(ApiError::from)?;
-
-    let mut out = csv::row(
-        &["ID", "用户名", "昵称", "部门", "角色", "邮箱", "手机号", "状态", "最后登录", "创建时间"]
-            .map(String::from)
-            .to_vec(),
-    );
-    for v in decorate(&state, rows).await? {
-        out.push_str(&csv::row(&[
-            csv::jcell(&v["id"]),
-            csv::jcell(&v["username"]),
-            csv::jcell(&v["nickname"]),
-            csv::jcell(&v["dept_name"]),
-            csv::jcell(&v["role_names"]),
-            csv::jcell(&v["email"]),
-            csv::jcell(&v["phone"]),
-            if v["status"].as_i64() == Some(1) { "启用".into() } else { "禁用".into() },
-            csv::jcell(&v["last_login_at"]),
-            csv::jcell(&v["created_at"]),
-        ]));
-    }
-    Ok(csv::response(format!("admins-{}.csv", csv::today()), out))
+    let base = filtered(&q, &auth, &state).await?;
+    csv::streamed(format!("admins-{}.csv", csv::today()), export_header(), move |last| {
+        let state = state.clone();
+        let base = base.clone();
+        async move { export_batch(&state, &base, last).await }
+    })
+    .await
 }
 
 pub async fn detail(
