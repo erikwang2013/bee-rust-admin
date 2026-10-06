@@ -2,7 +2,7 @@
 
 基于 bee-rust 框架的 RBAC 管理后台 —— Rust 服务端 + React 前端，建库即用。
 
-`JWT 登录` · `管理员 / 角色 / 菜单 / 部门 / 字典 / 定时任务 / 通知公告 / 登录记录` · `菜单 + 按钮级权限` · `部门数据权限` · `Docker 一键部署`
+`JWT 登录` · `管理员 / 角色 / 菜单 / 部门 / 字典 / 定时任务 / 通知公告 / 登录记录` · `菜单 + 按钮级权限` · `部门数据权限` · `中英双语` · `Docker 一键部署`
 
 ---
 
@@ -37,7 +37,7 @@
 **BRD（Bee Rust Admin）** 是一个开箱即用的后台管理系统：服务端用本仓库的
 [bee-rust](https://github.com/erikwang2013/bee-rust) 框架写就（axum 路由 + 自研 ORM 执行层 +
 INI 配置），前端是 Vite + React 18 + Ant Design 5 单页应用，两者通过一套统一的
-`{code, msg, data}` 接口契约对接。
+`{code, msg, data}` 接口契约对接（错误响应另带稳定的业务错误码 `err` 与参数 `args`，前端据此出多语言文案）。
 
 它解决的问题很实际：**权限要细到按钮、数据要看得到范围、登录要留痕**。因此：
 
@@ -104,6 +104,7 @@ INI 配置），前端是 Vite + React 18 + Ant Design 5 单页应用，两者�
 | **字典管理** | 字典类型 + 字典项两级维护、同类型内 value 唯一、删除类型级联删项、CSV 导出；`GET /dicts/{code}/items` 是登录即可用的下拉数据源（只回启用项） |
 | **定时任务** | 内置任务由**代码注册**（code 是注册键，库里只放调度与执行记录，界面不能新增/改名）、固定间隔（秒）调度 + 启停、手动触发一次、执行记录分页；`[job] enabled` 总开关关掉后仍可手动补跑 |
 | **通知公告** | 草稿 / 已发布两态（发布写 `published_at`，回退草稿不清空——留痕）、增删改、删公告同事务级联删已读记录；顶栏铃铛显示未读数 |
+| **中英双语** | 界面文案中/英两套（顶栏切换，跟随浏览器语言，存 localStorage），antd 组件文案与日期格式跟着切；**后端不做多语言消息**——错误响应带稳定业务错误码 `err` + 参数 `args`，前端查表出文案，查不到回落后端中文 `msg`（任何情况都有话可说） |
 
 接口共 62 个（61 个业务接口 + `/api/v1/health` 探活），路径与字段的完整定义见
 [设计文档 §5.3](docs/superpowers/specs/2026-10-05-bee-rust-admin-design.md)，
@@ -122,7 +123,7 @@ crates/                 bee-rust 框架（workspace 成员，本后台直接依�
 admin/                  管理后台服务端（crate bee_admin）
   src/main.rs           启动：配置 → 连库 → syncdb → 种子 → 路由 → 监听
   src/config.rs         INI 配置与启动校验（JWT secret 强度、DSN 覆盖）
-  src/error.rs          ApiError + 统一信封 + AppJson 请求体提取器
+  src/error.rs          ApiError + 统一信封（code/msg/err/args）+ 错误码表 + 请求体提取器
   src/auth.rs           JWT 签发校验 + Auth 提取器（权限码加载、token_version 校验）
   src/datascope.rs      数据权限解析与查询注入（部门子树 / 本人 / 自定义）
   src/api/              auth · admin · role · menu · dept · dict · job · notice · login_log · audit_log 十个模块
@@ -133,7 +134,8 @@ admin/                  管理后台服务端（crate bee_admin）
   deploy/               systemd 单元 + nginx 站点配置
   tests/                集成测试：起真实进程 + 连真库（含全链路）
   web/                  前端 SPA（React + antd，见下）
-    src/api/            接口层（契约类型 + axios 拦截器）
+    src/api/            接口层（契约类型 + axios 拦截器 + 错误码→文案映射）
+    src/i18n/           类型化词表（中英）+ I18nProvider + 语言开关
     src/auth/           AuthContext + 按钮级权限组件
     src/layouts/        动态菜单布局
     src/pages/          登录 / 首页 / 管理员 / 角色 / 菜单 / 部门 / 字典 / 定时任务 / 通知公告 /

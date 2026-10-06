@@ -327,6 +327,7 @@ export const zhCN = {
   'err.dict.label_required': '字典标签不能为空',
   'err.dict.value_required': '字典值不能为空',
   'err.dict.code_taken': '字典编码已存在',
+  'err.dict.code_format': '字典编码只能是小写字母、数字、下划线，长度 2~64',
   'err.dict.value_taken': '该类型下字典值已存在',
   'err.dict.type_missing': '字典类型不存在',
   'err.job.bad_interval': '间隔必须是正整数秒',

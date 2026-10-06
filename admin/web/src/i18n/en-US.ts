@@ -320,6 +320,7 @@ export const enUS: Record<I18nKey, string> = {
   'err.dict.label_required': 'Dictionary label is required',
   'err.dict.value_required': 'Dictionary value is required',
   'err.dict.code_taken': 'Dictionary code already exists',
+  'err.dict.code_format': 'Dictionary code may only contain lowercase letters, digits and underscores, 2-64 characters',
   'err.dict.value_taken': 'This value already exists under the type',
   'err.dict.type_missing': 'The dictionary type does not exist',
   'err.job.bad_interval': 'The interval must be a positive integer number of seconds',
