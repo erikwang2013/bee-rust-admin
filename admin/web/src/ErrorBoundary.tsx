@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { Button, Result } from 'antd';
 import { useRouteError } from 'react-router';
+import { t } from './i18n';
 
 /**
  * 出错时的降级界面：可读的说明 + 阿守 + 刷新按钮，取代白屏。
@@ -8,6 +9,9 @@ import { useRouteError } from 'react-router';
  * 刻意做得很"素"——不读主题/ConfigProvider 上下文，因为它可能正是出错的那一环；
  * 只用 antd 默认样式 + 内联样式。传进来的 error 可能是任何类型（路由的
  * errorElement 里拿到的不保证是 Error），所以统一在这里收敛。
+ *
+ * 文案用模块级的 `t`，**不能**用 useI18n()：最外层这个 ErrorBoundary 就在
+ * I18nProvider 外面，出错时正好可能连 Provider 都没渲染出来。
  */
 function CrashScreen({ error }: { error: unknown }) {
   const msg = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
@@ -15,10 +19,10 @@ function CrashScreen({ error }: { error: unknown }) {
     <Result
       style={{ paddingTop: 96 }}
       icon={<img src="/keeper-alarmed.svg" alt="" width={96} height={96} />}
-      title="页面出了点问题"
-      subTitle={msg || '未知错误'}
+      title={t('error.crash_title')}
+      subTitle={msg || t('error.crash_unknown')}
       // 出错后整棵树已经不可信，重新挂载比局部恢复更可靠
-      extra={<Button type="primary" onClick={() => window.location.reload()}>刷新重试</Button>}
+      extra={<Button type="primary" onClick={() => window.location.reload()}>{t('error.crash_retry')}</Button>}
     />
   );
 }

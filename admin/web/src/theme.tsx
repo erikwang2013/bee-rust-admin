@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Switch } from 'antd';
 import { MoonOutlined, SunOutlined } from '@ant-design/icons';
+import { useI18n } from './i18n';
 
 export type ThemeMode = 'light' | 'dark';
 
@@ -35,9 +36,10 @@ export function useThemeMode() {
 /** 顶栏与登录页共用的明暗开关。 */
 export function ThemeToggle() {
   const { mode, toggle } = useThemeMode();
+  const { t } = useI18n();
   return (
     <Switch
-      aria-label="切换明暗主题"
+      aria-label={t('layout.theme_toggle')}
       checked={mode === 'dark'}
       onChange={toggle}
       checkedChildren={<MoonOutlined />}
