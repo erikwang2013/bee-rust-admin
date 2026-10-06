@@ -90,15 +90,21 @@ async fn actor(state: &AppState, headers: &axum::http::HeaderMap) -> (u64, Strin
     let Ok(claims) = verify_token(token, &state.cfg) else {
         return (0, String::new());
     };
-    let name = match Admin::query().filter_eq("id", claims.sub) {
-        Ok(qs) => qs
-            .fetch_one(&state.db)
-            .await
-            .ok()
-            .flatten()
-            .map(|a| a.username)
-            .unwrap_or_default(),
-        Err(_) => String::new(),
+    let qs = match Admin::query().filter_eq("id", claims.sub) {
+        Ok(qs) => qs,
+        Err(e) => {
+            tracing::error!("审计构造操作者查询失败 (id={}): {e}", claims.sub);
+            return (claims.sub, String::new());
+        }
+    };
+    let name = match qs.fetch_one(&state.db).await {
+        Ok(Some(a)) => a.username,
+        // 管理员被删但 token 还没过期：留匿名记录即可，不是错误
+        Ok(None) => String::new(),
+        Err(e) => {
+            tracing::error!("审计查询操作者失败 (id={}): {e}", claims.sub);
+            String::new()
+        }
     };
     (claims.sub, name)
 }
