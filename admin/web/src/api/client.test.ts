@@ -21,4 +21,19 @@ describe('envelopeError', () => {
     expect(envelopeError('plain text')).toBeNull();
     expect(envelopeError({ code: '0', msg: 'ok' })).toBeNull();
   });
+
+  it('有 err 且词表命中：用词表文案（带 args 占位）', () => {
+    expect(envelopeError({ code: 400, msg: '用户名或密码错误', err: 'auth.bad_credentials' }))
+      .toBe('用户名或密码错误');
+    expect(envelopeError({
+      code: 400, msg: '备注长度不能超过 255 个字符',
+      err: 'common.too_long', args: { field: 'remark', max: 255 },
+    })).toBe('备注 长度不能超过 255 个字符');
+  });
+
+  it('err 不在词表里：回落 msg，不能吞掉后端的话', () => {
+    expect(envelopeError({ code: 400, msg: '这个码前端还没见过', err: 'brand.new.code' }))
+      .toBe('这个码前端还没见过');
+    expect(envelopeError({ code: 500, msg: '', err: 'brand.new.code' })).toBe('请求失败');
+  });
 });
