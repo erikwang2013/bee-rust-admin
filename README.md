@@ -2,7 +2,7 @@
 
 基于 bee-rust 框架的 RBAC 管理后台 —— Rust 服务端 + React 前端，建库即用。
 
-`JWT 登录` · `管理员 / 角色 / 菜单 / 部门 / 登录记录` · `菜单 + 按钮级权限` · `部门数据权限` · `Docker 一键部署`
+`JWT 登录` · `管理员 / 角色 / 菜单 / 部门 / 字典 / 登录记录` · `菜单 + 按钮级权限` · `部门数据权限` · `Docker 一键部署`
 
 ---
 
@@ -60,9 +60,9 @@ INI 配置），前端是 Vite + React 18 + Ant Design 5 单页应用，两者�
 |---|---|---|
 | 客户端 | 浏览器 SPA | React 18 + TypeScript + Ant Design 5（Vite 构建） |
 | 接入层 | nginx :8081 | 提供前端静态资源，`/api/` 反向代理到后端并透传 `X-Real-IP` |
-| 应用层 | `bee_admin` | bee_router（axum）· Auth 提取器 · 33 个 API handler · datascope 数据权限 · 统一响应信封 |
+| 应用层 | `bee_admin` | bee_router（axum）· Auth 提取器 · 41 个 API handler · datascope 数据权限 · 统一响应信封 |
 | 框架层 | bee_orm / bee_config / bee_logs | 连接池、QuerySet、CRUD、M2M、syncdb；INI 配置；tracing 日志 |
-| 数据层 | MySQL 8.4 | 8 张表（5 张业务表 + 3 张连接表） |
+| 数据层 | MySQL 8.4 | 11 张表（8 张业务表 + 3 张连接表） |
 
 ## 功能设计
 
@@ -101,9 +101,11 @@ INI 配置），前端是 Vite + React 18 + Ant Design 5 单页应用，两者�
 | **菜单管理** | 树形目录 / 菜单 / 按钮三层、权限码、图标与排序、防环校验、删除前校验子节点与角色引用 |
 | **部门管理** | 树形部门、负责人与排序、删除前校验子部门与在编管理员 |
 | **登录记录** | 按用户名 / 状态 / 时间段分页查询、按条件清空，记录受数据权限约束 |
+| **字典管理** | 字典类型 + 字典项两级维护、同类型内 value 唯一、删除类型级联删项、CSV 导出；`GET /dicts/{code}/items` 是登录即可用的下拉数据源（只回启用项） |
 
-接口共 33 个（32 个业务接口 + `/api/v1/health` 探活），路径与字段的完整定义见
-[设计文档 §5.3](docs/superpowers/specs/2026-10-05-bee-rust-admin-design.md)。
+接口共 41 个（40 个业务接口 + `/api/v1/health` 探活），路径与字段的完整定义见
+[设计文档 §5.3](docs/superpowers/specs/2026-10-05-bee-rust-admin-design.md)，
+字典 / 定时任务 / 通知公告 / i18n 的契约另见 [C 组设计](docs/superpowers/plans/2026-10-06-brd-v1.5-c-modules.md)。
 
 ## 项目结构
 
@@ -121,8 +123,8 @@ admin/                  管理后台服务端（crate bee_admin）
   src/error.rs          ApiError + 统一信封 + AppJson 请求体提取器
   src/auth.rs           JWT 签发校验 + Auth 提取器（权限码加载、token_version 校验）
   src/datascope.rs      数据权限解析与查询注入（部门子树 / 本人 / 自定义）
-  src/api/              auth · admin · role · menu · dept · login_log 六个模块
-  src/models/           8 个模型（#[derive(Model)]，表结构由 syncdb 生成）
+  src/api/              auth · admin · role · menu · dept · dict · login_log · audit_log 八个模块
+  src/models/           11 个模型（8 张业务表 + 3 张连接表，表结构由 syncdb 生成）
   src/seed.rs           建表、连接表 DDL、首次种子（超管 + 菜单权限树）
   conf/                 app.conf（gitignore）· app.conf.example · app.conf.test
   deploy/               systemd 单元 + nginx 站点配置
@@ -131,7 +133,7 @@ admin/                  管理后台服务端（crate bee_admin）
     src/api/            接口层（契约类型 + axios 拦截器）
     src/auth/           AuthContext + 按钮级权限组件
     src/layouts/        动态菜单布局
-    src/pages/          登录 / 首页 / 管理员 / 角色 / 菜单 / 部门 / 登录记录 / 个人中心
+    src/pages/          登录 / 首页 / 管理员 / 角色 / 菜单 / 部门 / 字典 / 登录记录 / 个人中心
 docs/
   diagrams/             ★ 本 README 引用的 4 张 SVG 图
   superpowers/specs/    设计文档（数据模型、接口清单、数据权限规则）
@@ -236,7 +238,7 @@ BEE_ORM_TEST_DSN='mysql://user:pass@127.0.0.1:3306/bee_orm_test' cargo test -p b
 # 后台：单测（配置 / JWT / 数据权限 / 防环等纯函数）
 cargo test -p bee_admin --bins
 
-# 后台全链路：真实进程 + 真库，覆盖登录、五个模块 CRUD、数据权限、踢下线、引用校验
+# 后台全链路：真实进程 + 真库，覆盖登录、各模块 CRUD、数据权限、踢下线、引用校验、字典
 # 注意：会先 DROP 测试库所有表再重建，只对测试库执行
 BEE_ADMIN_DB_DSN='mysql://user:pass@127.0.0.1:3306/bee_admin_test' \
   cargo test -p bee_admin --test api_flow_test -- --nocapture
