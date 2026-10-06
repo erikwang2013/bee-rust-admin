@@ -42,24 +42,27 @@ pub fn derive_config(input: TokenStream) -> TokenStream {
 
             fn reload(&mut self) -> Result<(), bee_config::ConfigError> {
                 let path = bee_config::paths::path_of::<Self>()?;
-                // Retry: editors writing in place can leave a half-written
-                // file behind a change event. 3 attempts x 20ms covers that.
+                // Retry: an editor writing in place leaves the file truncated
+                // behind the change event, and the writer may be slow (or the
+                // machine loaded) — so retry until a deadline, not a fixed
+                // attempt count. A fixed 3x20ms window loses the race on a
+                // busy box; 200ms is ~20x a local editor's rewrite.
+                let deadline =
+                    std::time::Instant::now() + std::time::Duration::from_millis(200);
                 let mut last_err = None;
-                for attempt in 0..3 {
+                loop {
                     match Self::load(&path) {
                         Ok(cfg) => {
                             *self = cfg;
                             return Ok(());
                         }
-                        Err(e) => {
-                            last_err = Some(e);
-                            if attempt < 2 {
-                                std::thread::sleep(std::time::Duration::from_millis(20));
-                            }
-                        }
+                        Err(e) => last_err = Some(e),
                     }
+                    if std::time::Instant::now() >= deadline {
+                        return Err(last_err.unwrap());
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(20));
                 }
-                Err(last_err.unwrap())
             }
 
             fn watch(&self) -> Result<(), bee_config::ConfigError> {
