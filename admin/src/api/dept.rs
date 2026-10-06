@@ -1,12 +1,12 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use crate::api::{check_len, would_cycle};
 use crate::auth::Auth;
-use crate::error::{ApiError, AppJson, ok};
+use crate::error::{ApiError, AppJson, AppPath, ok};
 use crate::models::{Admin, Dept};
 use crate::state::AppState;
 use crate::util::now;
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::State;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -119,7 +119,7 @@ pub async fn create(
 pub async fn update(
     State(state): State<AppState>,
     auth: Auth,
-    Path(id): Path<u64>,
+    AppPath(id): AppPath<u64>,
     AppJson(body): AppJson<DeptBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:dept:edit")?;
@@ -153,7 +153,7 @@ pub async fn update(
 pub async fn remove(
     State(state): State<AppState>,
     auth: Auth,
-    Path(id): Path<u64>,
+    AppPath(id): AppPath<u64>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:dept:remove")?;
     let children = Dept::query()

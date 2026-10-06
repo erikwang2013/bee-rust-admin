@@ -73,3 +73,45 @@ where
         }
     }
 }
+
+/// `Query` 版统一提取器：`?page=abc` 这类参数解析失败也回 JSON 信封，不是 400 纯文本。
+pub struct AppQuery<T>(pub T);
+
+impl<S, T> axum::extract::FromRequestParts<S> for AppQuery<T>
+where
+    T: serde::de::DeserializeOwned,
+    S: Send + Sync,
+{
+    type Rejection = ApiError;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        match axum::extract::Query::<T>::from_request_parts(parts, state).await {
+            Ok(axum::extract::Query(v)) => Ok(AppQuery(v)),
+            Err(rej) => Err(ApiError::BadRequest(format!("查询参数格式错误: {}", rej.body_text()))),
+        }
+    }
+}
+
+/// `Path` 版统一提取器：路径段类型不对（如 `/admins/abc`）也回 JSON 信封。
+pub struct AppPath<T>(pub T);
+
+impl<S, T> axum::extract::FromRequestParts<S> for AppPath<T>
+where
+    T: serde::de::DeserializeOwned + Send,
+    S: Send + Sync,
+{
+    type Rejection = ApiError;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        match axum::extract::Path::<T>::from_request_parts(parts, state).await {
+            Ok(axum::extract::Path(v)) => Ok(AppPath(v)),
+            Err(rej) => Err(ApiError::BadRequest(format!("路径参数格式错误: {}", rej.body_text()))),
+        }
+    }
+}

@@ -37,8 +37,9 @@ impl DataScope {
         Some((format!("({})", parts.join(" OR ")), params))
     }
 
-    /// 登录记录专用：部门 → `admin_id IN (该部门下的管理员)`（参数化子查询）。
-    pub fn login_log_condition(&self) -> Option<(String, Vec<String>)> {
+    /// 日志类（登录记录/操作日志）专用，条件都作用在 `admin_id` 上：
+    /// 部门 → `admin_id IN (该部门下的管理员)`（参数化子查询）。
+    pub fn admin_id_condition(&self) -> Option<(String, Vec<String>)> {
         if self.all {
             return None;
         }

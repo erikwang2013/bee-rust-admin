@@ -130,6 +130,9 @@ impl FromRequestParts<AppState> for Auth {
                 Menu::query()
                     .filter_in("id", menu_ids)
                     .map_err(ApiError::from)?
+                    // 禁用的菜单/按钮即时收权：状态改了不用重启，下一请求就少这个码
+                    .filter_eq("status", 1)
+                    .map_err(ApiError::from)?
                     .fetch_all(&state.db)
                     .await
                     .map_err(ApiError::from)?
@@ -157,6 +160,9 @@ mod tests {
             jwt_secret: "0123456789012345678901234567890123".into(),
             jwt_expire_hours: 24,
             initial_admin_password: "admin123".into(),
+            upload_dir: "uploads".into(),
+            max_fail: 5,
+            lock_minutes: 10,
         }
     }
 

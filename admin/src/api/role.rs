@@ -1,12 +1,12 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use crate::api::{check_len, dedup_ids, page_size};
 use crate::auth::Auth;
-use crate::error::{ApiError, AppJson, ok};
+use crate::error::{ApiError, AppJson, AppPath, AppQuery, ok};
 use crate::models::{AdminRole, Role};
 use crate::state::AppState;
 use crate::util::now;
 use axum::Json;
-use axum::extract::{Path, Query, State};
+use axum::extract::State;
 use bee_orm::OrmError;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -83,7 +83,7 @@ fn validate_body(b: &RoleBody) -> Result<(), ApiError> {
 pub async fn list(
     State(state): State<AppState>,
     auth: Auth,
-    Query(q): Query<RoleListQuery>,
+    AppQuery(q): AppQuery<RoleListQuery>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:list")?;
     let (page, size) = page_size(q.page, q.size);
@@ -107,7 +107,7 @@ pub async fn list(
 pub async fn detail(
     State(state): State<AppState>,
     auth: Auth,
-    Path(id): Path<u64>,
+    AppPath(id): AppPath<u64>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:list")?;
     let r = Role::query()
@@ -150,7 +150,7 @@ pub async fn create(
 pub async fn update(
     State(state): State<AppState>,
     auth: Auth,
-    Path(id): Path<u64>,
+    AppPath(id): AppPath<u64>,
     AppJson(body): AppJson<RoleBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:edit")?;
@@ -182,7 +182,7 @@ pub async fn update(
 pub async fn remove(
     State(state): State<AppState>,
     auth: Auth,
-    Path(id): Path<u64>,
+    AppPath(id): AppPath<u64>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:remove")?;
     let used = AdminRole::query()
@@ -203,7 +203,7 @@ pub async fn remove(
 pub async fn get_menus(
     State(state): State<AppState>,
     auth: Auth,
-    Path(id): Path<u64>,
+    AppPath(id): AppPath<u64>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:list")?;
     let ids = state
@@ -217,7 +217,7 @@ pub async fn get_menus(
 pub async fn set_menus(
     State(state): State<AppState>,
     auth: Auth,
-    Path(id): Path<u64>,
+    AppPath(id): AppPath<u64>,
     AppJson(body): AppJson<MenuIdsBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:edit")?;
@@ -241,7 +241,7 @@ pub async fn set_menus(
 pub async fn get_depts(
     State(state): State<AppState>,
     auth: Auth,
-    Path(id): Path<u64>,
+    AppPath(id): AppPath<u64>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:list")?;
     let ids = state
@@ -255,7 +255,7 @@ pub async fn get_depts(
 pub async fn set_depts(
     State(state): State<AppState>,
     auth: Auth,
-    Path(id): Path<u64>,
+    AppPath(id): AppPath<u64>,
     AppJson(body): AppJson<DeptIdsBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:edit")?;
