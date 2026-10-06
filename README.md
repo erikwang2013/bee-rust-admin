@@ -2,7 +2,7 @@
 
 基于 bee-rust 框架的 RBAC 管理后台 —— Rust 服务端 + React 前端，建库即用。
 
-`JWT 登录` · `管理员 / 角色 / 菜单 / 部门 / 字典 / 登录记录` · `菜单 + 按钮级权限` · `部门数据权限` · `Docker 一键部署`
+`JWT 登录` · `管理员 / 角色 / 菜单 / 部门 / 字典 / 定时任务 / 通知公告 / 登录记录` · `菜单 + 按钮级权限` · `部门数据权限` · `Docker 一键部署`
 
 ---
 
@@ -60,9 +60,9 @@ INI 配置），前端是 Vite + React 18 + Ant Design 5 单页应用，两者�
 |---|---|---|
 | 客户端 | 浏览器 SPA | React 18 + TypeScript + Ant Design 5（Vite 构建） |
 | 接入层 | nginx :8081 | 提供前端静态资源，`/api/` 反向代理到后端并透传 `X-Real-IP` |
-| 应用层 | `bee_admin` | bee_router（axum）· Auth 提取器 · 41 个 API handler · datascope 数据权限 · 统一响应信封 |
+| 应用层 | `bee_admin` | bee_router（axum）· Auth 提取器 · 62 个 API handler · datascope 数据权限 · 统一响应信封 |
 | 框架层 | bee_orm / bee_config / bee_logs | 连接池、QuerySet、CRUD、M2M、syncdb；INI 配置；tracing 日志 |
-| 数据层 | MySQL 8.4 | 11 张表（8 张业务表 + 3 张连接表） |
+| 数据层 | MySQL 8.4 | 15 张表（11 张业务表 + 4 张关系表） |
 
 ## 功能设计
 
@@ -102,8 +102,10 @@ INI 配置），前端是 Vite + React 18 + Ant Design 5 单页应用，两者�
 | **部门管理** | 树形部门、负责人与排序、删除前校验子部门与在编管理员 |
 | **登录记录** | 按用户名 / 状态 / 时间段分页查询、按条件清空，记录受数据权限约束 |
 | **字典管理** | 字典类型 + 字典项两级维护、同类型内 value 唯一、删除类型级联删项、CSV 导出；`GET /dicts/{code}/items` 是登录即可用的下拉数据源（只回启用项） |
+| **定时任务** | 内置任务由**代码注册**（code 是注册键，库里只放调度与执行记录，界面不能新增/改名）、固定间隔（秒）调度 + 启停、手动触发一次、执行记录分页；`[job] enabled` 总开关关掉后仍可手动补跑 |
+| **通知公告** | 草稿 / 已发布两态（发布写 `published_at`，回退草稿不清空——留痕）、增删改、删公告同事务级联删已读记录；顶栏铃铛显示未读数 |
 
-接口共 41 个（40 个业务接口 + `/api/v1/health` 探活），路径与字段的完整定义见
+接口共 62 个（61 个业务接口 + `/api/v1/health` 探活），路径与字段的完整定义见
 [设计文档 §5.3](docs/superpowers/specs/2026-10-05-bee-rust-admin-design.md)，
 字典 / 定时任务 / 通知公告 / i18n 的契约另见 [C 组设计](docs/superpowers/plans/2026-10-06-brd-v1.5-c-modules.md)。
 
@@ -123,8 +125,9 @@ admin/                  管理后台服务端（crate bee_admin）
   src/error.rs          ApiError + 统一信封 + AppJson 请求体提取器
   src/auth.rs           JWT 签发校验 + Auth 提取器（权限码加载、token_version 校验）
   src/datascope.rs      数据权限解析与查询注入（部门子树 / 本人 / 自定义）
-  src/api/              auth · admin · role · menu · dept · dict · login_log · audit_log 八个模块
-  src/models/           11 个模型（8 张业务表 + 3 张连接表，表结构由 syncdb 生成）
+  src/api/              auth · admin · role · menu · dept · dict · job · notice · login_log · audit_log 十个模块
+  src/models/           14 个模型（syncdb 生成）；`notice_read` 是复合主键、无模型结构体，
+                        建表与读写走裸 SQL（与 `role_dept` 等关系表同一处理方式）
   src/seed.rs           建表、连接表 DDL、首次种子（超管 + 菜单权限树）
   conf/                 app.conf（gitignore）· app.conf.example · app.conf.test
   deploy/               systemd 单元 + nginx 站点配置
@@ -133,7 +136,8 @@ admin/                  管理后台服务端（crate bee_admin）
     src/api/            接口层（契约类型 + axios 拦截器）
     src/auth/           AuthContext + 按钮级权限组件
     src/layouts/        动态菜单布局
-    src/pages/          登录 / 首页 / 管理员 / 角色 / 菜单 / 部门 / 字典 / 登录记录 / 个人中心
+    src/pages/          登录 / 首页 / 管理员 / 角色 / 菜单 / 部门 / 字典 / 定时任务 / 通知公告 /
+                        登录记录 / 个人中心
 docs/
   diagrams/             ★ 本 README 引用的 4 张 SVG 图
   superpowers/specs/    设计文档（数据模型、接口清单、数据权限规则）
@@ -167,6 +171,10 @@ CREATE DATABASE bee_admin DEFAULT CHARSET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 cp admin/conf/app.conf.example admin/conf/app.conf
 # 填 [db] dsn（MySQL 账号密码）与 [jwt] secret（≥32 字符随机串，且不能是 changeme）
 ```
+
+其余可选开关见示例文件：`[log] retain_days`（日志保留天数，`0` = 永久，同时作用于
+登录/操作/任务执行记录）、`[job] enabled`（定时任务总开关，关掉后仍可手动补跑）、
+`[auth] max_fail` / `lock_minutes`（登录失败锁定）。
 
 **3. 起服务**（首次启动自动建表、写入超管与菜单权限种子）
 
@@ -238,10 +246,10 @@ BEE_ORM_TEST_DSN='mysql://user:pass@127.0.0.1:3306/bee_orm_test' cargo test -p b
 # 后台：单测（配置 / JWT / 数据权限 / 防环等纯函数）
 cargo test -p bee_admin --bins
 
-# 后台全链路：真实进程 + 真库，覆盖登录、各模块 CRUD、数据权限、踢下线、引用校验、字典
+# 后台：整包（单测 + 全部真库集成套件；不逐个列 --test，避免新套件被漏在 CI 外）
 # 注意：会先 DROP 测试库所有表再重建，只对测试库执行
 BEE_ADMIN_DB_DSN='mysql://user:pass@127.0.0.1:3306/bee_admin_test' \
-  cargo test -p bee_admin --test api_flow_test -- --nocapture
+  cargo test -p bee_admin -- --nocapture
 ```
 
 `BEE_ADMIN_DB_DSN` 会覆盖配置里的 `[db] dsn`（便于测试注入凭据），因此测试库账号不必写进仓库；

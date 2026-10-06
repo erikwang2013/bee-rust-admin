@@ -18,5 +18,14 @@ expire_hours = 24
 max_fail = 5
 lock_minutes = 10
 
+[log]
+# 日志保留天数（login_log / audit_log / job_log 执行记录）；0 = 永久保留。
+# 启动时清一遍，之后由内置定时任务 log_retention 每天清一次
+retain_days = 90
+
+[job]
+# 定时任务总开关：false = 不启动调度循环（任务不会自动跑），但「手动触发一次」仍然可用
+enabled = true
+
 [seed]
 initial_admin_password = admin123
