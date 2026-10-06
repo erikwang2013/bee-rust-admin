@@ -27,6 +27,8 @@ pub struct AppConfig {
     pub max_fail: i64,
     /// 登录失败锁定时长（分钟）；0 = 关闭锁定
     pub lock_minutes: i64,
+    /// 日志保留天数（login_log / audit_log）；0 = 永久保留
+    pub retain_days: i64,
 }
 
 impl AppConfig {
@@ -87,6 +89,7 @@ impl AppConfig {
             upload_dir: opt("app", "upload_dir", "uploads"),
             max_fail: num("auth", "max_fail", 5)?,
             lock_minutes: num("auth", "lock_minutes", 10)?,
+            retain_days: num("log", "retain_days", 90)?,
         })
     }
 }
@@ -139,6 +142,7 @@ initial_admin_password = admin123
         assert_eq!(cfg.upload_dir, "uploads");
         assert_eq!(cfg.max_fail, 5);
         assert_eq!(cfg.lock_minutes, 10);
+        assert_eq!(cfg.retain_days, 90, "[log] retain_days 默认 90 天");
 
         let mut map = parse();
         map.insert(
@@ -148,10 +152,15 @@ initial_admin_password = admin123
                 .collect(),
         );
         map.get_mut("app").unwrap().insert("upload_dir".into(), "/data/up".into());
+        map.insert(
+            "log".into(),
+            [("retain_days".to_string(), "0".to_string())].into_iter().collect(),
+        );
         let cfg = AppConfig::from_ini(&map).unwrap();
         assert_eq!(cfg.upload_dir, "/data/up");
         assert_eq!(cfg.max_fail, 3);
         assert_eq!(cfg.lock_minutes, 1);
+        assert_eq!(cfg.retain_days, 0, "0 = 永久保留");
     }
 
     #[test]

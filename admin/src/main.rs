@@ -6,6 +6,7 @@ mod config;
 mod datascope;
 mod error;
 mod models;
+mod retention;
 mod seed;
 mod state;
 mod util;
@@ -87,6 +88,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Ok(_) => {}
                     Err(e) => tracing::warn!("清理限流条目失败: {e}"),
                 }
+            }
+        });
+    }
+
+    // 日志保留（A4）：启动先清一遍积压，然后每 24 小时一次。删的是慢增长的历史
+    // 数据，日频足够；`retain_days = 0` 时不 spawn（永久保留）。
+    if state.cfg.retain_days > 0 {
+        let db = state.db.clone();
+        let retain_days = state.cfg.retain_days;
+        tokio::spawn(async move {
+            loop {
+                retention::purge_all(&db, retain_days).await;
+                tokio::time::sleep(std::time::Duration::from_secs(24 * 3600)).await;
             }
         });
     }

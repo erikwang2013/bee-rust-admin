@@ -163,6 +163,7 @@ mod tests {
             upload_dir: "uploads".into(),
             max_fail: 5,
             lock_minutes: 10,
+            retain_days: 90,
         }
     }
 
