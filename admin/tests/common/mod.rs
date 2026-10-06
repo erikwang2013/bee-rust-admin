@@ -56,7 +56,7 @@ pub async fn reset_db(dsn: &str) {
     let pool = sqlx::MySqlPool::connect(dsn).await.unwrap();
     for t in [
         "admin_role", "role_menu", "role_dept", "login_log", "audit_log", "menu", "role", "dept",
-        "dict_item", "dict_type", "admin",
+        "dict_item", "dict_type", "job_log", "job", "notice_read", "notice", "admin",
     ] {
         sqlx::query(&format!("DROP TABLE IF EXISTS {t}")).execute(&pool).await.unwrap();
     }
