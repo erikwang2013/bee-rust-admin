@@ -109,10 +109,10 @@ fn validate_profile(
     phone: &str,
     remark: &str,
 ) -> Result<(), ApiError> {
-    check_len("昵称", nickname, 64)?;
-    check_len("邮箱", email, 128)?;
-    check_len("手机号", phone, 20)?;
-    check_len("备注", remark, 255)
+    check_len("nickname", nickname, 64)?;
+    check_len("email", email, 128)?;
+    check_len("phone", phone, 20)?;
+    check_len("remark", remark, 255)
 }
 
 /// 列表与导出共用的筛选 + 数据权限。

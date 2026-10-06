@@ -56,11 +56,11 @@ pub(crate) fn dedup_ids(mut ids: Vec<u64>) -> Vec<u64> {
 
 /// 客户端文本字段长度校验：超长直接 400，别让 MySQL 报 1406 变成 500，
 /// 也别在非严格模式下被静默截断（截断后的权限码再也匹配不上）。
+/// `field` 传**字段键**（如 `remark`，不是中文标签）：回 `err=common.too_long`
+/// + `args={field,max}`，前端按 `field.<键>` 查文案；`msg` 里由键拼出中文（见 `field_label`）。
 pub(crate) fn check_len(field: &str, value: &str, max: usize) -> Result<(), ApiError> {
     if value.chars().count() > max {
-        return Err(ApiError::BadRequest(format!(
-            "{field} 长度不能超过 {max} 个字符"
-        )));
+        return Err(ApiError::too_long(field, max));
     }
     Ok(())
 }

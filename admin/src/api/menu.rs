@@ -56,11 +56,11 @@ fn validate_name(name: &str) -> Result<(), ApiError> {
 fn validate_body(b: &MenuBody) -> Result<(), ApiError> {
     validate_name(&b.name)?;
     validate_type(&b.menu_type)?;
-    check_len("菜单名称", b.name.trim(), 64)?;
-    check_len("权限标识", &b.perm, 128)?;
-    check_len("路由路径", &b.path, 128)?;
-    check_len("组件路径", &b.component, 128)?;
-    check_len("图标", &b.icon, 64)
+    check_len("name", b.name.trim(), 64)?;
+    check_len("perm", &b.perm, 128)?;
+    check_len("path", &b.path, 128)?;
+    check_len("component", &b.component, 128)?;
+    check_len("icon", &b.icon, 64)
 }
 
 /// 父节点必须存在（0 = 根）。

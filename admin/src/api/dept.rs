@@ -40,9 +40,9 @@ fn validate_name(name: &str) -> Result<(), ApiError> {
 /// 长度上限与模型 `#[bee(len)]`、设计文档 §5.1 列宽一致（name 落库前会 trim）。
 fn validate_body(b: &DeptBody) -> Result<(), ApiError> {
     validate_name(&b.name)?;
-    check_len("部门名称", b.name.trim(), 64)?;
-    check_len("负责人", &b.leader, 64)?;
-    check_len("联系电话", &b.phone, 20)
+    check_len("name", b.name.trim(), 64)?;
+    check_len("leader", &b.leader, 64)?;
+    check_len("contact", &b.phone, 20)
 }
 
 /// 父节点必须存在（0 = 根）。

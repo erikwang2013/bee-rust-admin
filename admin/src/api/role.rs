@@ -97,9 +97,9 @@ fn validate_body(b: &RoleBody) -> Result<(), ApiError> {
     validate_name(&b.name)?;
     validate_code(&b.code)?;
     validate_scope(b.data_scope)?;
-    check_len("角色名称", b.name.trim(), 64)?;
-    check_len("角色标识", b.code.trim(), 64)?;
-    check_len("备注", &b.remark, 255)
+    check_len("name", b.name.trim(), 64)?;
+    check_len("code", b.code.trim(), 64)?;
+    check_len("remark", &b.remark, 255)
 }
 
 pub async fn list(

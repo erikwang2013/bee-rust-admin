@@ -38,14 +38,14 @@ fn check_title(title: &str) -> Result<(), ApiError> {
     if title.trim().is_empty() {
         return Err(ApiError::BadRequest("公告标题不能为空".into()));
     }
-    check_len("公告标题", title.trim(), 128)
+    check_len("title", title.trim(), 128)
 }
 
 fn check_content(content: &str) -> Result<(), ApiError> {
     if content.trim().is_empty() {
         return Err(ApiError::BadRequest("公告内容不能为空".into()));
     }
-    check_len("公告内容", content, CONTENT_MAX)
+    check_len("content", content, CONTENT_MAX)
 }
 
 // ── 管理侧 ──────────────────────────────────────────────────

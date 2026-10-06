@@ -30,14 +30,14 @@ fn check_name(name: &str) -> Result<(), ApiError> {
     if name.trim().is_empty() {
         return Err(ApiError::BadRequest("字典名称不能为空".into()));
     }
-    check_len("字典名称", name.trim(), 64)
+    check_len("name", name.trim(), 64)
 }
 
 fn check_value(value: &str) -> Result<(), ApiError> {
     if value.trim().is_empty() {
         return Err(ApiError::BadRequest("字典值不能为空".into()));
     }
-    check_len("字典值", value.trim(), 64)
+    check_len("value", value.trim(), 64)
 }
 
 // ── 字典类型 ────────────────────────────────────────────────
@@ -103,7 +103,7 @@ pub async fn type_create(
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:dict:add")?;
     check_name(&body.name)?;
-    check_len("备注", &body.remark, 255)?;
+    check_len("remark", &body.remark, 255)?;
     let code = body.code.trim();
     if !valid_code(code) {
         return Err(ApiError::BadRequest(
@@ -136,7 +136,7 @@ pub async fn type_update(
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:dict:edit")?;
     check_name(&body.name)?;
-    check_len("备注", &body.remark, 255)?;
+    check_len("remark", &body.remark, 255)?;
 
     let mut t = DictType::query()
         .filter_eq("id", id)
@@ -273,7 +273,7 @@ fn check_label(label: &str) -> Result<(), ApiError> {
     if label.trim().is_empty() {
         return Err(ApiError::BadRequest("字典标签不能为空".into()));
     }
-    check_len("字典标签", label.trim(), 64)
+    check_len("label", label.trim(), 64)
 }
 
 fn filtered_items(q: &DictItemQuery) -> Result<bee_orm::QuerySet<DictItem>, ApiError> {
@@ -314,7 +314,7 @@ pub async fn item_create(
     auth.require("system:dict:add")?;
     check_label(&body.label)?;
     check_value(&body.value)?;
-    check_len("备注", &body.remark, 255)?;
+    check_len("remark", &body.remark, 255)?;
     let type_code = body.type_code.trim();
     if !type_exists(&state, type_code).await? {
         return Err(ApiError::BadRequest("字典类型不存在".into()));
@@ -350,7 +350,7 @@ pub async fn item_update(
     auth.require("system:dict:edit")?;
     check_label(&body.label)?;
     check_value(&body.value)?;
-    check_len("备注", &body.remark, 255)?;
+    check_len("remark", &body.remark, 255)?;
 
     let mut it = DictItem::query()
         .filter_eq("id", id)
