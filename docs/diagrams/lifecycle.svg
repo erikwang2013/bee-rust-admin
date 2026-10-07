@@ -63,7 +63,7 @@
   <!-- ③ -->
   <rect class="box-db" x="120" y="226" width="420" height="50" rx="7"/>
   <text class="t-name" x="136" y="248">③ syncdb 同步表结构</text>
-  <text class="t-sub"  x="136" y="265">比对模型元数据：建表 / 加列 / 补索引 + 三张连接表 DDL</text>
+  <text class="t-sub"  x="136" y="265">比对模型元数据：建表 / 加列 / 补索引 + 四张关系表 DDL</text>
 
   <!-- ④ 判断 -->
   <rect class="box-decision" x="120" y="294" width="420" height="50" rx="7"/>
@@ -73,12 +73,12 @@
   <!-- ⑤ 种子 -->
   <rect class="box-backend" x="120" y="362" width="420" height="50" rx="7"/>
   <text class="t-name" x="136" y="384">⑤ 写入种子（单事务）</text>
-  <text class="t-sub"  x="136" y="401">超管 admin + 菜单权限树（1 目录 / 5 菜单 / 14 按钮）</text>
+  <text class="t-sub"  x="136" y="401">超管 admin + 菜单权限树（1 目录 / 9 菜单 / 22 按钮）</text>
 
   <!-- ⑥ 监听 -->
   <rect class="box-backend" x="120" y="440" width="420" height="50" rx="7"/>
   <text class="t-name" x="136" y="462">⑥ 监听 127.0.0.1:8080</text>
-  <text class="t-sub"  x="136" y="479">bee_router（axum）注册 33 个接口；/api/v1/health 供探活</text>
+  <text class="t-sub"  x="136" y="479">bee_router（axum）注册 62 个接口；/api/v1/health 供探活</text>
 
   <!-- ⑦ 运行 -->
   <rect class="box-backend" x="120" y="508" width="420" height="50" rx="7"/>

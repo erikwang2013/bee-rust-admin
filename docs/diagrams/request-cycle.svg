@@ -104,7 +104,7 @@
   <!-- 12 -->
   <path class="msg-ret" d="M642,608 L130,608" marker-end="url(#m-ret)"/>
   <text class="t-msg" x="386" y="602" text-anchor="middle">⑫ {"code":0,"msg":"ok","data":{"list":[…],"total":N}}</text>
-  <text class="t-sub" x="386" y="622" text-anchor="middle">统一信封；错误时 code = HTTP 状态码，data 为 null</text>
+  <text class="t-sub" x="386" y="622" text-anchor="middle">统一信封；错误时 code = HTTP 状态码、data 为 null，并带稳定业务错误码 err（+ 参数 args）</text>
 
   <!-- 旁注 -->
   <rect class="selfbox" x="24" y="648" width="440" height="52" rx="6"/>

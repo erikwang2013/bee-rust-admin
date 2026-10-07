@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 720" width="980" height="720" role="img" aria-label="bee-rust 管理后台 功能设计图">
   <title>BRA（Bee Rust Admin）— 功能设计（RBAC 权限模型）</title>
-  <desc>登录鉴权链、管理员-角色-菜单/部门权限模型、数据权限五档、五个功能模块</desc>
+  <desc>登录鉴权链、管理员-角色-菜单/部门权限模型、数据权限五档、八个功能模块</desc>
   <style>
     .bg { fill: #ffffff; }
     .panel { fill: #f7f8fa; stroke: #e5e7eb; stroke-width: 1; }
@@ -30,7 +30,7 @@
 
   <rect class="bg" x="0" y="0" width="980" height="720"/>
   <text class="t-title" x="24" y="30">BRA · 功能设计</text>
-  <text class="t-sub" x="24" y="48">登录鉴权 · 角色权限模型（菜单+按钮）· 部门数据权限 · 五大功能模块</text>
+  <text class="t-sub" x="24" y="48">登录鉴权 · 角色权限模型（菜单+按钮）· 部门数据权限 · 八大功能模块</text>
 
   <!-- 一、登录与鉴权 -->
   <rect class="panel" x="24" y="64" width="932" height="126" rx="8"/>
@@ -68,10 +68,11 @@
   <text class="t-name" x="378" y="298" text-anchor="middle">角色</text>
   <text class="t-sub"  x="378" y="316" text-anchor="middle">name / code / 排序</text>
   <text class="t-sub"  x="378" y="332" text-anchor="middle">data_scope 数据范围</text>
-  <rect class="box-backend" x="530" y="270" width="404" height="80" rx="6"/>
+  <rect class="box-backend" x="530" y="270" width="404" height="98" rx="6"/>
   <text class="t-name" x="732" y="294" text-anchor="middle">菜单与按钮（权限树：目录 M / 菜单 C / 按钮 F）</text>
-  <text class="t-sub"  x="548" y="316">权限码：system:admin:list / add / edit / remove / resetPwd</text>
-  <text class="t-sub"  x="548" y="332">system:role:* · system:menu:* · system:dept:* · system:loginlog:list / remove</text>
+  <text class="t-sub"  x="548" y="316">权限码：system:{模块}:{动作}，以管理员为例</text>
+  <text class="t-sub"  x="548" y="332">system:admin:list / add / edit / remove / resetPwd</text>
+  <text class="t-sub"  x="548" y="348">9 个模块：admin/role/menu/dept/dict/job/notice/loginlog/auditlog</text>
   <rect class="box-join" x="296" y="380" width="164" height="26" rx="5"/>
   <text class="t-name" x="378" y="397" text-anchor="middle" font-size="11">部门（role_dept · 自定义范围）</text>
   <text class="t-sub"  x="600" y="392">前端按权限码渲染菜单与按钮；后端逐接口再校验（隐藏 ≠ 放过）</text>
@@ -85,26 +86,35 @@
   <text class="t-sub" x="40" y="554">4 · 仅本人 —— admin_id = 本人</text>
   <text class="t-sub" x="40" y="578">5 · 自定义 —— dept_id ∈ role_dept 勾选</text>
   <text class="t-sub" x="40" y="606">任一角色为「全部」→ 不加条件；无启用角色或无部门且非本人 → WHERE 1 = 0</text>
-  <text class="t-sub" x="40" y="628">作用于列表接口（管理员、登录记录），条件参数化绑定，不与用户输入拼接</text>
+  <text class="t-sub" x="40" y="628">作用于列表接口（管理员/登录记录/操作日志/字典项/执行记录），条件参数化绑定</text>
 
   <!-- 四、功能模块 -->
-  <rect class="panel" x="514" y="434" width="442" height="212" rx="8"/>
-  <text class="panel-label" x="530" y="456">四、功能模块（5 个）</text>
-  <rect class="box-module" x="530" y="470" width="196" height="44" rx="6"/>
-  <text class="t-name" x="628" y="489" text-anchor="middle">管理员管理</text>
-  <text class="t-sub"  x="628" y="505" text-anchor="middle">增删改 · 分配角色 · 重置密码 · 启停</text>
-  <rect class="box-module" x="744" y="470" width="196" height="44" rx="6"/>
-  <text class="t-name" x="842" y="489" text-anchor="middle">角色管理</text>
-  <text class="t-sub"  x="842" y="505" text-anchor="middle">菜单权限勾选 · 数据范围 · 引用校验</text>
-  <rect class="box-module" x="530" y="526" width="196" height="44" rx="6"/>
-  <text class="t-name" x="628" y="545" text-anchor="middle">菜单管理</text>
-  <text class="t-sub"  x="628" y="561" text-anchor="middle">目录 / 菜单 / 按钮 · 防环 · 权限码</text>
-  <rect class="box-module" x="744" y="526" width="196" height="44" rx="6"/>
-  <text class="t-name" x="842" y="545" text-anchor="middle">部门管理</text>
-  <text class="t-sub"  x="842" y="561" text-anchor="middle">树形部门 · 删除前校验</text>
-  <rect class="box-module" x="530" y="582" width="410" height="44" rx="6"/>
-  <text class="t-name" x="735" y="601" text-anchor="middle">登录记录</text>
-  <text class="t-sub"  x="735" y="617" text-anchor="middle">按用户名 / 状态 / 时间段查询 · 按条件清空 · 受数据权限约束</text>
+  <rect class="panel" x="514" y="434" width="442" height="250" rx="8"/>
+  <text class="panel-label" x="530" y="456">四、功能模块（8 个）</text>
+  <rect class="box-module" x="530" y="468" width="196" height="44" rx="6"/>
+  <text class="t-name" x="628" y="487" text-anchor="middle">管理员管理</text>
+  <text class="t-sub"  x="628" y="503" text-anchor="middle">增删改 · 分配角色 · 重置密码 · 启停</text>
+  <rect class="box-module" x="744" y="468" width="196" height="44" rx="6"/>
+  <text class="t-name" x="842" y="487" text-anchor="middle">角色管理</text>
+  <text class="t-sub"  x="842" y="503" text-anchor="middle">菜单权限勾选 · 数据范围 · 引用校验</text>
+  <rect class="box-module" x="530" y="520" width="196" height="44" rx="6"/>
+  <text class="t-name" x="628" y="539" text-anchor="middle">菜单管理</text>
+  <text class="t-sub"  x="628" y="555" text-anchor="middle">目录 / 菜单 / 按钮 · 防环 · 权限码</text>
+  <rect class="box-module" x="744" y="520" width="196" height="44" rx="6"/>
+  <text class="t-name" x="842" y="539" text-anchor="middle">部门管理</text>
+  <text class="t-sub"  x="842" y="555" text-anchor="middle">树形部门 · 删除前校验</text>
+  <rect class="box-module" x="530" y="572" width="196" height="44" rx="6"/>
+  <text class="t-name" x="628" y="591" text-anchor="middle">字典管理</text>
+  <text class="t-sub"  x="628" y="607" text-anchor="middle">类型 / 项两级 · 级联删 · 下拉源</text>
+  <rect class="box-module" x="744" y="572" width="196" height="44" rx="6"/>
+  <text class="t-name" x="842" y="591" text-anchor="middle">定时任务</text>
+  <text class="t-sub"  x="842" y="607" text-anchor="middle">代码注册 · 间隔调度 · 手动跑</text>
+  <rect class="box-module" x="530" y="624" width="196" height="44" rx="6"/>
+  <text class="t-name" x="628" y="643" text-anchor="middle">通知公告</text>
+  <text class="t-sub"  x="628" y="659" text-anchor="middle">草稿 / 发布 · 未读铃铛</text>
+  <rect class="box-module" x="744" y="624" width="196" height="44" rx="6"/>
+  <text class="t-name" x="842" y="643" text-anchor="middle">登录记录</text>
+  <text class="t-sub"  x="842" y="659" text-anchor="middle">用户名 / 状态 / 时间段 · 受数据权限</text>
 
   <text class="t-foot" x="24" y="706">© 2026 erik · https://erik.xyz</text>
 </svg>

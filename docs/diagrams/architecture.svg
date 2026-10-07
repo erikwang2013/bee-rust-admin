@@ -77,11 +77,11 @@
   <rect class="box-inner" x="304" y="318" width="150" height="34" rx="5"/>
   <text class="t-inner" x="379" y="339" text-anchor="middle">Auth 提取器（JWT）</text>
   <rect class="box-inner" x="466" y="318" width="288" height="34" rx="5"/>
-  <text class="t-inner" x="610" y="339" text-anchor="middle">API handlers · 33 个接口 · require(权限码)</text>
+  <text class="t-inner" x="610" y="339" text-anchor="middle">API handlers · 62 个接口 · require(权限码)</text>
   <rect class="box-inner" x="146" y="360" width="300" height="30" rx="5"/>
   <text class="t-inner" x="296" y="379" text-anchor="middle">datascope 数据权限（五档，查询条件注入）</text>
   <rect class="box-inner" x="466" y="360" width="288" height="30" rx="5"/>
-  <text class="t-inner" x="610" y="379" text-anchor="middle">统一响应信封 {code, msg, data}</text>
+  <text class="t-inner" x="610" y="379" text-anchor="middle">统一响应信封 {code, msg, err, args, data}</text>
 
   <!-- 4. 框架层 -->
   <text class="band-label" x="24" y="500">框架层</text>
@@ -98,10 +98,11 @@
 
   <!-- 5. 数据层 -->
   <text class="band-label" x="24" y="590">数据层</text>
-  <rect class="band" x="110" y="566" width="820" height="74" rx="8"/>
-  <rect class="box-db" x="146" y="576" width="560" height="54" rx="6"/>
-  <text class="t-name" x="426" y="598" text-anchor="middle">MySQL 8.4（utf8mb4）</text>
-  <text class="t-sub"  x="426" y="615" text-anchor="middle">admin / role / menu / dept / login_log ＋ admin_role / role_menu / role_dept（连接表）</text>
+  <rect class="band" x="110" y="566" width="820" height="96" rx="8"/>
+  <rect class="box-db" x="146" y="576" width="560" height="76" rx="6"/>
+  <text class="t-name" x="426" y="596" text-anchor="middle">MySQL 8.4（utf8mb4）· 15 张表</text>
+  <text class="t-sub"  x="426" y="615" text-anchor="middle">admin · role · menu · dept · dict_type · dict_item · job · job_log · notice</text>
+  <text class="t-sub"  x="426" y="631" text-anchor="middle">login_log · audit_log ＋ admin_role · role_menu · role_dept · notice_read（关系表）</text>
 
   <!-- 安全侧栏 -->
   <rect class="box-security" x="800" y="276" width="128" height="136" rx="6"/>
