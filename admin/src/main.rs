@@ -92,12 +92,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let snowflake = build_snowflake(&cfg)?;
 
+    // JWT 内核（密钥/算法/issuer 在这里定死，签发与校验共用这一份）
+    let jwt = std::sync::Arc::new(auth::build_jwt(&cfg).map_err(|e| format!("初始化 JWT 失败: {e}"))?);
+
     // 池大小沿用迁移前的 10；`Pool::connect` 是同步的（连接按需惰性建立）
     let db = bee_orm::pool::mysql::Pool::connect(&cfg.db_dsn, 10)?;
     seed::migrate(&db).await?;
     seed::seed(&db, &cfg, &snowflake).await?;
     let throttle = api::auth::login_throttle(&cfg);
-    let state = AppState { db, cfg: std::sync::Arc::new(cfg), throttle, snowflake };
+    let state = AppState { db, cfg: std::sync::Arc::new(cfg), throttle, snowflake, jwt };
     let addr = state.cfg.http_addr.clone();
 
     // 内存限流的条目只在写路径顺手清窗口内的失败，桶本身（每个用户名/IP 一个）不会

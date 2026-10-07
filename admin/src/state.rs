@@ -3,6 +3,7 @@ use crate::config::AppConfig;
 use crate::error::ApiError;
 // 本项目只连 MySQL，直接持具体池类型（`Db` 是 trait，池层才有事务）
 use bee_orm::pool::mysql::Pool;
+use jwt_rust::Jwt;
 use security_rust::throttle::{MemoryThrottleStore, Throttle};
 use snowflake::Shared;
 use std::sync::Arc;
@@ -18,6 +19,8 @@ pub struct AppState {
     /// 雪花发号器：主键由代码给出（模型上没有 `#[bee(auto)]`），插入前取号。
     /// `Arc<Mutex<_>>` 壳子里只有一份生成器状态，克隆廉价。
     pub snowflake: Shared,
+    /// jwt-rust 内核（有状态：密钥 + 配置 + 黑名单存储），启动时按 `[jwt]` 建一次。
+    pub jwt: Arc<Jwt>,
 }
 
 impl AppState {

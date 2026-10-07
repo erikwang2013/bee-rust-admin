@@ -94,7 +94,7 @@ async fn actor(state: &AppState, headers: &axum::http::HeaderMap) -> (i64, Strin
     else {
         return (0, String::new());
     };
-    let Ok(claims) = verify_token(token, &state.cfg) else {
+    let Ok(claims) = verify_token(&state.jwt, token) else {
         return (0, String::new());
     };
     let qs = match Admin::query().filter_eq("id", claims.sub) {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-use crate::auth::{Auth, sign_token};
+use crate::auth::{Auth, expire_secs, sign_token};
 use crate::config::AppConfig;
 use crate::hid;
 use crate::error::{ApiError, AppJson, AppPath, ok};
@@ -213,7 +213,8 @@ pub async fn login(
         return Err(ApiError::BadRequest("账号已被禁用".into()));
     }
 
-    let (token, expires_in) = sign_token(admin.id, admin.token_version, &state.cfg)?;
+    let (token, expires_in) =
+        sign_token(&state.jwt, admin.id, admin.token_version, expire_secs(&state.cfg))?;
 
     let mut updated = admin.clone();
     updated.last_login_at = Some(now());
@@ -275,7 +276,8 @@ pub async fn logout_others(
     admin.updated_at = now();
     admin.update(&state.db).await.map_err(ApiError::from)?;
 
-    let (token, expires_in) = sign_token(admin.id, admin.token_version, &state.cfg)?;
+    let (token, expires_in) =
+        sign_token(&state.jwt, admin.id, admin.token_version, expire_secs(&state.cfg))?;
     write_login_log(&state, admin.id, &admin.username, &headers, 1, "退出其他设备").await;
     Ok(ok(json!({ "token": token, "expires_in": expires_in })))
 }

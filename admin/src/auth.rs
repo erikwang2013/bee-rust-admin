@@ -6,44 +6,79 @@ use crate::state::AppState;
 use axum::extract::FromRequestParts;
 use axum::http::header;
 use axum::http::request::Parts;
-use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
+use jwt_rust::config::JwtConfig;
+use jwt_rust::storage::TokenStorage;
+use jwt_rust::{Jwt, JwtError};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::sync::Arc;
 use crate::relations::RelationsExt;
 use crate::api::ids_to_values;
 
+/// payload 里本项目自己带的东西：iss/aud/iat/nbf/exp/jti 由 jwt-rust 插入并校验。
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
     /// admin.id
     pub sub: i64,
     /// token_version：管理员改密/被禁用后自增，旧 token 立即失效
     pub ver: i32,
-    pub iat: i64,
-    pub exp: i64,
+}
+
+/// 签发/校验两端共用的标记（issuer 与 audience 同值即可）
+const JWT_ISSUER: &str = "bee-rust-admin";
+
+/// 空黑名单。本项目的失效靠 claims 里的 `ver`（= admin.token_version）：改密/禁用/登出
+/// 都是对库里 token_version 的一次 UPDATE，全量失效比逐个 token 拉黑彻底，所以不记黑名单。
+/// 而 `Jwt::new` 强制要一个 `TokenStorage`，给个永远「不在黑名单」的空实现。
+struct NoBlacklist;
+
+impl TokenStorage for NoBlacklist {
+    fn blacklist(&self, _jti: &str, _expire_time: i64) -> Result<bool, JwtError> {
+        Ok(true)
+    }
+    fn is_blacklisted(&self, _jti: &str) -> Result<bool, JwtError> {
+        Ok(false)
+    }
+    fn cleanup(&self) -> Result<bool, JwtError> {
+        Ok(true)
+    }
+}
+
+/// 按 `[jwt]` 配置组装 Jwt（含密钥与配置，进程内建一次放进 AppState）。
+pub fn build_jwt(cfg: &AppConfig) -> Result<Jwt, JwtError> {
+    let config = JwtConfig {
+        secret_key: cfg.jwt_secret.clone(),
+        algorithm: "HS256".into(),
+        issuer: JWT_ISSUER.into(),
+        audience: JWT_ISSUER.into(),
+        default_expire: expire_secs(cfg).max(0) as u64,
+        ..JwtConfig::default()
+    };
+    Jwt::new(config, Arc::new(NoBlacklist))
+}
+
+/// `[jwt] expire_hours` → 秒（签发有效期，也是回给前端的 `expires_in`）
+pub fn expire_secs(cfg: &AppConfig) -> i64 {
+    cfg.jwt_expire_hours * 3600
 }
 
 /// 签发 token，返回 (token, 有效期秒数)。
-pub fn sign_token(admin_id: i64, ver: i32, cfg: &AppConfig) -> Result<(String, i64), ApiError> {
-    let now = chrono::Utc::now().timestamp();
-    let exp = now + cfg.jwt_expire_hours * 3600;
-    let claims = Claims { sub: admin_id, ver, iat: now, exp };
-    let token = encode(
-        &Header::default(),
-        &claims,
-        &EncodingKey::from_secret(cfg.jwt_secret.as_bytes()),
-    )
-    .map_err(|e| ApiError::internal(format!("签发 token 失败: {e}")))?;
-    Ok((token, cfg.jwt_expire_hours * 3600))
+pub fn sign_token(
+    jwt: &Jwt,
+    admin_id: i64,
+    ver: i32,
+    expire_secs: i64,
+) -> Result<(String, i64), ApiError> {
+    let claims = Claims { sub: admin_id, ver };
+    // 负数直接用 `as u64` 会绕成天文数字（token 永不过期），先夹到 0 = 立即过期
+    let token = jwt
+        .encode(&claims, Some(expire_secs.max(0) as u64))
+        .map_err(|e| ApiError::internal(format!("签发 token 失败: {e}")))?;
+    Ok((token, expire_secs))
 }
 
-pub fn verify_token(token: &str, cfg: &AppConfig) -> Result<Claims, ApiError> {
-    decode::<Claims>(
-        token,
-        &DecodingKey::from_secret(cfg.jwt_secret.as_bytes()),
-        &Validation::new(Algorithm::HS256),
-    )
-    .map(|d| d.claims)
-    .map_err(|_| ApiError::Unauthorized)
+pub fn verify_token(jwt: &Jwt, token: &str) -> Result<Claims, ApiError> {
+    jwt.decode_as::<Claims>(token).map_err(|_| ApiError::Unauthorized)
 }
 
 /// 已认证用户：管理员本体 + 角色 + 权限码。
@@ -76,7 +111,7 @@ impl FromRequestParts<AppState> for Auth {
             .and_then(|v| v.strip_prefix("Bearer "))
             .ok_or(ApiError::Unauthorized)?;
 
-        let claims = verify_token(token, &state.cfg)?;
+        let claims = verify_token(&state.jwt, token)?;
 
         let admin = Admin::query()
             .filter_eq("id", claims.sub)
@@ -172,19 +207,21 @@ mod tests {
 
     #[test]
     fn sign_and_verify_roundtrip() {
-        let (token, ttl) = sign_token(7, 3, &cfg()).unwrap();
+        let jwt = build_jwt(&cfg()).unwrap();
+        let (token, ttl) = sign_token(&jwt, 7, 3, expire_secs(&cfg())).unwrap();
         assert_eq!(ttl, 86400);
-        let claims = verify_token(&token, &cfg()).unwrap();
+        let claims = verify_token(&jwt, &token).unwrap();
         assert_eq!(claims.sub, 7);
         assert_eq!(claims.ver, 3);
     }
 
     #[test]
     fn tampered_token_rejected() {
-        let (token, _) = sign_token(7, 0, &cfg()).unwrap();
+        let jwt = build_jwt(&cfg()).unwrap();
+        let (token, _) = sign_token(&jwt, 7, 0, expire_secs(&cfg())).unwrap();
         let mut other = cfg();
         other.jwt_secret = "9999999999999999999999999999999999".into();
-        assert!(verify_token(&token, &other).is_err());
-        assert!(verify_token("garbage", &cfg()).is_err());
+        assert!(verify_token(&build_jwt(&other).unwrap(), &token).is_err());
+        assert!(verify_token(&jwt, "garbage").is_err());
     }
 }

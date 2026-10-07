@@ -160,6 +160,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b281d307588d634de920874890732659e2e7672f72b5e10e81badc1a8a83621e"
 dependencies = [
  "aws-lc-sys",
+ "untrusted 0.7.1",
  "zeroize",
 ]
 
@@ -266,7 +267,7 @@ dependencies = [
  "bee_rust",
  "chrono",
  "hashids-rust",
- "jsonwebtoken",
+ "jwt-rust",
  "rand_core 0.6.4",
  "reqwest",
  "security-rust 3.0.0",
@@ -274,7 +275,7 @@ dependencies = [
  "serde_json",
  "snowflake-id-rust",
  "sqlx",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-stream",
  "tracing",
@@ -287,7 +288,7 @@ dependencies = [
  "async-trait",
  "memcache",
  "redis",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
 ]
 
@@ -306,7 +307,7 @@ dependencies = [
  "notify",
  "serde",
  "serde_json",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -327,7 +328,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
 ]
 
@@ -338,7 +339,7 @@ dependencies = [
  "async-trait",
  "memcache",
  "redis",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
 ]
 
@@ -367,7 +368,7 @@ dependencies = [
  "rustls",
  "serde",
  "serde_json",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-postgres",
  "tokio-postgres-rustls",
@@ -402,7 +403,7 @@ dependencies = [
  "security-rust 1.0.7",
  "serde",
  "serde_json",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tower",
  "tracing",
@@ -434,7 +435,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
 ]
 
@@ -446,7 +447,7 @@ dependencies = [
  "bee_cache",
  "serde",
  "serde_json",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "uuid",
 ]
@@ -459,7 +460,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tera",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -472,7 +473,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
 ]
 
@@ -1953,17 +1954,38 @@ dependencies = [
 
 [[package]]
 name = "jsonwebtoken"
-version = "9.3.1"
+version = "11.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a87cc7a48537badeae96744432de36f4be2b4a34a05a5ef32e9dd8a1c169dde"
+checksum = "e75fe14a82d81e5f5af639997db37d8b96045938a7ac6ab18cdbe1c7467e05e1"
 dependencies = [
+ "aws-lc-rs",
  "base64 0.22.1",
+ "getrandom 0.2.17",
  "js-sys",
  "pem",
- "ring",
  "serde",
  "serde_json",
+ "signature",
  "simple_asn1",
+ "zeroize",
+]
+
+[[package]]
+name = "jwt-rust"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4e393d37f85fdb9836083d47ed3a77e760a3dfb41e7b227aff43c0a2827de5fa"
+dependencies = [
+ "base64 0.22.1",
+ "getrandom 0.4.3",
+ "jsonwebtoken",
+ "log",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror 2.0.21",
+ "toml",
 ]
 
 [[package]]
@@ -2753,7 +2775,7 @@ dependencies = [
  "rustc-hash",
  "rustls",
  "socket2 0.6.5",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tracing",
  "web-time",
@@ -2775,7 +2797,7 @@ dependencies = [
  "rustls",
  "rustls-pki-types",
  "slab",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tinyvec",
  "tracing",
  "web-time",
@@ -3050,7 +3072,7 @@ dependencies = [
  "cfg-if",
  "getrandom 0.2.17",
  "libc",
- "untrusted",
+ "untrusted 0.9.0",
  "windows-sys 0.52.0",
 ]
 
@@ -3169,7 +3191,7 @@ dependencies = [
  "aws-lc-rs",
  "ring",
  "rustls-pki-types",
- "untrusted",
+ "untrusted 0.9.0",
 ]
 
 [[package]]
@@ -3395,7 +3417,7 @@ checksum = "0d585997b0ac10be3c5ee635f1bab02d512760d14b7c468801ac8a01d9ae5f1d"
 dependencies = [
  "num-bigint",
  "num-traits",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "time",
 ]
 
@@ -3516,7 +3538,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "smallvec",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-stream",
  "tracing",
@@ -3599,7 +3621,7 @@ dependencies = [
  "smallvec",
  "sqlx-core",
  "stringprep",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tracing",
  "whoami 1.6.1",
 ]
@@ -3637,7 +3659,7 @@ dependencies = [
  "smallvec",
  "sqlx-core",
  "stringprep",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tracing",
  "whoami 1.6.1",
 ]
@@ -3662,7 +3684,7 @@ dependencies = [
  "serde",
  "serde_urlencoded",
  "sqlx-core",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "tracing",
  "url",
 ]
@@ -3827,11 +3849,11 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "2.0.20"
+version = "2.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec86235f5fcc2a73650310756d2ac5b138a5780bbbdfae3eeccec992c435ba4f"
+checksum = "09e52cb86a36cede5cb101bf8908837b3e4c6e5e59fe7fd85c23fb56200d189e"
 dependencies = [
- "thiserror-impl 2.0.20",
+ "thiserror-impl 2.0.21",
 ]
 
 [[package]]
@@ -3847,9 +3869,9 @@ dependencies = [
 
 [[package]]
 name = "thiserror-impl"
-version = "2.0.20"
+version = "2.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc04cd3e1236dd4a98afca4569f2deb3f120e5422a4023be2cb683f8486292af"
+checksum = "fe5197923287db20a58125f0bc85c062f7f2c892de97b18c356f9efb14b28524"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4152,7 +4174,7 @@ checksum = "050686193eb999b4bb3bc2acfa891a13da00f79734704c4b8b4ef1a10b368a3c"
 dependencies = [
  "crossbeam-channel",
  "symlink",
- "thiserror 2.0.20",
+ "thiserror 2.0.21",
  "time",
  "tracing-subscriber",
 ]
@@ -4296,6 +4318,12 @@ name = "unicode-segmentation"
 version = "1.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c6f5d3c3b1bf09027a88a6bc961fc00497d651009560b5463668dc81b0fa87a8"
+
+[[package]]
+name = "untrusted"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
 
 [[package]]
 name = "untrusted"
@@ -4498,7 +4526,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed63aea5ce73d0ff405984102c42de94fc55a6b75765d621c65262469b3c9b53"
 dependencies = [
  "ring",
- "untrusted",
+ "untrusted 0.9.0",
 ]
 
 [[package]]

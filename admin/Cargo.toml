@@ -24,7 +24,10 @@ tokio-stream = "0.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }
-jsonwebtoken = "9"
+# JWT 签发/校验走 jwt-rust 插件（本项目的失效机制是 token_version 而非黑名单，
+# 自己实现空的 TokenStorage，见 src/auth.rs）。**按版本依赖，不要用 path**：
+# 本机 path 在 CI 与其他机器上不存在，会让构建直接失败。
+jwt-rust = "1.0"
 argon2 = { version = "0.5", features = ["std"] }
 # password-hash 依赖的 rand_core 默认不带 getrandom，而 OsRng 在 #[cfg(feature = "getrandom")] 后面；
 # 必须显式打开（cargo 的 feature 合并会作用到 argon2 内部那份 rand_core）
