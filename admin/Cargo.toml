@@ -36,6 +36,13 @@ tracing = "0.1"
 security-rust = "3"
 # 头像上传：解 data URL 里的 base64
 base64 = "0.22"
+# 主键（雪花）+ 对外 id（hashids）。两个包在 crates.io 上都有对应版本，
+# **按版本依赖，不要用 path**：本地 path 会让 CI 与其他机器直接构建失败。
+# lib 名与包名不同：snowflake-id-rust → `snowflake`，hashids-rust → `hashids`。
+# hashids 开 `axum` 特性（项目本来就是 axum，无额外编译）；不用 `bee` ——
+# 那个特性会从 crates.io 拉一份 bee_router，与 workspace 的 path 版重复。
+snowflake-id-rust = "1.1.1"
+hashids-rust = { version = "1.0.10", features = ["axum"] }
 
 [dev-dependencies]
 # 集成测试直连 MySQL 建库/清表/断言用（src 已不再依赖 sqlx —— 迁移后连裸 SQL
@@ -45,3 +52,5 @@ base64 = "0.22"
 # `NaiveDateTime: sqlx::Type/Decode` 未实现。
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "mysql", "tls-none", "chrono"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# tests/ 用的 hashids-rust 走上面 [dependencies] 那条（集成测试能直接用普通依赖，
+# 和 base64/serde_json 一样），不在这里再声明一份，免得两个来源打架。

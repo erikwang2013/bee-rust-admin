@@ -1,7 +1,10 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 //! 集成测试脚手架：随机端口起真实进程 + 真库（bee_admin_test）。
 use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
+
+use hashids::{Config, ConnectionConfig, Guard, HashidsManager};
 
 pub struct Server(pub Child);
 impl Drop for Server {
@@ -39,6 +42,84 @@ pub fn dsn() -> Option<String> {
     }
 }
 
+// ── 对外 id：hashids 短字符串 ─────────────────────────────────
+//
+// bee_admin 是 bin crate，集成测试不能 use 它的代码，只能自己拿 hashids-rust 编解码。
+// salt/最短长度与后端同源：直接读 conf/app.conf.test（键写在哪个节都认），读不到盐就报错，
+// 不硬编码猜（猜错了表现是「解码全失败」，比报错难查）。
+
+/// min_len 的兜底 8 与后端 `[app] hashids_min_len` 的代码默认值一致；
+/// salt **不给兜底**：猜错盐只会得到「解码全失败」的哑谜，不如直接报缺键。
+const MIN_LEN_FALLBACK: usize = 8;
+
+fn conf_val(key: &str) -> Option<String> {
+    let text = std::fs::read_to_string("conf/app.conf.test").ok()?;
+    for line in text.lines() {
+        let line = line.trim();
+        if let Some((k, v)) = line.split_once('=') {
+            if k.trim() == key {
+                return Some(v.trim().to_string());
+            }
+        }
+    }
+    None
+}
+
+fn guard() -> &'static Guard {
+    static G: OnceLock<Guard> = OnceLock::new();
+    G.get_or_init(|| {
+        let salt = conf_val("hashids_salt")
+            .expect("conf/app.conf.test 缺 [app] hashids_salt（必须与后端同源，不能硬编码猜）");
+        let min_len = conf_val("hashids_min_len")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(MIN_LEN_FALLBACK);
+        let cfg = Config::new().default_connection("main").connection(
+            "main",
+            ConnectionConfig::new().salt(salt).min_hash_length(min_len),
+        );
+        Guard::from_manager(Arc::new(HashidsManager::new(cfg))).expect("hashids 初始化")
+    })
+}
+
+/// 响应里的对外 id（hashid 串）→ 库里的数字 id（拼 SQL 绑定用）。
+pub fn dec_id(s: &str) -> i64 {
+    let ids = guard().decode(s);
+    assert_eq!(ids.len(), 1, "hashid {s:?} 应解码出且仅一个数字（salt/长度是否与后端一致？）");
+    ids[0] as i64
+}
+
+/// 数字 id → hashid 串：造「格式合法但库里不存在」的 id、把库里的自增 id 拼进 URL 用。
+pub fn enc_id(n: u64) -> String {
+    guard().encode(&[n])
+}
+
+/// 测试直接 INSERT 时自己造一个主键：库里的 id 由应用侧雪花生成（不是 AUTO_INCREMENT，
+/// 不给人就得报 1364）。固定高位区间起步，跟雪花当前量级（~5e17）不撞。
+pub fn new_row_id() -> i64 {
+    use std::sync::atomic::{AtomicI64, Ordering};
+    static NEXT: AtomicI64 = AtomicI64::new(1_000_000_000_000_000_000);
+    NEXT.fetch_add(1, Ordering::Relaxed)
+}
+
+/// 从 JSON 取对外 id：直接透传字符串，**不解码再编码**（绕一圈没有意义还不稳）。
+pub fn as_id(v: &serde_json::Value) -> String {
+    v.as_str().unwrap_or_else(|| panic!("期望 hashid 字符串，实际 {v}")).to_string()
+}
+
+/// 当前登录者自己的 hashid（别假设「超管 id = 1」）。
+pub async fn my_id(base: &str, token: &str) -> String {
+    let v: serde_json::Value = reqwest::Client::new()
+        .get(format!("{base}/api/v1/auth/profile"))
+        .bearer_auth(token)
+        .send()
+        .await
+        .expect("profile 请求失败")
+        .json()
+        .await
+        .expect("profile 不是 JSON");
+    as_id(&v["data"]["user"]["id"])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -48,6 +129,16 @@ mod tests {
         assert_eq!(db_name("mysql://root:pw@127.0.0.1:3306/bee_admin_test"), "bee_admin_test");
         assert_eq!(db_name("mysql://root:pw@127.0.0.1:3306/bee_admin_test?ssl-mode=DISABLED"), "bee_admin_test");
         assert_eq!(db_name("mysql://root:pw@127.0.0.1:3306"), "");
+    }
+
+    #[test]
+    fn hashid_roundtrip_is_deterministic() {
+        // 编码是确定性的：同一个数字永远同一个串，且有最短长度
+        let a = enc_id(999_999);
+        assert_eq!(a, enc_id(999_999), "编码必须确定性");
+        assert!(a.len() >= MIN_LEN_FALLBACK, "最短长度: {a}");
+        assert_eq!(dec_id(&a), 999_999, "decode(encode(n)) == n");
+        assert_ne!(enc_id(1), enc_id(2), "不同数字不同串");
     }
 }
 

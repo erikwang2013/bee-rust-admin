@@ -15,7 +15,7 @@ import { useAuth } from '../../../auth/AuthContext';
 import { useI18n } from '../../../i18n';
 
 /** 部门树 → 扁平选项（带父级路径，子部门也能选到）。 */
-function toDeptOptions(nodes: Dept[], prefix = ''): { value: number; label: string }[] {
+function toDeptOptions(nodes: Dept[], prefix = ''): { value: string; label: string }[] {
   return nodes.flatMap((d) => {
     const label = prefix ? `${prefix} / ${d.name}` : d.name;
     return [{ value: d.id, label }, ...toDeptOptions(d.children ?? [], label)];
@@ -56,16 +56,22 @@ export default function AdminPage() {
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ status: 1, sex: 0, dept_id: 0, role_ids: [] } as unknown as AdminForm);
+    form.setFieldsValue({ status: 1, sex: 0, dept_id: '', role_ids: [] } as unknown as AdminForm);
     setModalOpen(true);
   };
 
   const openEdit = async (row: Admin) => {
     const detail = await adminApi.get(row.id);
     setEditing(detail);
+    // 「无部门」（库里 0）回显的是后端 enc(0) 的短串，不在部门选项里 → 归一成 ''（后端 '' = 0）。
+    // 部门树没拉到时（无权限 / 请求失败）不归一：宁可显示原始短串，也不能把真有部门的记录
+    // 悄悄清成「无部门」——原样回传后端解出来还是原来的部门。
+    const deptOptions = toDeptOptions(depts);
+    const deptKnown = deptOptions.some((o) => o.value === detail.dept_id);
     form.setFieldsValue({
       nickname: detail.nickname, email: detail.email, phone: detail.phone, sex: detail.sex,
-      dept_id: detail.dept_id, status: detail.status, remark: detail.remark,
+      dept_id: depts.length > 0 && !deptKnown ? '' : detail.dept_id,
+      status: detail.status, remark: detail.remark,
       role_ids: detail.role_ids ?? [],
     } as unknown as AdminForm);
     setModalOpen(true);
@@ -232,7 +238,7 @@ export default function AdminPage() {
           <Form.Item name="dept_id" label={t('field.dept')}>
             <Select
               allowClear placeholder={t('admin.pick_dept')}
-              options={[{ value: 0, label: t('common.none') }, ...toDeptOptions(depts)]}
+              options={[{ value: '', label: t('common.none') }, ...toDeptOptions(depts)]}
             />
           </Form.Item>
           <Form.Item

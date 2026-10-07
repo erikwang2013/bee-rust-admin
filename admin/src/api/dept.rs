@@ -2,6 +2,7 @@
 use crate::api::{check_len, would_cycle};
 use crate::auth::Auth;
 use crate::error::{ApiError, AppJson, AppPath, ok};
+use crate::hid;
 use crate::models::{Admin, Dept};
 use crate::state::AppState;
 use crate::util::now;
@@ -14,7 +15,7 @@ use std::collections::HashMap;
 
 #[derive(Deserialize)]
 pub struct DeptBody {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::hid::de_id")]
     pub parent_id: i64,
     pub name: String,
     #[serde(default)]
@@ -103,7 +104,7 @@ pub async fn create(
     }
 
     let d = Dept {
-        id: 0,
+        id: state.next_id()?,
         parent_id: body.parent_id,
         name: body.name.trim().to_string(),
         sort: body.sort,
@@ -113,17 +114,19 @@ pub async fn create(
         created_at: now(),
         updated_at: now(),
     };
-    let d = d.create(&state.db).await.map_err(ApiError::from)?;
-    Ok(ok(json!({ "id": d.id })))
+    // id 已在上面发号，insert 就够（create 的读回是给自增主键用的）
+    d.insert(&state.db).await.map_err(ApiError::from)?;
+    Ok(ok(json!({ "id": hid::enc(d.id) })))
 }
 
 pub async fn update(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<i64>,
+    AppPath(id): AppPath<String>,
     AppJson(body): AppJson<DeptBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:dept:edit")?;
+    let id = hid::dec(&id)?;
     validate_body(&body)?;
     if !parent_exists(&state, body.parent_id).await? {
         return Err(ApiError::BadRequest("上级部门不存在".into()));
@@ -154,9 +157,10 @@ pub async fn update(
 pub async fn remove(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<i64>,
+    AppPath(id): AppPath<String>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:dept:remove")?;
+    let id = hid::dec(&id)?;
     let children = Dept::query()
         .filter_eq("parent_id", id)
         .map_err(ApiError::from)?

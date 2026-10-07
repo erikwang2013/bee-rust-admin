@@ -5,6 +5,13 @@ use crate::util::{hash_password, now};
 use bee_orm::migrate;
 use bee_orm::pool::mysql::Pool;
 use bee_orm::{Model, OrmError, Value};
+use snowflake::Shared;
+
+/// 插入前取一个雪花主键。seed 的函数走 `OrmError` 通道（没有 `ApiError`），
+/// 发号失败按查询错误上报 —— 进程刚起、表都还没建全，起不来比发出重复 id 好。
+fn next_id(sk: &Shared) -> Result<i64, OrmError> {
+    sk.next_id().map_err(|e| OrmError::QueryError(format!("雪花发号失败: {e}")))
+}
 
 /// 建表 + 补列（只在启动时跑，幂等）。
 ///
@@ -18,9 +25,12 @@ use bee_orm::{Model, OrmError, Value};
 pub async fn migrate(db: &Pool) -> Result<(), OrmError> {
     // 1) 复合主键/复合唯一键的表：上游 migrate 只建单列主键，表达不了，走裸 DDL。
     //    必须建在 sync 之前：否则 sync 先建出一张没有复合约束的表，IF NOT EXISTS 就再补不上。
+    //    `id` 一律不带 AUTO_INCREMENT：主键由代码发号（雪花），列定义要与 migrate 生成的
+    //    其它表一致 —— 留着自增会让人以为这里还能靠数据库发号（旧的库上该列仍是自增的，
+    //    但应用侧总是显式给值，无害）。
     for ddl in [
         "CREATE TABLE IF NOT EXISTS dict_item (
-           id BIGINT AUTO_INCREMENT NOT NULL,
+           id BIGINT NOT NULL,
            type_code VARCHAR(64) NOT NULL DEFAULT '',
            label VARCHAR(64) NOT NULL DEFAULT '',
            value VARCHAR(64) NOT NULL DEFAULT '',
@@ -33,7 +43,7 @@ pub async fn migrate(db: &Pool) -> Result<(), OrmError> {
            UNIQUE KEY uk_type_value (type_code, value)
          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
         "CREATE TABLE IF NOT EXISTS job_log (
-           id BIGINT AUTO_INCREMENT NOT NULL,
+           id BIGINT NOT NULL,
            job_code VARCHAR(64) NOT NULL DEFAULT '',
            started_at DATETIME NOT NULL,
            duration_ms BIGINT NOT NULL DEFAULT 0,
@@ -211,7 +221,7 @@ fn builtin(label: &str) -> String {
 /// 幂等补齐内置菜单树（每次启动都跑）：按权限码查重，缺目录/菜单/按钮就补。
 /// 已存在的行一律不改写（管理员改过的名称/排序不被启动流程覆盖）；
 /// 反过来说，删掉内置菜单后重启会重新长出来——它们本来就是「内置」。
-pub async fn ensure_menus(db: &Pool) -> Result<(), bee_orm::OrmError> {
+pub async fn ensure_menus(db: &Pool, sk: &Shared) -> Result<(), bee_orm::OrmError> {
     let all = Menu::query().all(db).await?;
     let mut seen: std::collections::HashSet<String> =
         all.iter().map(|m| m.perm.clone()).collect();
@@ -222,7 +232,7 @@ pub async fn ensure_menus(db: &Pool) -> Result<(), bee_orm::OrmError> {
         Some(m) => m.id,
         None => {
             let m = Menu {
-                id: 0,
+                id: next_id(sk)?,
                 parent_id: 0,
                 name: "系统管理".into(),
                 menu_type: "M".into(),
@@ -236,9 +246,9 @@ pub async fn ensure_menus(db: &Pool) -> Result<(), bee_orm::OrmError> {
                 created_at: now(),
                 updated_at: now(),
             };
-            // 必须用 create（insert 不回填自增主键）——旧 API 是原地回填的，
-            // 这里改成 insert 会让 id 停在 0，所有子菜单都挂到根上
-            m.create(db).await?.id
+            // id 由上面发号给出，insert 就够了（create 的读回是给自增主键用的）
+            m.insert(db).await?;
+            m.id
         }
     };
 
@@ -248,7 +258,7 @@ pub async fn ensure_menus(db: &Pool) -> Result<(), bee_orm::OrmError> {
             Some(m) => m.id,
             None => {
                 let m = Menu {
-                    id: 0,
+                    id: next_id(sk)?,
                     parent_id: system_id,
                     name: name.to_string(),
                     menu_type: "C".into(),
@@ -262,9 +272,9 @@ pub async fn ensure_menus(db: &Pool) -> Result<(), bee_orm::OrmError> {
                     created_at: now(),
                     updated_at: now(),
                 };
-                let id = m.create(db).await?.id;
+                m.insert(db).await?;
                 seen.insert(list_perm);
-                id
+                m.id
             }
         };
         for (j, action) in buttons.iter().enumerate() {
@@ -276,7 +286,7 @@ pub async fn ensure_menus(db: &Pool) -> Result<(), bee_orm::OrmError> {
                 continue;
             }
             let b = Menu {
-                id: 0,
+                id: next_id(sk)?,
                 parent_id,
                 name: builtin(action),
                 menu_type: "F".into(),
@@ -300,7 +310,7 @@ pub async fn ensure_menus(db: &Pool) -> Result<(), bee_orm::OrmError> {
 /// 幂等补齐代码注册的任务（每次启动都跑）：缺哪个 code 补哪个，已存在的行一律不改写
 /// （运维改过的间隔/开关不被启动流程覆盖）。库里多出来的旧 code 不删——列表里看得到，
 /// 但不可手动触发（409），调度循环也跳过。
-pub async fn ensure_jobs(db: &Pool) -> Result<(), bee_orm::OrmError> {
+pub async fn ensure_jobs(db: &Pool, sk: &Shared) -> Result<(), bee_orm::OrmError> {
     for spec in crate::jobs::JOBS {
         let exists = Job::query()
             .filter_eq("code", spec.code)?
@@ -311,7 +321,7 @@ pub async fn ensure_jobs(db: &Pool) -> Result<(), bee_orm::OrmError> {
             continue;
         }
         let j = Job {
-            id: 0,
+            id: next_id(sk)?,
             name: spec.name.to_string(),
             code: spec.code.to_string(),
             cron: spec.interval_secs.to_string(),
@@ -328,9 +338,9 @@ pub async fn ensure_jobs(db: &Pool) -> Result<(), bee_orm::OrmError> {
 }
 
 /// 首次启动（admin 表空）时写入超管；内置菜单与任务由 `ensure_*` 每次启动补齐。
-pub async fn seed(db: &Pool, cfg: &AppConfig) -> Result<(), bee_orm::OrmError> {
-    ensure_menus(db).await?;
-    ensure_jobs(db).await?;
+pub async fn seed(db: &Pool, cfg: &AppConfig, sk: &Shared) -> Result<(), bee_orm::OrmError> {
+    ensure_menus(db, sk).await?;
+    ensure_jobs(db, sk).await?;
 
     if Admin::query().count(db).await? > 0 {
         return Ok(());
@@ -338,7 +348,7 @@ pub async fn seed(db: &Pool, cfg: &AppConfig) -> Result<(), bee_orm::OrmError> {
     tracing::info!("首次启动，写入种子数据");
 
     let admin = Admin {
-        id: 0,
+        id: next_id(sk)?,
         username: "admin".into(),
         password: hash_password(&cfg.initial_admin_password),
         nickname: "超级管理员".into(),

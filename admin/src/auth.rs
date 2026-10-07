@@ -163,6 +163,10 @@ mod tests {
             lock_minutes: 10,
             retain_days: 90,
             job_enabled: true,
+            hashids_salt: "test-salt".into(),
+            hashids_min_len: 8,
+            snowflake_worker: 0,
+            snowflake_dc: 0,
         }
     }
 

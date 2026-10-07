@@ -177,15 +177,17 @@ async fn v17_err_envelope_contract() {
     assert_static_err(&v, "dict.type_missing");
 
     // ── 409 + args.code：库里残留的幽灵任务 ──
-    let ghost = sqlx::query(
-        "INSERT INTO job (name, code, cron, status, last_msg, created_at, updated_at) \
-         VALUES ('幽灵任务', 'v17_ghost', '60', 1, '', NOW(), NOW())",
+    let ghost = common::new_row_id();
+    sqlx::query(
+        "INSERT INTO job (id, name, code, cron, status, last_msg, created_at, updated_at) \
+         VALUES (?, '幽灵任务', 'v17_ghost', '60', 1, '', NOW(), NOW())",
     )
+    .bind(ghost)
     .execute(&pool)
     .await
-    .unwrap()
-    .last_insert_id();
-    let (st, v) = call(&c, Method::POST, api(&format!("/jobs/{ghost}/run")), Some(&admin), None).await;
+    .unwrap();
+    // 库里的 id 是数字，URL 收 hashid：测试侧 encode（后端回的串才直接透传）
+    let (st, v) = call(&c, Method::POST, api(&format!("/jobs/{}/run", common::enc_id(ghost as u64))), Some(&admin), None).await;
     assert_eq!(st, 409, "{v}");
     let args = assert_args_err(&v, "job.not_registered");
     assert_eq!(args["code"], "v17_ghost", "args.code 是任务的 code 原始值: {v}");

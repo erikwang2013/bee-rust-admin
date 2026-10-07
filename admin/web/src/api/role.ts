@@ -6,12 +6,12 @@ export interface RoleForm { name: string; code: string; sort: number; data_scope
 
 export const roleApi = {
   list: (q: RoleQuery) => http.get<Page<Role>>('/roles', q),
-  get: (id: number) => http.get<Role>(`/roles/${id}`),
+  get: (id: string) => http.get<Role>(`/roles/${id}`),
   create: (data: RoleForm) => http.post<Role>('/roles', data),
-  update: (id: number, data: RoleForm) => http.put<Role>(`/roles/${id}`, data),
-  remove: (id: number) => http.del<null>(`/roles/${id}`),
-  menus: (id: number) => http.get<number[]>(`/roles/${id}/menus`),
-  setMenus: (id: number, menu_ids: number[]) => http.put<null>(`/roles/${id}/menus`, { menu_ids }),
-  depts: (id: number) => http.get<number[]>(`/roles/${id}/depts`),
-  setDepts: (id: number, dept_ids: number[]) => http.put<null>(`/roles/${id}/depts`, { dept_ids }),
+  update: (id: string, data: RoleForm) => http.put<Role>(`/roles/${id}`, data),
+  remove: (id: string) => http.del<null>(`/roles/${id}`),
+  menus: (id: string) => http.get<string[]>(`/roles/${id}/menus`),
+  setMenus: (id: string, menu_ids: string[]) => http.put<null>(`/roles/${id}/menus`, { menu_ids }),
+  depts: (id: string) => http.get<string[]>(`/roles/${id}/depts`),
+  setDepts: (id: string, dept_ids: string[]) => http.put<null>(`/roles/${id}/depts`, { dept_ids }),
 };

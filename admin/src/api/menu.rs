@@ -2,6 +2,7 @@
 use crate::api::{check_len, would_cycle};
 use crate::auth::Auth;
 use crate::error::{ApiError, AppJson, AppPath, ok};
+use crate::hid;
 use crate::models::Menu;
 use crate::relations::RelationsExt;
 use crate::state::AppState;
@@ -15,7 +16,7 @@ use std::collections::HashMap;
 
 #[derive(Deserialize)]
 pub struct MenuBody {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::hid::de_id")]
     pub parent_id: i64,
     pub name: String,
     #[serde(rename = "type")]
@@ -123,7 +124,7 @@ pub async fn create(
     }
 
     let m = Menu {
-        id: 0,
+        id: state.next_id()?,
         parent_id: body.parent_id,
         name: body.name.trim().to_string(),
         menu_type: body.menu_type,
@@ -137,17 +138,19 @@ pub async fn create(
         created_at: now(),
         updated_at: now(),
     };
-    let m = m.create(&state.db).await.map_err(ApiError::from)?;
-    Ok(ok(json!({ "id": m.id })))
+    // id 已在上面发号，insert 就够（create 的读回是给自增主键用的）
+    m.insert(&state.db).await.map_err(ApiError::from)?;
+    Ok(ok(json!({ "id": hid::enc(m.id) })))
 }
 
 pub async fn update(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<i64>,
+    AppPath(id): AppPath<String>,
     AppJson(body): AppJson<MenuBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:menu:edit")?;
+    let id = hid::dec(&id)?;
     validate_body(&body)?;
     if !parent_exists(&state, body.parent_id).await? {
         return Err(ApiError::BadRequest("上级菜单不存在".into()));
@@ -182,9 +185,10 @@ pub async fn update(
 pub async fn remove(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<i64>,
+    AppPath(id): AppPath<String>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:menu:remove")?;
+    let id = hid::dec(&id)?;
     let children = Menu::query()
         .filter_eq("parent_id", id)
         .map_err(ApiError::from)?

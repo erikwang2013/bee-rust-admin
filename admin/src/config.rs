@@ -31,6 +31,14 @@ pub struct AppConfig {
     pub retain_days: i64,
     /// 定时任务总开关（`[job] enabled`）：false = 不启动调度循环（手动触发仍可用）
     pub job_enabled: bool,
+    /// 对外 id（hashids）的盐。**换了盐，已发出去的短串全部作废**（前端收藏的链接、
+    /// 缓存里的列表都会对不上）；每个部署该是不同的随机串，老配置缺省为空串也能跑。
+    pub hashids_salt: String,
+    /// 短串最小长度（不够长时补位，短 id 不至于两三字符就可猜）
+    pub hashids_min_len: usize,
+    /// 雪花节点号与数据中心号（0-31）：多实例部署时各进程必须不同，否则会撞号
+    pub snowflake_worker: i64,
+    pub snowflake_dc: i64,
 }
 
 impl AppConfig {
@@ -90,6 +98,12 @@ impl AppConfig {
             }
         };
 
+        // 负数 `as usize` 会绕成天文数字（hashids 拿去补位会当场炸在内存上），先拦掉
+        let hashids_min_len = num("app", "hashids_min_len", 8)?;
+        if hashids_min_len < 1 {
+            return Err(ConfigError::Invalid("[app] hashids_min_len 必须 >= 1".into()));
+        }
+
         Ok(Self {
             app_name: get("app", "name")?,
             http_addr: std::env::var("BEE_ADMIN_HTTP_ADDR").unwrap_or(get("app", "http_addr")?),
@@ -105,6 +119,10 @@ impl AppConfig {
             lock_minutes: num("auth", "lock_minutes", 10)?,
             retain_days: num("log", "retain_days", 90)?,
             job_enabled: flag("job", "enabled", true)?,
+            hashids_salt: opt("app", "hashids_salt", ""),
+            hashids_min_len: hashids_min_len as usize,
+            snowflake_worker: num("app", "snowflake_worker", 0)?,
+            snowflake_dc: num("app", "snowflake_dc", 0)?,
         })
     }
 }
@@ -195,6 +213,31 @@ initial_admin_password = admin123
         map.get_mut("job").unwrap().insert("enabled".into(), "yes".into());
         let err = AppConfig::from_ini(&map).unwrap_err();
         assert!(format!("{err}").contains("[job] enabled"), "应报出具体键: {err}");
+    }
+
+    #[test]
+    fn id_keys_default_and_validate() {
+        // 老配置没有这几个键：盐为空串、补齐长度 8、节点号 0
+        let cfg = AppConfig::from_ini(&parse()).unwrap();
+        assert_eq!(cfg.hashids_salt, "");
+        assert_eq!(cfg.hashids_min_len, 8);
+        assert_eq!((cfg.snowflake_worker, cfg.snowflake_dc), (0, 0));
+
+        let mut map = parse();
+        let app = map.get_mut("app").unwrap();
+        app.insert("hashids_salt".into(), "s3cret".into());
+        app.insert("hashids_min_len".into(), "12".into());
+        app.insert("snowflake_worker".into(), "3".into());
+        app.insert("snowflake_dc".into(), "2".into());
+        let cfg = AppConfig::from_ini(&map).unwrap();
+        assert_eq!(cfg.hashids_salt, "s3cret");
+        assert_eq!(cfg.hashids_min_len, 12);
+        assert_eq!((cfg.snowflake_worker, cfg.snowflake_dc), (3, 2));
+
+        // 0 / 负数长度会让 hashids 补位炸掉；节点号越界由雪花 build() 拒（main 里报启动错）
+        map.get_mut("app").unwrap().insert("hashids_min_len".into(), "0".into());
+        let err = AppConfig::from_ini(&map).unwrap_err();
+        assert!(format!("{err}").contains("hashids_min_len"), "应报出具体键: {err}");
     }
 
     #[test]

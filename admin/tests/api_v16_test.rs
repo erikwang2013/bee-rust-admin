@@ -110,8 +110,8 @@ async fn v16_job_notice_features() {
         let m = menu(&tree, perm).unwrap_or_else(|| panic!("种子里必须有 {perm} 菜单: {tree}"));
         assert_eq!(m["path"], path, "页面路径");
         assert_eq!(m["component"], comp, "组件路径");
-        let id = m["id"].as_i64().unwrap();
-        let parent_id = m["parent_id"].as_i64().unwrap();
+        let id = common::as_id(&m["id"]);
+        let parent_id = common::as_id(&m["parent_id"]);
         let dir = tree
             .as_array()
             .unwrap()
@@ -145,8 +145,8 @@ async fn v16_job_notice_features() {
     assert_eq!(retention["name"], "日志清理", "{v}");
     assert_eq!(retention["cron"], "86400", "默认间隔 24 小时: {v}");
     assert_eq!(retention["status"], 1, "默认启用: {v}");
-    let retention_id = retention["id"].as_i64().unwrap();
-    let avatar_id = avatar_job["id"].as_i64().unwrap();
+    let retention_id = common::as_id(&retention["id"]);
+    let avatar_id = common::as_id(&avatar_job["id"]);
 
     // 筛选
     let (_st, v) = call(&c, Method::GET, api("/jobs?name=日志"), Some(&admin), None).await;
@@ -172,13 +172,17 @@ async fn v16_job_notice_features() {
     assert!(last.as_deref().unwrap_or("").contains("头像"), "job.last_msg 要留痕: {last:?}");
 
     // 库里残留的旧 code：不可手动触发（409），避免点到已下线的任务
-    let ghost = sqlx::query("INSERT INTO job (name, code, cron, status, last_msg, created_at, updated_at) \
-                             VALUES ('幽灵任务', 'ghost_job', '60', 1, '', NOW(), NOW())")
-        .execute(&pool)
-        .await
-        .unwrap()
-        .last_insert_id();
-    let (st, v) = call(&c, Method::POST, api(&format!("/jobs/{ghost}/run")), Some(&admin), None).await;
+    let ghost = common::new_row_id();
+    sqlx::query(
+        "INSERT INTO job (id, name, code, cron, status, last_msg, created_at, updated_at) \
+         VALUES (?, '幽灵任务', 'ghost_job', '60', 1, '', NOW(), NOW())",
+    )
+    .bind(ghost)
+    .execute(&pool)
+    .await
+    .unwrap();
+    // 库里的 id 是数字，URL 收 hashid：测试侧 encode 一下（后端返回的串才直接透传）
+    let (st, v) = call(&c, Method::POST, api(&format!("/jobs/{}/run", common::enc_id(ghost as u64))), Some(&admin), None).await;
     assert_eq!(st, 409, "未注册 code 必须 409: {v}");
     assert!(v["msg"].as_str().unwrap_or("").contains("未在代码中注册"), "{v}");
     assert_eq!(v["err"], "job.not_registered", "{v}");
@@ -190,9 +194,10 @@ async fn v16_job_notice_features() {
     assert_eq!(n, 0, "409 的任务不能留下执行记录");
 
     // 不存在的任务 / 非法间隔
-    let (st, v) = call(&c, Method::POST, api("/jobs/999999/run"), Some(&admin), None).await;
+    let nope = common::enc_id(999_999); // 合法 hashid、库里没有
+    let (st, v) = call(&c, Method::POST, api(&format!("/jobs/{nope}/run")), Some(&admin), None).await;
     assert_eq!(st, 404, "不存在: {v}");
-    let (st, v) = call(&c, Method::PUT, api("/jobs/999999"), Some(&admin), Some(json!({"cron": "60", "status": 1}))).await;
+    let (st, v) = call(&c, Method::PUT, api(&format!("/jobs/{nope}")), Some(&admin), Some(json!({"cron": "60", "status": 1}))).await;
     assert_eq!(st, 404, "更新不存在: {v}");
     for bad in ["abc", "", "0", "-5", "3.5"] {
         let (st, v) = call(&c, Method::PUT, api(&format!("/jobs/{retention_id}")), Some(&admin),
@@ -296,9 +301,9 @@ async fn v16_job_notice_features() {
         "title": "系统维护", "content": "今晚 22:00 停机维护", "status": 1,
     }))).await;
     assert_eq!(st, 200, "发公告: {v}");
-    let n1 = v["data"]["id"].as_i64().unwrap();
+    let n1 = common::as_id(&v["data"]["id"]);
     let n1_published: chrono::NaiveDateTime = sqlx::query_scalar("SELECT published_at FROM notice WHERE id = ?")
-        .bind(n1)
+        .bind(common::dec_id(&n1))
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -308,9 +313,9 @@ async fn v16_job_notice_features() {
         "title": "草稿箱", "content": "还没想好", "status": 0,
     }))).await;
     assert_eq!(st, 200, "存草稿: {v}");
-    let n2 = v["data"]["id"].as_i64().unwrap();
+    let n2 = common::as_id(&v["data"]["id"]);
     let n2_published: Option<chrono::NaiveDateTime> = sqlx::query_scalar("SELECT published_at FROM notice WHERE id = ?")
-        .bind(n2)
+        .bind(common::dec_id(&n2))
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -340,7 +345,7 @@ async fn v16_job_notice_features() {
         "name": "v16_none", "code": "v16_none", "data_scope": 4, "status": 1,
     }))).await;
     assert_eq!(st, 200, "建空角色: {v}");
-    let empty_role = v["data"]["id"].as_i64().unwrap();
+    let empty_role = common::as_id(&v["data"]["id"]);
     let (st, v) = call(&c, Method::POST, api("/admins"), Some(&admin), Some(json!({
         "username": "v16user", "password": "v16user123", "role_ids": [empty_role],
     }))).await;
@@ -368,7 +373,7 @@ async fn v16_job_notice_features() {
     let (st, v) = call(&c, Method::POST, api(&format!("/notices/{n1}/read")), Some(&plain), None).await;
     assert_eq!(st, 200, "重复标记仍 200（幂等）: {v}");
     let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM notice_read WHERE notice_id = ? AND admin_id <> 0")
-        .bind(n1)
+        .bind(common::dec_id(&n1))
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -381,7 +386,7 @@ async fn v16_job_notice_features() {
     // 草稿 / 不存在：标记已读一律 404（草稿不属于任何人可见的未读集合）
     let (st, v) = call(&c, Method::POST, api(&format!("/notices/{n2}/read")), Some(&plain), None).await;
     assert_eq!(st, 404, "标记草稿为已读: {v}");
-    let (st, v) = call(&c, Method::POST, api("/notices/999999/read"), Some(&plain), None).await;
+    let (st, v) = call(&c, Method::POST, api(&format!("/notices/{nope}/read")), Some(&plain), None).await;
     assert_eq!(st, 404, "标记不存在的公告: {v}");
 
     // 管理接口对普通用户全 403
@@ -409,7 +414,7 @@ async fn v16_job_notice_features() {
     }))).await;
     assert_eq!(st, 200, "发布草稿: {v}");
     let first_publish: chrono::NaiveDateTime = sqlx::query_scalar("SELECT published_at FROM notice WHERE id = ?")
-        .bind(n2)
+        .bind(common::dec_id(&n2))
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -423,7 +428,7 @@ async fn v16_job_notice_features() {
     }))).await;
     assert_eq!(st, 200, "撤回: {v}");
     let withdrawn: Option<chrono::NaiveDateTime> = sqlx::query_scalar("SELECT published_at FROM notice WHERE id = ?")
-        .bind(n2)
+        .bind(common::dec_id(&n2))
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -433,7 +438,7 @@ async fn v16_job_notice_features() {
     }))).await;
     assert_eq!(st, 200, "再发布: {v}");
     let republished: chrono::NaiveDateTime = sqlx::query_scalar("SELECT published_at FROM notice WHERE id = ?")
-        .bind(n2)
+        .bind(common::dec_id(&n2))
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -448,10 +453,12 @@ async fn v16_job_notice_features() {
     // ── 未读分页：total 是未读总数，不是 list.length ─────────────
     for i in 0..52 {
         sqlx::query(
-            "INSERT INTO notice (title, content, status, created_by, published_at, created_at, updated_at) \
-             VALUES (?, '批量公告', 1, 1, NOW(), NOW(), NOW())",
+            "INSERT INTO notice (id, title, content, status, created_by, published_at, created_at, updated_at) \
+             VALUES (?, ?, '批量公告', 1, ?, NOW(), NOW(), NOW())",
         )
+        .bind(common::new_row_id())
         .bind(format!("批量 {i}"))
+        .bind(admin_id) // 超管的库内数字 id（不再是 1）
         .execute(&pool)
         .await
         .unwrap();
@@ -461,21 +468,24 @@ async fn v16_job_notice_features() {
     assert_eq!(v["data"]["total"], 53, "未读总数（52 条批量 + n2）: {v}");
     let list = v["data"]["list"].as_array().unwrap();
     assert_eq!(list.len(), 50, "列表只回最近 50 条: {v}");
-    // 排序 id DESC，且摘掉一条后从列表消失
-    let ids: Vec<i64> = list.iter().map(|n| n["id"].as_i64().unwrap()).collect();
+    // 排序 id DESC，且摘掉一条后从列表消失。
+    // 对外是 hashid 串，比不了大小：解码回数字再比（URL 里仍用原串透传）
+    let ids: Vec<i64> = list.iter().map(|n| common::dec_id(n["id"].as_str().unwrap())).collect();
     assert!(ids.windows(2).all(|w| w[0] > w[1]), "按 id DESC: {ids:?}");
+    let first_hash = common::as_id(&list[0]["id"]);
     let first_id = ids[0];
-    let (st, v) = call(&c, Method::POST, api(&format!("/notices/{first_id}/read")), Some(&plain), None).await;
+    let (st, v) = call(&c, Method::POST, api(&format!("/notices/{first_hash}/read")), Some(&plain), None).await;
     assert_eq!(st, 200, "{v}");
     let (st, v) = call(&c, Method::GET, api("/notices/unread"), Some(&plain), None).await;
     assert_eq!(st, 200, "{v}");
     assert_eq!(v["data"]["total"], 52, "读一条少一条: {v}");
-    let ids: Vec<i64> = v["data"]["list"].as_array().unwrap().iter().map(|n| n["id"].as_i64().unwrap()).collect();
+    let ids: Vec<i64> = v["data"]["list"].as_array().unwrap().iter()
+        .map(|n| common::dec_id(n["id"].as_str().unwrap())).collect();
     assert!(!ids.contains(&first_id), "读过的必须从列表消失: {ids:?}");
 
     // ── 删除：同一事务里清 notice_read ──────────────────────────
     let before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM notice_read WHERE notice_id = ?")
-        .bind(n1)
+        .bind(common::dec_id(&n1))
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -483,14 +493,14 @@ async fn v16_job_notice_features() {
     let (st, v) = call(&c, Method::DELETE, api(&format!("/notices/{n1}")), Some(&admin), None).await;
     assert_eq!(st, 200, "删公告: {v}");
     let after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM notice_read WHERE notice_id = ?")
-        .bind(n1)
+        .bind(common::dec_id(&n1))
         .fetch_one(&pool)
         .await
         .unwrap();
     assert_eq!(after, 0, "级联删已读记录，不留垃圾行");
     let (st, v) = call(&c, Method::DELETE, api(&format!("/notices/{n1}")), Some(&admin), None).await;
     assert_eq!(st, 404, "重复删 404: {v}");
-    let (st, v) = call(&c, Method::DELETE, api("/notices/999999"), Some(&admin), None).await;
+    let (st, v) = call(&c, Method::DELETE, api(&format!("/notices/{nope}")), Some(&admin), None).await;
     assert_eq!(st, 404, "删不存在: {v}");
 
     // 删公告的动作要进审计（module=notice，动作有中文名）
@@ -536,8 +546,10 @@ async fn v16_job_notice_features() {
     let (st, v) = call(&c, Method::GET, api3("/jobs"), Some(&admin3), None).await;
     assert_eq!(st, 200, "{v}");
     assert_eq!(v["data"]["total"], 2, "补齐不受开关影响（运维要能看到任务）: {v}");
-    let rid = v["data"]["list"].as_array().unwrap().iter()
-        .find(|j| j["code"] == "log_retention").unwrap()["id"].as_i64().unwrap();
+    let rid = common::as_id(
+        &v["data"]["list"].as_array().unwrap().iter()
+            .find(|j| j["code"] == "log_retention").unwrap()["id"],
+    );
     // 新库 last_run_at 全空 = 一旦循环启动，第一个 tick 就会跑；等 5 秒断言没跑
     tokio::time::sleep(Duration::from_secs(5)).await;
     let n = job_log_count(&pool, "log_retention").await;

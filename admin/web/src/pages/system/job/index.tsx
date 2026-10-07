@@ -43,7 +43,7 @@ function JobList() {
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState<Job | null>(null);
   const [modal, setModal] = useState(false);
-  const [runningId, setRunningId] = useState<number | null>(null);
+  const [runningId, setRunningId] = useState<string | null>(null);
 
   const load = useCallback(async (q: JobQuery) => {
     setLoading(true);

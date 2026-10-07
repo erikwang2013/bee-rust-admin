@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Model, Serialize, Deserialize, Clone, Debug)]
 #[bee(table = "dict_type")]
 pub struct DictType {
-    #[bee(pk, auto)]
+    #[bee(pk)]
+    #[serde(serialize_with = "crate::hid::ser_id", deserialize_with = "crate::hid::de_id")]
     pub id: i64,
     #[bee(sql_type = "VARCHAR(64)")]
     pub name: String,
@@ -28,7 +29,8 @@ pub struct DictType {
 #[derive(Model, Serialize, Deserialize, Clone, Debug)]
 #[bee(table = "dict_item")]
 pub struct DictItem {
-    #[bee(pk, auto)]
+    #[bee(pk)]
+    #[serde(serialize_with = "crate::hid::ser_id", deserialize_with = "crate::hid::de_id")]
     pub id: i64,
     #[bee(sql_type = "VARCHAR(64)")]
     pub type_code: String,

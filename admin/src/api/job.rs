@@ -4,6 +4,7 @@
 use crate::api::{PagingExt, dt_ge, dt_le, page_size};
 use crate::auth::Auth;
 use crate::error::{ApiError, AppJson, AppPath, AppQuery, ok};
+use crate::hid;
 use crate::jobs;
 use crate::models::{Job, JobLog};
 use crate::state::AppState;
@@ -66,10 +67,11 @@ pub async fn list(
 pub async fn update(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<i64>,
+    AppPath(id): AppPath<String>,
     AppJson(body): AppJson<JobUpdate>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:job:edit")?;
+    let id = hid::dec(&id)?;
     let cron = check_cron(&body.cron)?;
 
     let mut job = Job::query()
@@ -92,9 +94,10 @@ pub async fn update(
 pub async fn run(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<i64>,
+    AppPath(id): AppPath<String>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:job:edit")?;
+    let id = hid::dec(&id)?;
     let job = Job::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?

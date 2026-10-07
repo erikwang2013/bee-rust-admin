@@ -1,6 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use crate::auth::{Auth, sign_token};
 use crate::config::AppConfig;
+use crate::hid;
 use crate::error::{ApiError, AppJson, AppPath, ok};
 use crate::models::{Admin, LoginLog, Menu};
 use crate::state::AppState;
@@ -73,8 +74,13 @@ pub async fn write_login_log(
     status: i8,
     msg: &str,
 ) {
+    // 发号失败 = 这条记录留不下（登录本身的成败不受影响）
+    let Ok(id) = state.next_id() else {
+        tracing::error!("生成登录记录 id 失败，跳过本次留档");
+        return;
+    };
     let log = LoginLog {
-        id: 0,
+        id,
         admin_id,
         username: username.chars().take(64).collect(),
         ip: client_ip(headers),
@@ -230,7 +236,7 @@ pub async fn login(
         "token": token,
         "expires_in": expires_in,
         "user": {
-            "id": admin.id,
+            "id": hid::enc(admin.id),
             "username": admin.username,
             "nickname": admin.nickname,
             "avatar": admin.avatar,
@@ -238,7 +244,7 @@ pub async fn login(
             "phone": admin.phone,
             "sex": admin.sex,
             "is_super": admin.is_super == 1,
-            "dept_id": admin.dept_id,
+            "dept_id": hid::enc(admin.dept_id),
         }
     })))
 }
@@ -280,7 +286,7 @@ pub async fn profile(State(_state): State<AppState>, auth: Auth) -> Result<Json<
     let roles: Vec<&str> = auth.roles.iter().map(|r| r.code.as_str()).collect();
     Ok(ok(json!({
         "user": {
-            "id": auth.admin.id,
+            "id": hid::enc(auth.admin.id),
             "username": auth.admin.username,
             "nickname": auth.admin.nickname,
             "avatar": auth.admin.avatar,
@@ -289,7 +295,7 @@ pub async fn profile(State(_state): State<AppState>, auth: Auth) -> Result<Json<
             "phone": auth.admin.phone,
             "sex": auth.admin.sex,
             "is_super": auth.is_super,
-            "dept_id": auth.admin.dept_id,
+            "dept_id": hid::enc(auth.admin.dept_id),
         },
         "roles": roles,
         "perms": perms,
@@ -343,8 +349,8 @@ pub async fn menus(State(state): State<AppState>, auth: Auth) -> Result<Json<Val
             .filter(|m| m.parent_id == parent)
             .map(|m| {
                 json!({
-                    "id": m.id,
-                    "parent_id": m.parent_id,
+                    "id": hid::enc(m.id),
+                    "parent_id": hid::enc(m.parent_id),
                     "name": m.name,
                     "path": m.path,
                     "icon": m.icon,
@@ -451,16 +457,18 @@ pub async fn upload_avatar(
     Ok(ok(json!({ "avatar": admin.avatar })))
 }
 
+/// 对外是短串（与其它 id 一致）；落盘文件名仍是数字 id，路径段解出来才拼。
 fn avatar_url(id: i64) -> String {
-    format!("/api/v1/avatar/{id}")
+    format!("/api/v1/avatar/{}", hid::enc(id))
 }
 
 /// 读头像：公开接口（`<img>` 带不了 Authorization 头），按 id + 扩展名定位文件。
-/// 路径参数是 i64，不存在路径穿越。
+/// 路径参数是 hashids 短串，解出数字 id 后才拼文件名，不存在路径穿越。
 pub async fn get_avatar(
     State(state): State<AppState>,
-    AppPath(id): AppPath<i64>,
+    AppPath(id): AppPath<String>,
 ) -> Result<Response, ApiError> {
+    let id = hid::dec(&id)?;
     for (ext, ct) in [("png", "image/png"), ("jpg", "image/jpeg")] {
         if let Ok(bytes) = std::fs::read(avatar_path(&state.cfg, id, ext)) {
             let mut headers = axum::http::HeaderMap::new();

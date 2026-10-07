@@ -5,6 +5,7 @@ mod auth;
 mod config;
 mod datascope;
 mod error;
+mod hid;
 mod jobs;
 mod models;
 mod relations;
@@ -15,6 +16,7 @@ mod util;
 
 use axum::response::IntoResponse;
 use config::AppConfig;
+use snowflake::{Shared, Snowflake};
 use state::AppState;
 use tracing::Level;
 
@@ -61,6 +63,17 @@ fn parse_level(raw: &str) -> Level {
     }
 }
 
+/// 雪花发号器：节点号/数据中心号来自 `[app] snowflake_worker` / `snowflake_dc`。
+/// 多实例部署时各进程必须取不同的号，否则会发出重复 id（唯一键冲突在写入时才暴露）。
+fn build_snowflake(cfg: &AppConfig) -> Result<Shared, Box<dyn std::error::Error>> {
+    let sk = Snowflake::builder()
+        .worker_id(cfg.snowflake_worker)
+        .datacenter_id(cfg.snowflake_dc)
+        .build()
+        .map_err(|e| format!("[app] snowflake_worker / snowflake_dc 非法: {e}"))?;
+    Ok(Shared::new(sk))
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let conf_path = std::env::var("BEE_ADMIN_CONF").unwrap_or_else(|_| "conf/app.conf".into());
@@ -70,12 +83,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _log = bee_rust::bee_logs::Logger::new().level(parse_level(&cfg.log_level)).init()?;
     tracing::info!("{} 启动，配置 {}", cfg.app_name, conf_path);
 
+    // 对外 id 的编码参数在启动时定死（进程级 OnceLock，之后所有 serde 辅助都用它）。
+    // 盐是空串也能跑（老配置没这个键），但那样短串在不同部署间可预测 —— 提醒一句。
+    hid::init(&cfg.hashids_salt, cfg.hashids_min_len)
+        .map_err(|e| format!("初始化 hashids 失败: {e}"))?;
+    if cfg.hashids_salt.is_empty() {
+        tracing::warn!("[app] hashids_salt 未配置，对外 id 短串在所有部署间可预测（生产请设随机串）");
+    }
+    let snowflake = build_snowflake(&cfg)?;
+
     // 池大小沿用迁移前的 10；`Pool::connect` 是同步的（连接按需惰性建立）
     let db = bee_orm::pool::mysql::Pool::connect(&cfg.db_dsn, 10)?;
     seed::migrate(&db).await?;
-    seed::seed(&db, &cfg).await?;
+    seed::seed(&db, &cfg, &snowflake).await?;
     let throttle = api::auth::login_throttle(&cfg);
-    let state = AppState { db, cfg: std::sync::Arc::new(cfg), throttle };
+    let state = AppState { db, cfg: std::sync::Arc::new(cfg), throttle, snowflake };
     let addr = state.cfg.http_addr.clone();
 
     // 内存限流的条目只在写路径顺手清窗口内的失败，桶本身（每个用户名/IP 一个）不会

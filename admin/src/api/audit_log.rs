@@ -3,6 +3,7 @@ use crate::api::{PagingExt, csv, dt_ge, dt_le, page_size};
 use crate::auth::Auth;
 use crate::datascope;
 use crate::error::{ApiError, AppQuery, ok};
+use crate::hid;
 use crate::models::AuditLog;
 use crate::state::AppState;
 use axum::Json;
@@ -149,7 +150,7 @@ async fn export_batch(
             (
                 r.id,
                 csv::row(&[
-                    r.id.to_string(),
+                    hid::enc(r.id),
                     r.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
                     r.username,
                     r.module,

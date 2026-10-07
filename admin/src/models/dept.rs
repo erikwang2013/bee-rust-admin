@@ -6,8 +6,11 @@ use serde::{Deserialize, Serialize};
 #[derive(Model, Serialize, Deserialize, Clone, Debug)]
 #[bee(table = "dept")]
 pub struct Dept {
-    #[bee(pk, auto)]
+    #[bee(pk)]
+    #[serde(serialize_with = "crate::hid::ser_id", deserialize_with = "crate::hid::de_id")]
     pub id: i64,
+    /// 0 = 根部门
+    #[serde(serialize_with = "crate::hid::ser_id", deserialize_with = "crate::hid::de_id")]
     pub parent_id: i64,
     #[bee(sql_type = "VARCHAR(64)")]
     pub name: String,

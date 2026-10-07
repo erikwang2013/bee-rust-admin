@@ -46,11 +46,11 @@ async fn csv_lines(c: &reqwest::Client, url: String, token: &str) -> Vec<String>
         .collect()
 }
 
-/// 菜单树里按权限码取菜单 id（B5 造角色要勾菜单）。
-fn menu_id(menus: &Value, perm: &str) -> Option<i64> {
+/// 菜单树里按权限码取菜单 id（B5 造角色要勾菜单）；对外 id 是 hashid 串，原样透传。
+fn menu_id(menus: &Value, perm: &str) -> Option<String> {
     for m in menus.as_array()? {
         if m["perm"].as_str() == Some(perm) {
-            return m["id"].as_i64();
+            return m["id"].as_str().map(str::to_string);
         }
         if let Some(id) = menu_id(&m["children"], perm) {
             return Some(id);
@@ -67,8 +67,8 @@ async fn make_role(
     name: &str,
     scope: i8,
     status: i8,
-    menu_ids: &[i64],
-) -> i64 {
+    menu_ids: &[String],
+) -> String {
     let (st, v) = call(
         c,
         Method::POST,
@@ -78,7 +78,7 @@ async fn make_role(
     )
     .await;
     assert_eq!(st, 200, "建角色 {name}: {v}");
-    let id = v["data"]["id"].as_i64().unwrap();
+    let id = common::as_id(&v["data"]["id"]);
     let (st, v) = call(
         c,
         Method::PUT,
@@ -179,11 +179,12 @@ async fn v14_backend_features() {
     // 塞 5001 行（> csv::BATCH = 5000）逼出第二批；导出条数必须与库里行数严格相等
     let mut values = Vec::with_capacity(5001);
     for i in 0..5001 {
-        values.push(format!("(1,'bulk{i}','10.0.0.1','',1,'',NOW())"));
+        // id 不再是自增列，得自己给（见 common::new_row_id）
+        values.push(format!("({},1,'bulk{i}','10.0.0.1','',1,'',NOW())", common::new_row_id()));
     }
     for chunk in values.chunks(500) {
         sqlx::query(&format!(
-            "INSERT INTO login_log (admin_id, username, ip, user_agent, status, msg, created_at) VALUES {}",
+            "INSERT INTO login_log (id, admin_id, username, ip, user_agent, status, msg, created_at) VALUES {}",
             chunk.join(",")
         ))
         .execute(&pool)
@@ -191,16 +192,17 @@ async fn v14_backend_features() {
         .unwrap();
     }
     let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM login_log").fetch_one(&pool).await.unwrap();
-    // id 列是 BIGINT UNSIGNED，sqlx 只肯解码成 i64（COUNT(*) 才有符号）
     let (min_id, max_id): (i64, i64) =
         sqlx::query_as("SELECT MIN(id), MAX(id) FROM login_log").fetch_one(&pool).await.unwrap();
 
     let lines = csv_lines(&c, api("/login-logs/export"), &admin).await;
     assert_eq!(lines[0], "ID,用户名,IP,User-Agent,结果,详情,时间", "表头");
     assert_eq!(lines.len() as i64, total + 1, "表头 + 全部 {total} 行，跨批不丢不重");
-    assert!(lines[1].starts_with(&format!("{max_id},")), "id DESC：首行是最新的 {max_id}: {}", lines[1]);
+    // 导出里的 ID 也是对外短串：库里的 MIN/MAX 要过一遍编码才能比对
+    let (max_hid, min_hid) = (common::enc_id(max_id as u64), common::enc_id(min_id as u64));
+    assert!(lines[1].starts_with(&format!("{max_hid},")), "id DESC：首行是最新的 {max_id}: {}", lines[1]);
     assert!(
-        lines[lines.len() - 1].starts_with(&format!("{min_id},")),
+        lines[lines.len() - 1].starts_with(&format!("{min_hid},")),
         "最老的一行在（最后一批没被漏掉）: {}",
         lines[lines.len() - 1]
     );
@@ -218,16 +220,18 @@ async fn v14_backend_features() {
     // ── A4 日志保留策略（[log] retain_days 默认 90）──────────
     // 各插一条过期行（2000 年）；清理在进程启动时跑，重启一个进程来触发（不真等 24 小时）
     sqlx::query(
-        "INSERT INTO login_log (admin_id, username, ip, user_agent, status, msg, created_at) \
-         VALUES (1, 'old-login', '1.1.1.1', '', 1, '', '2000-01-01 00:00:00')",
+        "INSERT INTO login_log (id, admin_id, username, ip, user_agent, status, msg, created_at) \
+         VALUES (?, 1, 'old-login', '1.1.1.1', '', 1, '', '2000-01-01 00:00:00')",
     )
+    .bind(common::new_row_id())
     .execute(&pool)
     .await
     .unwrap();
     sqlx::query(
-        "INSERT INTO audit_log (admin_id, username, module, action, method, path, status, msg, duration_ms, ip, created_at) \
-         VALUES (1, 'admin', 'other', '老记录', 'POST', '/api/v1/x', 0, '', 1, '1.1.1.1', '2000-01-01 00:00:00')",
+        "INSERT INTO audit_log (id, admin_id, username, module, action, method, path, status, msg, duration_ms, ip, created_at) \
+         VALUES (?, 1, 'admin', 'other', '老记录', 'POST', '/api/v1/x', 0, '', 1, '1.1.1.1', '2000-01-01 00:00:00')",
     )
+    .bind(common::new_row_id())
     .execute(&pool)
     .await
     .unwrap();
@@ -267,10 +271,10 @@ async fn v14_backend_features() {
     // 场景：操作者 b5op 是 scope=3（本部门 A）；目标 t1 在 A 部、t2 在 B 部
     let (st, v) = call(&c, Method::POST, api("/depts"), Some(&admin), Some(json!({"name": "B5-A部"}))).await;
     assert_eq!(st, 200, "建部门 A: {v}");
-    let dept_a = v["data"]["id"].as_i64().unwrap();
+    let dept_a = common::as_id(&v["data"]["id"]);
     let (st, v) = call(&c, Method::POST, api("/depts"), Some(&admin), Some(json!({"name": "B5-B部"}))).await;
     assert_eq!(st, 200, "建部门 B: {v}");
-    let dept_b = v["data"]["id"].as_i64().unwrap();
+    let dept_b = common::as_id(&v["data"]["id"]);
 
     let (st, v) = call(&c, Method::GET, api("/menus/tree"), Some(&admin), None).await;
     assert_eq!(st, 200);
@@ -279,7 +283,7 @@ async fn v14_backend_features() {
 
     // 操作者：管理员管理全套权限（list/add/edit/remove/resetPwd）+ 角色列表（分配角色
     // 时得看得见角色）+ scope=3
-    let op_menus: Vec<i64> = [
+    let op_menus: Vec<String> = [
         "system:admin:list", "system:admin:add", "system:admin:edit",
         "system:admin:remove", "system:admin:resetPwd", "system:role:list",
     ].iter().map(|p| perm_menu(p)).collect();
@@ -297,17 +301,17 @@ async fn v14_backend_features() {
         "username": "b5op", "password": "b5op12345", "dept_id": dept_a, "role_ids": [op_role],
     }))).await;
     assert_eq!(st, 200, "建操作者: {v}");
-    let op_id = v["data"]["id"].as_i64().unwrap();
+    let op_id = common::as_id(&v["data"]["id"]);
     let (st, v) = call(&c, Method::POST, api("/admins"), Some(&admin), Some(json!({
         "username": "b5t1", "password": "b5t12345", "dept_id": dept_a,
     }))).await;
     assert_eq!(st, 200, "建 A 部目标: {v}");
-    let t1 = v["data"]["id"].as_i64().unwrap();
+    let t1 = common::as_id(&v["data"]["id"]);
     let (st, v) = call(&c, Method::POST, api("/admins"), Some(&admin), Some(json!({
         "username": "b5t2", "password": "b5t12345", "dept_id": dept_b,
     }))).await;
     assert_eq!(st, 200, "建 B 部目标: {v}");
-    let t2 = v["data"]["id"].as_i64().unwrap();
+    let t2 = common::as_id(&v["data"]["id"]);
 
     let op = common::login(&base, "b5op", "b5op12345").await.expect("操作者登录");
 
@@ -370,7 +374,8 @@ async fn v14_backend_features() {
     assert_eq!(st, 200, "清空角色放行: {v}");
 
     // 存在性 + 停用（原先不校验，写进去就是脏关系）
-    for bad in [off_role, 999_999] {
+    // 999_999 → 测试侧 encode 成合法 hashid：解码没问题，但库里没这个角色
+    for bad in [off_role.clone(), common::enc_id(999_999)] {
         let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{t1}/roles")), Some(&op),
             Some(json!({"role_ids": [bad]}))).await;
         assert_eq!(st, 400, "角色 {bad} 不存在或已停用: {v}");
@@ -381,18 +386,18 @@ async fn v14_backend_features() {
     // 角色列表/详情带 grantable：前端照它灰掉选项，别摆出「点了才被骂」的角色
     let (st, v) = call(&c, Method::GET, api("/roles?size=100"), Some(&op), None).await;
     assert_eq!(st, 200, "操作者读角色列表: {v}");
-    let grant = |id: i64| {
+    let grant = |id: &str| {
         v["data"]["list"].as_array().unwrap().iter()
-            .find(|r| r["id"] == json!(id))
+            .find(|r| r["id"].as_str() == Some(id))
             .unwrap_or_else(|| panic!("角色 {id} 不在列表里: {v}"))["grantable"]
             .as_bool()
             .unwrap_or(false)
     };
-    assert!(!grant(wide_role), "data_scope=1 不该标记为可授: {v}");
-    assert!(!grant(alien_role), "权限不是自己子集的不可授: {v}");
-    assert!(!grant(off_role), "已停用的不可授: {v}");
-    assert!(grant(op_role), "自己那类角色可授: {v}");
-    assert!(grant(ok_role), "scope=4 且权限是子集可授: {v}");
+    assert!(!grant(&wide_role), "data_scope=1 不该标记为可授: {v}");
+    assert!(!grant(&alien_role), "权限不是自己子集的不可授: {v}");
+    assert!(!grant(&off_role), "已停用的不可授: {v}");
+    assert!(grant(&op_role), "自己那类角色可授: {v}");
+    assert!(grant(&ok_role), "scope=4 且权限是子集可授: {v}");
 
     let (st, vd) = call(&c, Method::GET, api(&format!("/roles/{wide_role}")), Some(&op), None).await;
     assert_eq!(st, 200, "角色详情: {vd}");

@@ -4,6 +4,14 @@ http_addr = 127.0.0.1:8080
 log_level = info
 # 上传文件根目录（头像落在这里的 avatar/ 下），可用绝对路径
 upload_dir = uploads
+# 对外 id（hashids 短串）的盐：**生产必须换成随机串**，改盐 = 所有已发出的短串作废
+hashids_salt = change-me-to-a-random-salt
+# 短串最小长度（越长越不易被看出来是递增的）
+hashids_min_len = 8
+# 雪花发号器节点号 / 数据中心号（各 0-31）。**多实例部署时每个进程必须不同**，
+# 否则会发出重复 id（写入时才以唯一键冲突暴露）
+snowflake_worker = 1
+snowflake_dc = 1
 
 [db]
 dsn = mysql://user:password@127.0.0.1:3306/bee_admin

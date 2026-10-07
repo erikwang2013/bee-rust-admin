@@ -18,7 +18,7 @@ const TYPE_COLORS: Record<Menu['type'], string> = { M: 'blue', C: 'green', F: 'o
 type TreeNode = NonNullable<TreeSelectProps['treeData']>[number];
 
 /** 节点自身及其子孙的 id（父级选择里禁用，避免挂到自己下面成环）。 */
-function subtreeIds(nodes: Menu[], id: number): Set<number> {
+function subtreeIds(nodes: Menu[], id: string): Set<string> {
   const target = (function find(list: Menu[]): Menu | undefined {
     for (const n of list) {
       if (n.id === id) return n;
@@ -27,14 +27,17 @@ function subtreeIds(nodes: Menu[], id: number): Set<number> {
     }
     return undefined;
   })(nodes);
-  const out = new Set<number>();
+  const out = new Set<string>();
   const walk = (n: Menu) => { out.add(n.id); n.children?.forEach(walk); };
   if (target) walk(target);
   return out;
 }
 
-/** 菜单树 → TreeSelect 数据（顶级用 id=0）。 */
-function toTreeData(nodes: Menu[], blocked: Set<number> = new Set()): TreeNode[] {
+/** 树里所有节点的 id（编辑时判断回显的 parent_id 是不是真节点）。 */
+const allIds = (nodes: Menu[]): string[] => nodes.flatMap((n) => [n.id, ...allIds(n.children ?? [])]);
+
+/** 菜单树 → TreeSelect 数据（顶级用 `''`）。 */
+function toTreeData(nodes: Menu[], blocked: Set<string> = new Set()): TreeNode[] {
   return nodes.map((n) => ({
     value: n.id,
     title: n.name,
@@ -64,7 +67,7 @@ export default function MenuPage() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const openCreate = (parentId = 0) => {
+  const openCreate = (parentId = '') => {
     setEditing(null);
     form.resetFields();
     form.setFieldsValue({ parent_id: parentId, type: 'C', sort: 0, visible: 1, status: 1 });
@@ -73,7 +76,11 @@ export default function MenuPage() {
 
   const openEdit = (row: Menu) => {
     setEditing(row);
-    form.setFieldsValue(row as unknown as MenuForm);
+    // 根节点的 parent_id 是后端 enc(0) 的短串，不在树里 → 归一成 ''（顶级，后端 '' = 0）
+    form.setFieldsValue({
+      ...row,
+      parent_id: allIds(rows).includes(row.parent_id) ? row.parent_id : '',
+    } as unknown as MenuForm);
     setModalOpen(true);
   };
 
@@ -81,7 +88,7 @@ export default function MenuPage() {
     const v = await form.validateFields();
     const data: MenuForm = {
       ...v,
-      parent_id: v.parent_id ?? 0,
+      parent_id: v.parent_id ?? '',
       // 按类型归一化：切类型后残留的字段清空，避免脏值入库
       ...(v.type === 'M' ? { component: '', perm: '' } : {}),
       ...(v.type === 'F' ? { path: '', component: '', icon: '' } : {}),
@@ -140,7 +147,7 @@ export default function MenuPage() {
       <Space style={{ marginBottom: 16 }} wrap>
         <Button icon={<ReloadOutlined />} onClick={() => void load()}>{t('common.refresh')}</Button>
         <Auth code="system:menu:add">
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate(0)}>{t('common.add')}</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate()}>{t('common.add')}</Button>
         </Auth>
       </Space>
 
@@ -167,7 +174,7 @@ export default function MenuPage() {
             <TreeSelect
               allowClear placeholder={t('common.top')} treeDefaultExpandAll
               treeData={[{
-                value: 0,
+                value: '',
                 title: t('common.top'),
                 children: toTreeData(rows, editing ? subtreeIds(rows, editing.id) : undefined),
               }]}

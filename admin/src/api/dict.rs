@@ -4,6 +4,7 @@
 use crate::api::{PagingExt, check_len, csv, page_size};
 use crate::auth::Auth;
 use crate::error::{ApiError, AppJson, AppPath, AppQuery, ok};
+use crate::hid;
 use crate::models::{DictItem, DictType};
 use crate::state::AppState;
 use crate::util::now;
@@ -130,7 +131,7 @@ pub async fn type_create(
     }
 
     let t = DictType {
-        id: 0,
+        id: state.next_id()?,
         name: body.name.trim().to_string(),
         code: code.to_string(),
         status: body.status,
@@ -138,17 +139,19 @@ pub async fn type_create(
         created_at: now(),
         updated_at: now(),
     };
-    let t = t.create(&state.db).await.map_err(code_taken)?;
-    Ok(ok(json!({ "id": t.id })))
+    // id 已在上面发号，insert 就够（create 的读回是给自增主键用的）
+    t.insert(&state.db).await.map_err(code_taken)?;
+    Ok(ok(json!({ "id": hid::enc(t.id) })))
 }
 
 pub async fn type_update(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<i64>,
+    AppPath(id): AppPath<String>,
     AppJson(body): AppJson<DictTypeUpdate>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:dict:edit")?;
+    let id = hid::dec(&id)?;
     check_name(&body.name)?;
     check_len("remark", &body.remark, 255)?;
 
@@ -173,9 +176,10 @@ pub async fn type_update(
 pub async fn type_remove(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<i64>,
+    AppPath(id): AppPath<String>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:dict:remove")?;
+    let id = hid::dec(&id)?;
     let t = DictType::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
@@ -345,7 +349,7 @@ pub async fn item_create(
     }
 
     let it = DictItem {
-        id: 0,
+        id: state.next_id()?,
         type_code: type_code.to_string(),
         label: body.label.trim().to_string(),
         value: body.value.trim().to_string(),
@@ -355,17 +359,19 @@ pub async fn item_create(
         created_at: now(),
         updated_at: now(),
     };
-    let it = it.create(&state.db).await.map_err(value_taken)?;
-    Ok(ok(json!({ "id": it.id })))
+    // id 已在上面发号，insert 就够（create 的读回是给自增主键用的）
+    it.insert(&state.db).await.map_err(value_taken)?;
+    Ok(ok(json!({ "id": hid::enc(it.id) })))
 }
 
 pub async fn item_update(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<i64>,
+    AppPath(id): AppPath<String>,
     AppJson(body): AppJson<DictItemUpdate>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:dict:edit")?;
+    let id = hid::dec(&id)?;
     check_label(&body.label)?;
     check_value(&body.value)?;
     check_len("remark", &body.remark, 255)?;
@@ -391,9 +397,10 @@ pub async fn item_update(
 pub async fn item_remove(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<i64>,
+    AppPath(id): AppPath<String>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:dict:remove")?;
+    let id = hid::dec(&id)?;
     let n = DictItem::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
@@ -424,7 +431,7 @@ async fn export_batch(
             (
                 r.id,
                 csv::row(&[
-                    r.id.to_string(),
+                    hid::enc(r.id),
                     r.type_code,
                     r.label,
                     r.value,

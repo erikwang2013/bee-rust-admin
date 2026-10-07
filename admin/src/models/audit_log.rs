@@ -7,9 +7,11 @@ use serde::{Deserialize, Serialize};
 #[derive(Model, Serialize, Deserialize, Clone, Debug)]
 #[bee(table = "audit_log")]
 pub struct AuditLog {
-    #[bee(pk, auto)]
+    #[bee(pk)]
+    #[serde(serialize_with = "crate::hid::ser_id", deserialize_with = "crate::hid::de_id")]
     pub id: i64,
     /// 凭据无效/未带 token 时为 0
+    #[serde(serialize_with = "crate::hid::ser_id", deserialize_with = "crate::hid::de_id")]
     pub admin_id: i64,
     #[bee(sql_type = "VARCHAR(64)")]
     pub username: String,

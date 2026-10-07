@@ -3,6 +3,7 @@ use crate::api::{PagingExt, check_len, dedup_ids, page_size};
 use crate::auth::Auth;
 use crate::datascope;
 use crate::error::{ApiError, AppJson, AppPath, AppQuery, ok};
+use crate::hid;
 use crate::models::Role;
 use crate::state::AppState;
 use crate::util::now;
@@ -36,11 +37,13 @@ pub struct RoleBody {
 
 #[derive(Deserialize)]
 pub struct MenuIdsBody {
+    #[serde(deserialize_with = "crate::hid::de_vec_id")]
     pub menu_ids: Vec<i64>,
 }
 
 #[derive(Deserialize)]
 pub struct DeptIdsBody {
+    #[serde(deserialize_with = "crate::hid::de_vec_id")]
     pub dept_ids: Vec<i64>,
 }
 
@@ -131,9 +134,10 @@ pub async fn list(
 pub async fn detail(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<i64>,
+    AppPath(id): AppPath<String>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:list")?;
+    let id = hid::dec(&id)?;
     let r = Role::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
@@ -165,7 +169,7 @@ pub async fn create(
     validate_body(&body)?;
 
     let r = Role {
-        id: 0,
+        id: state.next_id()?,
         name: body.name.trim().to_string(),
         code: body.code.trim().to_string(),
         sort: body.sort,
@@ -175,17 +179,19 @@ pub async fn create(
         created_at: now(),
         updated_at: now(),
     };
-    let r = r.create(&state.db).await.map_err(code_taken)?;
-    Ok(ok(json!({ "id": r.id })))
+    // id 已在上面发号，insert 就够（create 的读回是给自增主键用的）
+    r.insert(&state.db).await.map_err(code_taken)?;
+    Ok(ok(json!({ "id": hid::enc(r.id) })))
 }
 
 pub async fn update(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<i64>,
+    AppPath(id): AppPath<String>,
     AppJson(body): AppJson<RoleBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:edit")?;
+    let id = hid::dec(&id)?;
     validate_body(&body)?;
 
     let mut r = Role::query()
@@ -210,9 +216,10 @@ pub async fn update(
 pub async fn remove(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<i64>,
+    AppPath(id): AppPath<String>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:remove")?;
+    let id = hid::dec(&id)?;
     let used = state.db.count_refs("admin_role", "role_id", id).await.map_err(ApiError::from)?;
     if used > 0 {
         return Err(ApiError::BadRequest("该角色已被管理员使用，不能删除".into()));
@@ -231,24 +238,26 @@ pub async fn remove(
 pub async fn get_menus(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<i64>,
+    AppPath(id): AppPath<String>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:list")?;
+    let id = hid::dec(&id)?;
     let ids = state
         .db
         .get_relations("role_menu", ("role_id", id), "menu_id")
         .await
         .map_err(ApiError::from)?;
-    Ok(ok(ids)) // 前端契约：data 直接是 number[]
+    Ok(ok(hid::enc_vec(&ids))) // 前端契约：data 直接是 id 短串数组
 }
 
 pub async fn set_menus(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<i64>,
+    AppPath(id): AppPath<String>,
     AppJson(body): AppJson<MenuIdsBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:edit")?;
+    let id = hid::dec(&id)?;
     let exists = Role::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
@@ -269,24 +278,26 @@ pub async fn set_menus(
 pub async fn get_depts(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<i64>,
+    AppPath(id): AppPath<String>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:list")?;
+    let id = hid::dec(&id)?;
     let ids = state
         .db
         .get_relations("role_dept", ("role_id", id), "dept_id")
         .await
         .map_err(ApiError::from)?;
-    Ok(ok(ids)) // 前端契约：data 直接是 number[]
+    Ok(ok(hid::enc_vec(&ids))) // 前端契约：data 直接是 id 短串数组
 }
 
 pub async fn set_depts(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<i64>,
+    AppPath(id): AppPath<String>,
     AppJson(body): AppJson<DeptIdsBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:edit")?;
+    let id = hid::dec(&id)?;
     let exists = Role::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?

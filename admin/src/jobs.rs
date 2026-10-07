@@ -121,16 +121,22 @@ pub async fn run(state: &AppState, job: Job, spec: &JobSpec) -> (i8, String, i64
     // 手工摘要/错误信息可能带换行或超长：列是 varchar(255)
     let msg: String = msg.replace(['\r', '\n'], " ").chars().take(255).collect();
 
-    let row = JobLog {
-        id: 0,
-        job_code: job.code.clone(),
-        started_at: started,
-        duration_ms,
-        status,
-        msg: msg.clone(),
-    };
-    if let Err(e) = row.insert(&state.db).await {
-        tracing::warn!("写任务执行记录失败: {e}");
+    // 记录写失败不能影响任务本身（发号失败也一样：跳过这条记录）
+    match state.next_id() {
+        Ok(id) => {
+            let row = JobLog {
+                id,
+                job_code: job.code.clone(),
+                started_at: started,
+                duration_ms,
+                status,
+                msg: msg.clone(),
+            };
+            if let Err(e) = row.insert(&state.db).await {
+                tracing::warn!("写任务执行记录失败: {e}");
+            }
+        }
+        Err(e) => tracing::warn!("生成任务记录 id 失败: {e:?}"),
     }
 
     let mut done = claimed;

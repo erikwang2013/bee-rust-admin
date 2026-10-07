@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Model, Serialize, Deserialize, Clone, Debug)]
 #[bee(table = "notice")]
 pub struct Notice {
-    #[bee(pk, auto)]
+    #[bee(pk)]
+    #[serde(serialize_with = "crate::hid::ser_id", deserialize_with = "crate::hid::de_id")]
     pub id: i64,
     #[bee(sql_type = "VARCHAR(128)")]
     pub title: String,
@@ -15,6 +16,7 @@ pub struct Notice {
     pub content: String,
     /// 0 草稿 / 1 已发布：只有已发布的进未读集合
     pub status: i8,
+    #[serde(serialize_with = "crate::hid::ser_id", deserialize_with = "crate::hid::de_id")]
     pub created_by: i64,
     /// 首次置 1 时写；改回 0 不清空（留痕：曾发布过）
     #[serde(serialize_with = "crate::util::ser_opt_dt")]

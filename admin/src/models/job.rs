@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Model, Serialize, Deserialize, Clone, Debug)]
 #[bee(table = "job")]
 pub struct Job {
-    #[bee(pk, auto)]
+    #[bee(pk)]
+    #[serde(serialize_with = "crate::hid::ser_id", deserialize_with = "crate::hid::de_id")]
     pub id: i64,
     #[bee(sql_type = "VARCHAR(64)")]
     pub name: String,
@@ -40,7 +41,8 @@ pub struct Job {
 #[derive(Model, Serialize, Deserialize, Clone, Debug)]
 #[bee(table = "job_log")]
 pub struct JobLog {
-    #[bee(pk, auto)]
+    #[bee(pk)]
+    #[serde(serialize_with = "crate::hid::ser_id", deserialize_with = "crate::hid::de_id")]
     pub id: i64,
     #[bee(sql_type = "VARCHAR(64)")]
     pub job_code: String,

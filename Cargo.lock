@@ -265,12 +265,14 @@ dependencies = [
  "bee_orm",
  "bee_rust",
  "chrono",
+ "hashids-rust",
  "jsonwebtoken",
  "rand_core 0.6.4",
  "reqwest",
  "security-rust 3.0.0",
  "serde",
  "serde_json",
+ "snowflake-id-rust",
  "sqlx",
  "thiserror 2.0.20",
  "tokio",
@@ -1512,6 +1514,15 @@ name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
+
+[[package]]
+name = "hashids-rust"
+version = "1.0.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c8c5a142c51302b810b96c860495533929b4449caeec61f0b78efbabc8e0a325"
+dependencies = [
+ "axum",
+]
 
 [[package]]
 name = "hashlink"
@@ -3418,6 +3429,12 @@ checksum = "ba467056f1b547ed52077911161fc86985becbc60e8e1857c8a144dab0def891"
 dependencies = [
  "serde",
 ]
+
+[[package]]
+name = "snowflake-id-rust"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac3a4213a9141fb3bf4bfa390bd4bc4c0a9d0158105fa01893843296ce5b2a6c"
 
 [[package]]
 name = "socket2"

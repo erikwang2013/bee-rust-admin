@@ -6,7 +6,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Model, Serialize, Deserialize, Clone, Debug)]
 #[bee(table = "admin")]
 pub struct Admin {
-    #[bee(pk, auto)]
+    /// 主键由代码给（雪花发号，见 `AppState::next_id`）：没有 `#[bee(auto)]`，
+    /// insert 时把 id 一起写进去；对外 JSON 里是 hashids 短串。
+    #[bee(pk)]
+    #[serde(serialize_with = "crate::hid::ser_id", deserialize_with = "crate::hid::de_id")]
     pub id: i64,
     #[bee(sql_type = "VARCHAR(64)")]
     pub username: String,
@@ -22,6 +25,8 @@ pub struct Admin {
     pub sex: i8,
     #[bee(sql_type = "VARCHAR(255)")]
     pub avatar: String,
+    /// 0 = 无部门（哨兵值，编码成短串后仍要能解回 0）
+    #[serde(serialize_with = "crate::hid::ser_id", deserialize_with = "crate::hid::de_id")]
     pub dept_id: i64,
     pub status: i8,
     pub is_super: i8,

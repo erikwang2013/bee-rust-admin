@@ -4,6 +4,7 @@
 use crate::api::{PagingExt, check_len, page_size};
 use crate::auth::Auth;
 use crate::error::{ApiError, AppJson, AppPath, AppQuery, ok};
+use crate::hid;
 use crate::models::Notice;
 use crate::state::AppState;
 use crate::util::now;
@@ -101,7 +102,7 @@ pub async fn create(
     check_content(&body.content)?;
 
     let n = Notice {
-        id: 0,
+        id: state.next_id()?,
         title: body.title.trim().to_string(),
         content: body.content,
         status: body.status,
@@ -110,17 +111,19 @@ pub async fn create(
         created_at: now(),
         updated_at: now(),
     };
-    let n = n.create(&state.db).await.map_err(ApiError::from)?;
-    Ok(ok(json!({ "id": n.id })))
+    // id 已在上面发号，insert 就够（create 的读回是给自增主键用的）
+    n.insert(&state.db).await.map_err(ApiError::from)?;
+    Ok(ok(json!({ "id": hid::enc(n.id) })))
 }
 
 pub async fn update(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<i64>,
+    AppPath(id): AppPath<String>,
     AppJson(body): AppJson<NoticeUpdate>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:notice:edit")?;
+    let id = hid::dec(&id)?;
     check_title(&body.title)?;
     check_content(&body.content)?;
 
@@ -146,9 +149,10 @@ pub async fn update(
 pub async fn remove(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<i64>,
+    AppPath(id): AppPath<String>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:notice:remove")?;
+    let id = hid::dec(&id)?;
     Notice::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
@@ -228,8 +232,9 @@ pub async fn unread(
 pub async fn read(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<i64>,
+    AppPath(id): AppPath<String>,
 ) -> Result<Json<Value>, ApiError> {
+    let id = hid::dec(&id)?;
     let n = Notice::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?

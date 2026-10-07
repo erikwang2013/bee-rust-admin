@@ -41,25 +41,28 @@ async fn full_admin_flow() {
     assert_eq!(v["code"], 400, "错误响应必须是 JSON 信封: {v}");
 
     let admin_token = common::login(&base, "admin", "admin123").await.expect("超管登录失败");
+    // 超管的对外 id 是 hashid 串，不能假设是 1（下面「不能删/改超管」的用例要用）
+    let super_id = common::my_id(&base, &admin_token).await;
 
     // ── 2. 建部门「研发部」
     let (st, v) = call(&c, Method::POST, api("/depts"), Some(&admin_token),
         Some(json!({"parent_id": 0, "name": "研发部", "sort": 1}))).await;
     assert_eq!(st, 200, "建部门: {v}");
-    let dept_id = v["data"]["id"].as_i64().expect("返回部门 id");
+    let dept_id = common::as_id(&v["data"]["id"]);
 
     // ── 3. 建角色（数据范围=本部门）并勾选「管理员管理」菜单
     let (st, v) = call(&c, Method::POST, api("/roles"), Some(&admin_token),
         Some(json!({"name": "运维", "code": "ops", "sort": 1, "data_scope": 3}))).await;
     assert_eq!(st, 200, "建角色: {v}");
-    let role_id = v["data"]["id"].as_i64().expect("返回角色 id");
+    let role_id = common::as_id(&v["data"]["id"]);
 
     let (st, v) = call(&c, Method::GET, api("/menus/tree"), Some(&admin_token), None).await;
     assert_eq!(st, 200, "菜单树: {v}");
-    let root_menu_id = v["data"][0]["id"].as_i64().expect("根目录 id");
-    let admin_menu_id = v["data"][0]["children"].as_array().expect("根目录有子菜单")
-        .iter().find(|m| m["name"] == "管理员管理").expect("种子菜单含「管理员管理」")["id"]
-        .as_i64().expect("菜单 id");
+    let root_menu_id = common::as_id(&v["data"][0]["id"]);
+    let admin_menu_id = common::as_id(
+        &v["data"][0]["children"].as_array().expect("根目录有子菜单")
+            .iter().find(|m| m["name"] == "管理员管理").expect("种子菜单含「管理员管理」")["id"],
+    );
 
     let (st, v) = call(&c, Method::PUT, api(&format!("/roles/{role_id}/menus")), Some(&admin_token),
         Some(json!({"menu_ids": [admin_menu_id]}))).await;
@@ -74,7 +77,7 @@ async fn full_admin_flow() {
         "dept_id": dept_id, "role_ids": [role_id],
     }))).await;
     assert_eq!(st, 200, "建管理员: {v}");
-    let op1_id = v["data"]["id"].as_i64().expect("返回管理员 id");
+    let op1_id = common::as_id(&v["data"]["id"]);
 
     // ── 5. op1：错密码 400（留一条失败记录）→ 正确登录 → 数据权限=本部门，只看到自己
     let (st, v) = call(&c, Method::POST, api("/auth/login"), None,
@@ -94,7 +97,7 @@ async fn full_admin_flow() {
     assert_eq!(v["data"]["list"][0]["username"], "op1");
 
     // op1 没有 remove / dept:add 权限
-    let (st, v) = call(&c, Method::DELETE, api("/admins/1"), Some(&op1_token), None).await;
+    let (st, v) = call(&c, Method::DELETE, api(&format!("/admins/{super_id}")), Some(&op1_token), None).await;
     assert_eq!(st, 403, "无 system:admin:remove 必须 403: {v}");
     let (st, v) = call(&c, Method::POST, api("/depts"), Some(&op1_token), Some(json!({"name": "偷偷建的"}))).await;
     assert_eq!(st, 403, "无 system:dept:add 必须 403: {v}");
@@ -102,17 +105,18 @@ async fn full_admin_flow() {
     // ── 5b. 编辑接口不能绕过状态保护：给 op1 的角色补「编辑」按钮（system:admin:edit）
     let (st, v) = call(&c, Method::GET, api("/menus/tree"), Some(&admin_token), None).await;
     assert_eq!(st, 200);
-    let edit_btn_id = v["data"][0]["children"].as_array().unwrap()
-        .iter().find(|m| m["name"] == "管理员管理").expect("管理员管理菜单")["children"]
-        .as_array().expect("管理员管理有按钮子菜单")
-        .iter().find(|m| m["name"] == "编辑").expect("种子含「编辑」按钮")["id"]
-        .as_i64().expect("按钮菜单 id");
+    let edit_btn_id = common::as_id(
+        &v["data"][0]["children"].as_array().unwrap()
+            .iter().find(|m| m["name"] == "管理员管理").expect("管理员管理菜单")["children"]
+            .as_array().expect("管理员管理有按钮子菜单")
+            .iter().find(|m| m["name"] == "编辑").expect("种子含「编辑」按钮")["id"],
+    );
     let (st, v) = call(&c, Method::PUT, api(&format!("/roles/{role_id}/menus")), Some(&admin_token),
         Some(json!({"menu_ids": [admin_menu_id, edit_btn_id]}))).await;
     assert_eq!(st, 200, "给角色补编辑按钮: {v}");
 
     // 有 edit 权限也不能禁用超管（否则前端编辑弹窗能藏掉超管）
-    let (st, v) = call(&c, Method::PUT, api("/admins/1"), Some(&op1_token), Some(json!({"status": 0}))).await;
+    let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{super_id}")), Some(&op1_token), Some(json!({"status": 0}))).await;
     assert_eq!(st, 400, "不能修改超级管理员的状态: {v}");
     assert!(v["msg"].as_str().unwrap().contains("超级管理员"), "错误信息应说明原因: {v}");
     // 有 edit 权限也不能改自己的状态
@@ -181,7 +185,7 @@ async fn full_admin_flow() {
         "perm": "system:admin:export", "sort": 9,
     }))).await;
     assert_eq!(st, 200, "建按钮菜单: {v}");
-    let btn_id = v["data"]["id"].as_i64().expect("返回菜单 id");
+    let btn_id = common::as_id(&v["data"]["id"]);
     let (st, v) = call(&c, Method::DELETE, api(&format!("/menus/{btn_id}")), Some(&admin_token), None).await;
     assert_eq!(st, 200, "删按钮菜单: {v}");
     let (st, v) = call(&c, Method::DELETE, api(&format!("/menus/{root_menu_id}")), Some(&admin_token), None).await;

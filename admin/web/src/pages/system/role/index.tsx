@@ -47,8 +47,8 @@ export default function RolePage() {
   const [deptTree, setDeptTree] = useState<Dept[]>([]);
   const [permOpen, setPermOpen] = useState(false);
   const [permRole, setPermRole] = useState<Role | null>(null);
-  const [checked, setChecked] = useState<number[]>([]);
-  const [deptChecked, setDeptChecked] = useState<number[]>([]);
+  const [checked, setChecked] = useState<string[]>([]);
+  const [deptChecked, setDeptChecked] = useState<string[]>([]);
 
   const load = useCallback(async (q: RoleQuery) => {
     setLoading(true);
@@ -222,7 +222,7 @@ export default function RolePage() {
           defaultExpandAll
           treeData={toMenuTree(treeData, t)}
           checkedKeys={checked}
-          onCheck={(keys) => setChecked((Array.isArray(keys) ? keys : keys.checked) as number[])}
+          onCheck={(keys) => setChecked((Array.isArray(keys) ? keys : keys.checked) as string[])}
         />
         {permRole?.data_scope === 5 && (
           <>
@@ -232,7 +232,7 @@ export default function RolePage() {
               defaultExpandAll
               treeData={toDeptTree(deptTree)}
               checkedKeys={deptChecked}
-              onCheck={(keys) => setDeptChecked((Array.isArray(keys) ? keys : keys.checked) as number[])}
+              onCheck={(keys) => setDeptChecked((Array.isArray(keys) ? keys : keys.checked) as string[])}
             />
           </>
         )}

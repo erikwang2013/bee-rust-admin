@@ -17,13 +17,13 @@ export const dictApi = {
   list: (q: DictTypeQuery) => http.get<Page<DictType>>('/dicts', q),
   create: (data: DictTypeForm) => http.post<DictType>('/dicts', data),
   /** code 是字典项的关联键，不可改 —— 更新体里不带它 */
-  update: (id: number, data: Omit<DictTypeForm, 'code'>) => http.put<DictType>(`/dicts/${id}`, data),
-  remove: (id: number) => http.del<null>(`/dicts/${id}`),
+  update: (id: string, data: Omit<DictTypeForm, 'code'>) => http.put<DictType>(`/dicts/${id}`, data),
+  remove: (id: string) => http.del<null>(`/dicts/${id}`),
 
   items: (code: string) => http.get<DictOption[]>(`/dicts/${code}/items`),
   itemList: (q: DictItemQuery) => http.get<Page<DictItem>>('/dict-items', q),
   itemCreate: (data: DictItemForm) => http.post<DictItem>('/dict-items', data),
-  itemUpdate: (id: number, data: DictItemForm) => http.put<DictItem>(`/dict-items/${id}`, data),
-  itemRemove: (id: number) => http.del<null>(`/dict-items/${id}`),
+  itemUpdate: (id: string, data: DictItemForm) => http.put<DictItem>(`/dict-items/${id}`, data),
+  itemRemove: (id: string) => http.del<null>(`/dict-items/${id}`),
   itemExport: (q: DictItemQuery) => downloadCsv('/dict-items/export', q, 'dict-items'),
 };

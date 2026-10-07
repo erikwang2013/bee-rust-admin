@@ -88,6 +88,7 @@ async fn v12_backend_features() {
     let c = reqwest::Client::new();
     let api = |p: &str| format!("{base}/api/v1{p}");
     let admin = common::login(&base, "admin", "admin123").await.expect("超管登录失败");
+    let super_id = common::my_id(&base, &admin).await; // 头像路径里是自己的 hashid
     let pool = sqlx::MySqlPool::connect(&dsn).await.unwrap();
 
     // ── B7 个人资料 ─────────────────────────────────────────
@@ -101,7 +102,7 @@ async fn v12_backend_features() {
     assert_eq!(v["data"]["user"]["phone"], "13800000000", "手机号回读: {v}");
     // …而且真的落库了（GET 回填的字段必须能原样 PUT 回去，否则表单会静默清数据）
     let (db_email, db_phone): (String, String) =
-        sqlx::query_as("SELECT email, phone FROM admin WHERE id = 1")
+        sqlx::query_as("SELECT email, phone FROM admin WHERE username = 'admin'")
             .fetch_one(&pool)
             .await
             .unwrap();
@@ -117,9 +118,9 @@ async fn v12_backend_features() {
     let (st, v) = call(&c, Method::POST, api("/auth/avatar"), Some(&admin),
         Some(json!({ "data_url": format!("data:image/png;base64,{PNG_B64}") }))).await;
     assert_eq!(st, 200, "上传头像: {v}");
-    assert_eq!(v["data"]["avatar"], "/api/v1/avatar/1", "头像契约路径: {v}");
+    assert_eq!(v["data"]["avatar"], format!("/api/v1/avatar/{super_id}"), "头像契约路径: {v}");
 
-    let r = c.get(api("/avatar/1")).send().await.unwrap();
+    let r = c.get(api(&format!("/avatar/{super_id}"))).send().await.unwrap();
     assert_eq!(r.status(), 200, "头像读取公开（<img> 带不了 token）");
     assert_eq!(r.headers()["content-type"], "image/png", "Content-Type 由扩展名决定");
     assert_eq!(r.bytes().await.unwrap().as_ref(), png.as_slice(), "读回字节与上传一致");
@@ -131,7 +132,8 @@ async fn v12_backend_features() {
     let (st, v) = call(&c, Method::POST, api("/auth/avatar"), Some(&admin),
         Some(json!({"data_url": "data:image/gif;base64,R0lGODlhAQABAAAAAA=="}))).await;
     assert_eq!(st, 400, "不支持的类型应 400: {v}");
-    let r = c.get(api("/avatar/999")).send().await.unwrap();
+    // 合法 hashid 但库里没有这个管理员 → 404（不能拿裸数字 999 试，那不是合法 hashid）
+    let r = c.get(api(&format!("/avatar/{}", common::enc_id(999)))).send().await.unwrap();
     assert_eq!(r.status(), 404, "没有头像的管理员 → 404");
 
     // ── B3 提取器也要回信封 ─────────────────────────────────
@@ -140,7 +142,9 @@ async fn v12_backend_features() {
     assert_eq!(r.headers()["content-type"], "application/json", "不是 axum 的纯文本 400");
     let v: Value = r.json().await.unwrap();
     assert_eq!(v["code"], 400, "查询参数错误信封: {v}");
-    let r = c.get(api("/admins/abc")).bearer_auth(&admin).send().await.unwrap();
+    // 带 `!`：确定不是合法 hashid（字母表只有 a-zA-Z0-9），稳吃「无效的 id」；裸 "abc" 有解码成
+    // 某个数字的可能，那就变成「查不到」404 了
+    let r = c.get(api("/admins/abc!")).bearer_auth(&admin).send().await.unwrap();
     assert_eq!(r.status(), 400, "非法路径参数");
     let v: Value = r.json().await.unwrap();
     assert_eq!(v["code"], 400, "路径参数错误信封: {v}");
@@ -185,7 +189,7 @@ async fn v12_backend_features() {
     let (st, v) = call(&c, Method::POST, api("/roles"), Some(&admin),
         Some(json!({"name": "只读", "code": "readonly", "data_scope": 4}))).await;
     assert_eq!(st, 200, "建角色: {v}");
-    let readonly_role = v["data"]["id"].as_i64().unwrap();
+    let readonly_role = common::as_id(&v["data"]["id"]);
     let (st, _v) = call(&c, Method::POST, api("/admins"), Some(&admin), Some(json!({
         "username": "peeper", "password": "peeper123", "role_ids": [readonly_role]
     }))).await;
@@ -237,7 +241,7 @@ async fn v12_backend_features() {
     assert_eq!(st, 200);
     let dept_menu = v["data"][0]["children"].as_array().unwrap()
         .iter().find(|m| m["name"] == "部门管理").expect("种子含「部门管理」").clone();
-    let dept_menu_id = dept_menu["id"].as_i64().unwrap();
+    let dept_menu_id = common::as_id(&dept_menu["id"]);
 
     let (st, _v) = call(&c, Method::PUT, api(&format!("/roles/{readonly_role}/menus")), Some(&admin),
         Some(json!({"menu_ids": [dept_menu_id]}))).await;
@@ -350,8 +354,8 @@ async fn v12_backend_features() {
     // 删掉审计日志的按钮 + 菜单，重启后应被补齐（既有库也能拿到新菜单）
     let audit_menu = v["data"][0]["children"].as_array().unwrap()
         .iter().find(|m| m["name"] == "操作日志").expect("含「操作日志」菜单").clone();
-    let audit_menu_id = audit_menu["id"].as_i64().unwrap();
-    let btn_id = audit_menu["children"][0]["id"].as_i64().unwrap();
+    let audit_menu_id = common::as_id(&audit_menu["id"]);
+    let btn_id = common::as_id(&audit_menu["children"][0]["id"]);
     for id in [btn_id, audit_menu_id] {
         let (st, v) = call(&c, Method::DELETE, api(&format!("/menus/{id}")), Some(&admin), None).await;
         assert_eq!(st, 200, "删菜单 {id}: {v}");

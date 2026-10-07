@@ -2,6 +2,7 @@
 use crate::api::{PagingExt, check_len, csv, dedup_ids, page_size};
 use crate::auth::Auth;
 use crate::datascope;
+use crate::hid;
 use crate::error::{ApiError, AppJson, AppPath, AppQuery, ok};
 use crate::models::{Admin, Dept, Role};
 use crate::state::AppState;
@@ -21,6 +22,7 @@ pub struct AdminListQuery {
     pub size: Option<u32>,
     pub username: Option<String>,
     pub status: Option<i8>,
+    #[serde(default, deserialize_with = "crate::hid::de_opt_id")]
     pub dept_id: Option<i64>,
 }
 
@@ -36,13 +38,13 @@ pub struct AdminCreateBody {
     pub phone: String,
     #[serde(default)]
     pub sex: i8,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::hid::de_id")]
     pub dept_id: i64,
     #[serde(default = "status_default")]
     pub status: i8,
     #[serde(default)]
     pub remark: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::hid::de_vec_id")]
     pub role_ids: Vec<i64>,
 }
 
@@ -56,13 +58,13 @@ pub struct AdminUpdateBody {
     pub phone: String,
     #[serde(default)]
     pub sex: i8,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::hid::de_id")]
     pub dept_id: i64,
     #[serde(default = "status_default")]
     pub status: i8,
     #[serde(default)]
     pub remark: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::hid::de_vec_id")]
     pub role_ids: Vec<i64>,
 }
 
@@ -78,6 +80,7 @@ pub struct PasswordBody {
 
 #[derive(Deserialize)]
 pub struct RolesBody {
+    #[serde(deserialize_with = "crate::hid::de_vec_id")]
     pub role_ids: Vec<i64>,
 }
 
@@ -171,7 +174,7 @@ async fn decorate(state: &AppState, rows: Vec<Admin>) -> Result<Vec<Value>, ApiE
             .map_err(|e| ApiError::internal(format!("序列化失败: {e}")))?;
         v["dept_name"] = json!(dept_names.get(&a.dept_id).cloned().unwrap_or_default());
         v["role_names"] = json!(names);
-        v["role_ids"] = json!(ids);
+        v["role_ids"] = json!(hid::enc_vec(&ids));
         v["is_super"] = json!(a.is_super == 1); // 前端契约：bool
         list.push(v);
     }
@@ -217,11 +220,12 @@ async fn export_batch(
         qs = qs.filter_lt("id", last).map_err(ApiError::from)?;
     }
     let rows = qs.all(&state.db).await.map_err(ApiError::from)?;
-    Ok(decorate(state, rows)
-        .await?
+    // keyset 用原始 i64；CSV 里呈现的 id 是 decorate 序列化出的短串（与列表一致）
+    let ids: Vec<i64> = rows.iter().map(|a| a.id).collect();
+    Ok(ids
         .into_iter()
-        .map(|v| {
-            let id = v["id"].as_i64().unwrap_or(0);
+        .zip(decorate(state, rows).await?)
+        .map(|(id, v)| {
             (
                 id,
                 csv::row(&[
@@ -263,9 +267,10 @@ pub async fn export(
 pub async fn detail(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<i64>,
+    AppPath(id): AppPath<String>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:admin:list")?;
+    let id = hid::dec(&id)?;
     let a = Admin::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
@@ -280,7 +285,7 @@ pub async fn detail(
         .await
         .map_err(ApiError::from)?;
     let mut v = serde_json::to_value(&a).map_err(|e| ApiError::internal(format!("序列化失败: {e}")))?;
-    v["role_ids"] = json!(role_ids);
+    v["role_ids"] = json!(hid::enc_vec(&role_ids));
     v["is_super"] = json!(a.is_super == 1); // 前端契约：bool
     Ok(ok(v))
 }
@@ -309,7 +314,7 @@ pub async fn create(
     datascope::ensure_roles_grantable(&auth, &state.db, &body.role_ids).await?;
 
     let a = Admin {
-        id: 0,
+        id: state.next_id()?,
         username: body.username.trim().to_string(),
         password: hash_password(&body.password),
         nickname: body.nickname,
@@ -327,23 +332,25 @@ pub async fn create(
         created_at: now(),
         updated_at: now(),
     };
-    let a = a.create(&state.db).await.map_err(username_taken)?;
+    // id 已在上面发号，insert 就够（create 的读回是给自增主键用的）
+    a.insert(&state.db).await.map_err(username_taken)?;
     state
         .db
         .set_relations("admin_role", ("admin_id", a.id), "role_id", &dedup_ids(body.role_ids))
         .await
         .map_err(ApiError::from)?;
 
-    Ok(ok(json!({ "id": a.id })))
+    Ok(ok(json!({ "id": hid::enc(a.id) })))
 }
 
 pub async fn update(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<i64>,
+    AppPath(id): AppPath<String>,
     AppJson(body): AppJson<AdminUpdateBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:admin:edit")?;
+    let id = hid::dec(&id)?;
     validate_profile(&body.nickname, &body.email, &body.phone, &body.remark)?;
     let mut a = Admin::query()
         .filter_eq("id", id)
@@ -395,9 +402,10 @@ pub async fn update(
 pub async fn remove(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<i64>,
+    AppPath(id): AppPath<String>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:admin:remove")?;
+    let id = hid::dec(&id)?;
     if id == auth.admin.id {
         return Err(ApiError::BadRequest("不能删除自己".into()));
     }
@@ -424,10 +432,11 @@ pub async fn remove(
 pub async fn set_status(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<i64>,
+    AppPath(id): AppPath<String>,
     AppJson(body): AppJson<StatusBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:admin:edit")?;
+    let id = hid::dec(&id)?;
     if id == auth.admin.id {
         return Err(ApiError::BadRequest("不能修改自己的状态".into()));
     }
@@ -454,10 +463,11 @@ pub async fn set_status(
 pub async fn reset_password(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<i64>,
+    AppPath(id): AppPath<String>,
     AppJson(body): AppJson<PasswordBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:admin:resetPwd")?;
+    let id = hid::dec(&id)?;
     validate_password(&body.password)?;
     let mut a = Admin::query()
         .filter_eq("id", id)
@@ -480,10 +490,11 @@ pub async fn reset_password(
 pub async fn set_roles(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<i64>,
+    AppPath(id): AppPath<String>,
     AppJson(body): AppJson<RolesBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:admin:edit")?;
+    let id = hid::dec(&id)?;
     let target = Admin::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?

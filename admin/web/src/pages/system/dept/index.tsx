@@ -13,7 +13,7 @@ import { useI18n } from '../../../i18n';
 type TreeNode = NonNullable<TreeSelectProps['treeData']>[number];
 
 /** 节点自身及其子孙的 id（父级选择里禁用，避免挂到自己下面成环）。 */
-function subtreeIds(nodes: Dept[], id: number): Set<number> {
+function subtreeIds(nodes: Dept[], id: string): Set<string> {
   const target = (function find(list: Dept[]): Dept | undefined {
     for (const d of list) {
       if (d.id === id) return d;
@@ -22,14 +22,17 @@ function subtreeIds(nodes: Dept[], id: number): Set<number> {
     }
     return undefined;
   })(nodes);
-  const out = new Set<number>();
+  const out = new Set<string>();
   const walk = (d: Dept) => { out.add(d.id); d.children?.forEach(walk); };
   if (target) walk(target);
   return out;
 }
 
-/** 部门树 → TreeSelect 数据（顶级用 id=0）。 */
-function toTreeData(nodes: Dept[], blocked: Set<number> = new Set()): TreeNode[] {
+/** 树里所有节点的 id（编辑时判断回显的 parent_id 是不是真节点）。 */
+const allIds = (nodes: Dept[]): string[] => nodes.flatMap((d) => [d.id, ...allIds(d.children ?? [])]);
+
+/** 部门树 → TreeSelect 数据（顶级用 `''`）。 */
+function toTreeData(nodes: Dept[], blocked: Set<string> = new Set()): TreeNode[] {
   return nodes.map((d) => ({
     value: d.id,
     title: d.name,
@@ -58,7 +61,7 @@ export default function DeptPage() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const openCreate = (parentId = 0) => {
+  const openCreate = (parentId = '') => {
     setEditing(null);
     form.resetFields();
     form.setFieldsValue({ parent_id: parentId, sort: 0, status: 1 });
@@ -67,13 +70,17 @@ export default function DeptPage() {
 
   const openEdit = (row: Dept) => {
     setEditing(row);
-    form.setFieldsValue(row as unknown as DeptForm);
+    // 根节点的 parent_id 是后端 enc(0) 的短串，不在树里 → 归一成 ''（顶级，后端 '' = 0）
+    form.setFieldsValue({
+      ...row,
+      parent_id: allIds(rows).includes(row.parent_id) ? row.parent_id : '',
+    } as unknown as DeptForm);
     setModalOpen(true);
   };
 
   const submit = async () => {
     const v = await form.validateFields();
-    const data: DeptForm = { ...v, parent_id: v.parent_id ?? 0 };
+    const data: DeptForm = { ...v, parent_id: v.parent_id ?? '' };
     if (editing) {
       await deptApi.update(editing.id, data);
       message.success(t('common.saved'));
@@ -124,7 +131,7 @@ export default function DeptPage() {
       <Space style={{ marginBottom: 16 }} wrap>
         <Button icon={<ReloadOutlined />} onClick={() => void load()}>{t('common.refresh')}</Button>
         <Auth code="system:dept:add">
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate(0)}>{t('common.add')}</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate()}>{t('common.add')}</Button>
         </Auth>
       </Space>
 
@@ -151,7 +158,7 @@ export default function DeptPage() {
             <TreeSelect
               allowClear placeholder={t('common.top')} treeDefaultExpandAll
               treeData={[{
-                value: 0,
+                value: '',
                 title: t('common.top'),
                 children: toTreeData(rows, editing ? subtreeIds(rows, editing.id) : undefined),
               }]}

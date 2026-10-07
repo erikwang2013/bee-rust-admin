@@ -10,8 +10,8 @@ export interface JobLogQuery {
 
 export const jobApi = {
   list: (q: JobQuery) => http.get<Page<Job>>('/jobs', q),
-  update: (id: number, data: JobForm) => http.put<null>(`/jobs/${id}`, data),
+  update: (id: string, data: JobForm) => http.put<null>(`/jobs/${id}`, data),
   /** 同步执行一次并写 job_log；code 不在代码注册表里时后端 409（拦截器会提示 msg） */
-  run: (id: number) => http.post<JobRunResult>(`/jobs/${id}/run`),
+  run: (id: string) => http.post<JobRunResult>(`/jobs/${id}/run`),
   logs: (q: JobLogQuery) => http.get<Page<JobLog>>('/job-logs', q),
 };

@@ -4,6 +4,11 @@ http_addr = 127.0.0.1:0
 log_level = warn
 # 头像测试落盘位置（相对 admin/，被 .gitignore 覆盖）
 upload_dir = target/test-uploads
+# 固定盐：测试里同一 id 每次都编成同一个短串（换盐会让断言里的短串漂移）
+hashids_salt = bee-admin-test-salt
+hashids_min_len = 8
+snowflake_worker = 1
+snowflake_dc = 1
 
 [db]
 dsn = mysql://root:placeholder@127.0.0.1:3306/bee_admin_test

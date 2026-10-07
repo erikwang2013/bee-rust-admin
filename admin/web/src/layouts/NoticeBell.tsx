@@ -16,7 +16,7 @@ export default function NoticeBell() {
   const { t } = useI18n();
   const [data, setData] = useState<NoticeUnread>({ total: 0, list: [] });
   const [loading, setLoading] = useState(true);
-  const [marking, setMarking] = useState<number | null>(null);
+  const [marking, setMarking] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);

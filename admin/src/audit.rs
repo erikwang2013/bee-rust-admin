@@ -58,22 +58,28 @@ pub async fn audit_mw(State(state): State<AppState>, req: Request, next: Next) -
     }
 
     let (module, action) = module_action(&method, &path);
-    let row = AuditLog {
-        id: 0,
-        admin_id,
-        username,
-        module,
-        action,
-        method: method.to_string(),
-        path: path.chars().take(255).collect(),
-        status: if status { 1 } else { 0 },
-        msg: msg.chars().take(255).collect(),
-        duration_ms,
-        ip,
-        created_at: now(),
-    };
-    if let Err(e) = row.insert(&state.db).await {
-        tracing::error!("写操作日志失败: {e}");
+    // 发号失败只影响留档（业务响应照常返回）——与写日志失败同一处理口径
+    match state.next_id() {
+        Ok(id) => {
+            let row = AuditLog {
+                id,
+                admin_id,
+                username,
+                module,
+                action,
+                method: method.to_string(),
+                path: path.chars().take(255).collect(),
+                status: if status { 1 } else { 0 },
+                msg: msg.chars().take(255).collect(),
+                duration_ms,
+                ip,
+                created_at: now(),
+            };
+            if let Err(e) = row.insert(&state.db).await {
+                tracing::error!("写操作日志失败: {e}");
+            }
+        }
+        Err(e) => tracing::error!("生成操作日志 id 失败: {e:?}"),
     }
     resp
 }
