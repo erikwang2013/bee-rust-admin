@@ -37,7 +37,12 @@ jobs:
       - name: 真库集成测试（框架 ORM）
         env:
           BEE_ORM_TEST_DSN: mysql://root:testpass@127.0.0.1:3306/bee_admin_test
-        run: cargo test -p bee_orm --test mysql_integration -- --nocapture
+        # 不逐个列 --test 名：上游 bee_orm 的目标名与本项目原先 vendored 的那份不同
+        # （mysql_integration → integration_mysql），列了就会像这样在换实现时断掉。
+        # **必须带 --features mysql**：后端是 cargo feature，不开的话
+        # integration_mysql / integration_mysql_fk 会编译成空、跑 0 个用例，
+        # 看着绿其实什么都没测（本地实测：不开 0 个，开了 6+2 个）。
+        run: cargo test -p bee_orm --features mysql,chrono -- --nocapture
 
       - name: 真库集成测试（后台全链路）
         env:
