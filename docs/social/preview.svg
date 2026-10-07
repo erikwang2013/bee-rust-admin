@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img"
-     aria-label="BRD · Bee Rust Admin —— 基于 bee-rust 框架的 RBAC 管理后台">
-  <title>BRD · Bee Rust Admin</title>
+     aria-label="BRA · Bee Rust Admin —— 基于 bee-rust 框架的 RBAC 管理后台">
+  <title>BRA · Bee Rust Admin</title>
   <desc>基于 bee-rust 框架的 RBAC 管理后台：Rust 服务端 + React 前端。菜单与按钮级权限、部门数据权限、操作留痕、中英双语。</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
@@ -33,7 +33,7 @@
 
   <g transform="translate(75.6,124.0) scale(0.88)">
   <title>阿守（Keeper）· 值守</title>
-  <desc>BRD 项目宠物的「值守」状态。</desc>
+  <desc>BRA 项目宠物的「值守」状态。</desc>
   <defs>
     <radialGradient id="bodyGrad" cx="42%" cy="26%" r="82%">
       <stop offset="0%" stop-color="#FFD75E"/><stop offset="62%" stop-color="#FFC12B"/><stop offset="100%" stop-color="#F0A81E"/>
@@ -110,7 +110,7 @@
     <text x="596" y="150" font-family="Source Han Sans SC" font-size="21" font-weight="bold"
           fill="#7FC8DE" letter-spacing="5">BEE RUST ADMIN</text>
 
-    <text x="592" y="266" font-family="Source Han Sans SC" font-size="112" font-weight="bold" fill="url(#title)">BRD</text>
+    <text x="592" y="266" font-family="Source Han Sans SC" font-size="112" font-weight="bold" fill="url(#title)">BRA</text>
 
     <text x="596" y="330" font-family="Source Han Sans SC" font-size="35" font-weight="bold" fill="#F8FAFC">基于 bee-rust 框架的管理后台</text>
 

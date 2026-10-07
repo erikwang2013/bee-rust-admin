@@ -111,11 +111,11 @@ export const zhCN = {
   'field.request': '请求',
 
   // ---- 登录页 ----
-  'login.title': 'BRD · 管理后台',
+  'login.title': 'BRA · 管理后台',
   'login.submit': '登录',
 
   // ---- 布局 / 顶栏 ----
-  'layout.app_name': 'BRD 管理后台',
+  'layout.app_name': 'BRA 管理后台',
   'layout.logout': '退出登录',
   'layout.theme_toggle': '切换明暗主题',
   'layout.lang_toggle': '切换语言',

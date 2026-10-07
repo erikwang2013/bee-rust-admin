@@ -1,5 +1,5 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-//! BRD v1.5 后端新能力集成测试：C1 字典管理。
+//! BRA v1.5 后端新能力集成测试：C1 字典管理。
 //! 起真实进程 + 真库（bee_admin_test），需要 BEE_ADMIN_DB_DSN。
 mod common;
 

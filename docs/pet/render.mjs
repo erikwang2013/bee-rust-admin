@@ -174,7 +174,7 @@ const sting = (raised) =>
 
 const svg = (mood, label) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="阿守（Keeper）· ${label}">
   <title>阿守（Keeper）· ${label}</title>
-  <desc>BRD 项目宠物的「${label}」状态。</desc>
+  <desc>BRA 项目宠物的「${label}」状态。</desc>
   <defs>
     <radialGradient id="bodyGrad" cx="42%" cy="26%" r="82%">
       <stop offset="0%" stop-color="#FFD75E"/><stop offset="62%" stop-color="#FFC12B"/><stop offset="100%" stop-color="#F0A81E"/>
@@ -231,8 +231,8 @@ const svg = (mood, label) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0
 
 // ── 应用图标：六边形底 + 头（favicon / 应用图标；16px 下只留最大对比度的形）──
 // 小尺寸下细节全糊，所以这里刻意简化：粗描边、大眼、无斑纹、无道具。
-const appIcon = () => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="BRD 应用图标：阿守的头像">
-  <title>BRD · 阿守</title>
+const appIcon = () => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="BRA 应用图标：阿守的头像">
+  <title>BRA · 阿守</title>
   <defs>
     <radialGradient id="ih" cx="40%" cy="28%" r="80%">
       <stop offset="0%" stop-color="#FFE28A"/><stop offset="100%" stop-color="#FFBF2E"/>

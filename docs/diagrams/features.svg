@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 720" width="980" height="720" role="img" aria-label="bee-rust 管理后台 功能设计图">
-  <title>BRD（Bee Rust Admin）— 功能设计（RBAC 权限模型）</title>
+  <title>BRA（Bee Rust Admin）— 功能设计（RBAC 权限模型）</title>
   <desc>登录鉴权链、管理员-角色-菜单/部门权限模型、数据权限五档、五个功能模块</desc>
   <style>
     .bg { fill: #ffffff; }
@@ -29,7 +29,7 @@
   </defs>
 
   <rect class="bg" x="0" y="0" width="980" height="720"/>
-  <text class="t-title" x="24" y="30">BRD · 功能设计</text>
+  <text class="t-title" x="24" y="30">BRA · 功能设计</text>
   <text class="t-sub" x="24" y="48">登录鉴权 · 角色权限模型（菜单+按钮）· 部门数据权限 · 五大功能模块</text>
 
   <!-- 一、登录与鉴权 -->

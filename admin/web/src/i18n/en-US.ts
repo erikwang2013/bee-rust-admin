@@ -104,11 +104,11 @@ export const enUS: Record<I18nKey, string> = {
   'field.request': 'Request',
 
   // ---- Login ----
-  'login.title': 'BRD · Admin',
+  'login.title': 'BRA · Admin',
   'login.submit': 'Sign in',
 
   // ---- Layout / top bar ----
-  'layout.app_name': 'BRD Admin',
+  'layout.app_name': 'BRA Admin',
   'layout.logout': 'Sign out',
   'layout.theme_toggle': 'Toggle dark mode',
   'layout.lang_toggle': 'Switch language',

@@ -1,6 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-//! BRD v1.7 C3 后端：统一信封的稳定业务错误码 `err` 与参数 `args`。
-//! 契约（错误码表）见 `docs/superpowers/plans/2026-10-06-brd-v1.5-c-modules.md`「C3 契约」。
+//! BRA v1.7 C3 后端：统一信封的稳定业务错误码 `err` 与参数 `args`。
+//! 契约（错误码表）见 `docs/superpowers/plans/2026-10-06-bra-v1.5-c-modules.md`「C3 契约」。
 //! 这里钉的是信封形状 + 几个代表码（含三个带参码），逐模块的行为仍归各自的 `api_v1x_test.rs`。
 mod common;
 

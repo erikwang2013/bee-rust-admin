@@ -1,4 +1,4 @@
-# BRD · Bee Rust Admin
+# BRA · Bee Rust Admin
 
 基于 bee-rust 框架的 RBAC 管理后台 —— Rust 服务端 + React 前端，建库即用。
 
@@ -8,7 +8,7 @@
 
 ## 项目宠物
 
-<img src="docs/pet/keeper-onduty.svg" width="240" align="right" alt="阿守（Keeper）· BRD 项目宠物：站在六边形巢门平台上、爪挂三把钥匙的值守蜂">
+<img src="docs/pet/keeper-onduty.svg" width="240" align="right" alt="阿守（Keeper）· BRA 项目宠物：站在六边形巢门平台上、爪挂三把钥匙的值守蜂">
 
 **阿守（Keeper）** —— 蜂巢的值守蜂。
 
@@ -34,7 +34,7 @@
 
 ## 项目介绍
 
-**BRD（Bee Rust Admin）** 是一个开箱即用的后台管理系统：服务端用本仓库的
+**BRA（Bee Rust Admin）** 是一个开箱即用的后台管理系统：服务端用本仓库的
 [bee-rust](https://github.com/erikwang2013/bee-rust) 框架写就（axum 路由 + 自研 ORM 执行层 +
 INI 配置），前端是 Vite + React 18 + Ant Design 5 单页应用，两者通过一套统一的
 `{code, msg, data}` 接口契约对接（错误响应另带稳定的业务错误码 `err` 与参数 `args`，前端据此出多语言文案）。
@@ -108,7 +108,7 @@ INI 配置），前端是 Vite + React 18 + Ant Design 5 单页应用，两者�
 
 接口共 62 个（61 个业务接口 + `/api/v1/health` 探活），路径与字段的完整定义见
 [设计文档 §5.3](docs/superpowers/specs/2026-10-05-bee-rust-admin-design.md)，
-字典 / 定时任务 / 通知公告 / i18n 的契约另见 [C 组设计](docs/superpowers/plans/2026-10-06-brd-v1.5-c-modules.md)。
+字典 / 定时任务 / 通知公告 / i18n 的契约另见 [C 组设计](docs/superpowers/plans/2026-10-06-bra-v1.5-c-modules.md)。
 
 ## 项目结构
 
@@ -235,8 +235,8 @@ docker compose up -d --build
   `app.conf` 通常是 600 权限，用镜像默认的非 root 用户会读不到配置而启动失败；
   宿主 uid 不是 1000 时在 `.env` 里改
 - 想接已有的 MySQL：删掉 compose 里的 `mysql` 服务与 `depends_on`，直接改 `BEE_ADMIN_DB_DSN`
-- 只构建镜像（不启动）：`docker build -t brd-backend .`（后端）与
-  `docker build -t brd-web admin/web`（前端）
+- 只构建镜像（不启动）：`docker build -t bra-backend .`（后端）与
+  `docker build -t bra-web admin/web`（前端）
 - 镜像只在本机构建/离线分发，**不经过 GitHub CI 发布**；需要私有镜像仓库时用
   `docker tag` + `docker push` 推到自己的仓库即可
 

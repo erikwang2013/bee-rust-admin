@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { visualizer } from 'rollup-plugin-visualizer';
 
-// 体积分析：ANALYZE=1 pnpm build 额外产出 /tmp/brd-web-stats.{html,json}。
+// 体积分析：ANALYZE=1 pnpm build 额外产出 /tmp/bra-web-stats.{html,json}。
 // 默认关闭——报告是给人看的产物，不进仓库也不影响正常构建。
 // `json` 给 `scripts/top-modules.mjs` 读，`html` 给人在浏览器里点。
 const analyze = process.env.ANALYZE === '1';
@@ -50,8 +50,8 @@ export default defineConfig({
     react(),
     ...(analyze
       ? [
-          visualizer({ filename: '/tmp/brd-web-stats.html', template: 'treemap' }),
-          visualizer({ filename: '/tmp/brd-web-stats.json', template: 'raw-data' }),
+          visualizer({ filename: '/tmp/bra-web-stats.html', template: 'treemap' }),
+          visualizer({ filename: '/tmp/bra-web-stats.json', template: 'raw-data' }),
         ]
       : []),
   ],

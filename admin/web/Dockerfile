@@ -1,10 +1,10 @@
-# BRD 前端镜像（静态资源 + nginx 反代）
+# BRA 前端镜像（静态资源 + nginx 反代）
 #
 # 构建（在 admin/web 目录执行）：
-#   docker build -t brd-web .
+#   docker build -t bra-web .
 # 运行：
-#   docker run -d --name brd-web -p 8081:80 \
-#     -e BACKEND_UPSTREAM=bee-admin:8080 brd-web
+#   docker run -d --name bra-web -p 8081:80 \
+#     -e BACKEND_UPSTREAM=bee-admin:8080 bra-web
 #
 # 说明：nginx 官方镜像的 entrypoint 会对 /etc/nginx/templates/*.template
 #       做 envsubst 后输出到 /etc/nginx/conf.d/，所以上游地址用环境变量注入。

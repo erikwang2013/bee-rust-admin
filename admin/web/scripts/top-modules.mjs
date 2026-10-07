@@ -7,7 +7,7 @@
 // 产物在 /tmp，不进仓库。`renderedLength` 是 chunk 内的实际字节数（压缩后）。
 import { readFileSync } from 'node:fs';
 
-const stats = JSON.parse(readFileSync('/tmp/brd-web-stats.json', 'utf8'));
+const stats = JSON.parse(readFileSync('/tmp/bra-web-stats.json', 'utf8'));
 const [, , filter, nArg] = process.argv;
 const N = Number(nArg) || 10;
 

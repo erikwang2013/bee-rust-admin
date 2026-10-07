@@ -71,7 +71,7 @@ impl ApiError {
 
 /// 稳定业务错误码表：`(中文原文 msg, err)`。
 /// **这张表是前后端唯一耦合点**，行与 `err` 逐字照抄
-/// `docs/superpowers/plans/2026-10-06-brd-v1.5-c-modules.md` 的「C3 契约 · 错误码表」。
+/// `docs/superpowers/plans/2026-10-06-bra-v1.5-c-modules.md` 的「C3 契约 · 错误码表」。
 /// 改某个 `msg` 文案前先看表：对不上的话 `err` 会静默消失（前端回落到中文 `msg`，
 /// 不报错但译不了）。表里没有的消息（框架层提取器拒绝、`缺少权限：x` 等动态文案）
 /// 按契约不带 `err`。带 `args` 的四条（too_long / throttled / not_registered / forbidden）

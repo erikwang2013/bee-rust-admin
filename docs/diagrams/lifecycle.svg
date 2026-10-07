@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 700" width="980" height="700" role="img" aria-label="BRD 服务生命周期图">
-  <title>BRD（Bee Rust Admin）— 服务生命周期</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 700" width="980" height="700" role="img" aria-label="BRA 服务生命周期图">
+  <title>BRA（Bee Rust Admin）— 服务生命周期</title>
   <desc>读配置 → 连接 MySQL → syncdb 同步表结构 → 首次种子（幂等）→ 监听端口 → 运行中处理请求 → 收到信号退出</desc>
   <style>
     .bg { fill: #ffffff; }
@@ -32,7 +32,7 @@
   </defs>
 
   <rect class="bg" x="0" y="0" width="980" height="700"/>
-  <text class="t-title" x="24" y="30">BRD · 服务生命周期</text>
+  <text class="t-title" x="24" y="30">BRA · 服务生命周期</text>
   <text class="t-sub" x="24" y="48">从进程启动到退出的完整路径（左侧为流程，右侧为要点）</text>
 
   <!-- 流程箭头 -->

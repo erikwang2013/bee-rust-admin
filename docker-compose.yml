@@ -1,4 +1,4 @@
-# BRD 一键起栈：MySQL + 后端 + 前端
+# BRA 一键起栈：MySQL + 后端 + 前端
 #
 # 用法：
 #   cp .env.example .env && vi .env                 # 填 MySQL root 密码

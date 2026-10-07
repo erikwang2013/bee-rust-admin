@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 700" width="980" height="700" role="img" aria-label="bee-rust 管理后台 架构设计图">
-  <title>BRD（Bee Rust Admin）— 架构设计</title>
+  <title>BRA（Bee Rust Admin）— 架构设计</title>
   <desc>浏览器 SPA → nginx 接入层 → bee_admin 应用层（bee_router / Auth / API / datascope）→ bee_orm 执行层 → MySQL 数据层</desc>
   <style>
     .bg { fill: #ffffff; }
@@ -34,7 +34,7 @@
   </defs>
 
   <rect class="bg" x="0" y="0" width="980" height="700"/>
-  <text class="t-title" x="24" y="30">BRD · 架构设计</text>
+  <text class="t-title" x="24" y="30">BRA · 架构设计</text>
   <text class="t-sub" x="24" y="48">浏览器 SPA · nginx 接入 · bee_admin 应用层 · bee_orm 执行层 · MySQL 数据层</text>
 
   <!-- 箭头（先画，置于框下层） -->

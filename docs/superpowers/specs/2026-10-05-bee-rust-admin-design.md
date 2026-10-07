@@ -227,7 +227,7 @@ system                   目录
 ### 5.3 API（/api/v1，统一信封 `{code, msg, data}`，code 0=成功，非 0 同 HTTP 状态码）
 
 > v1.2 起新增的接口（操作日志与审计、CSV 导出、个人资料、头像）见
-> [`plans/2026-10-06-brd-v1.2-improvements.md`](../plans/2026-10-06-brd-v1.2-improvements.md) 的「新接口契约」。
+> [`plans/2026-10-06-bra-v1.2-improvements.md`](../plans/2026-10-06-bra-v1.2-improvements.md) 的「新接口契约」。
 
 | 模块 | 接口 | 权限码 |
 |---|---|---|

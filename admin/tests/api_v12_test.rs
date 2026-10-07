@@ -1,5 +1,5 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-//! BRD v1.2 后端新能力集成测试：B2 禁用菜单即收权 / B3 提取器信封 / B4 登录锁定
+//! BRA v1.2 后端新能力集成测试：B2 禁用菜单即收权 / B3 提取器信封 / B4 登录锁定
 //! （含两处语义修正：成功登录清失败窗口、按 IP 限流）/ B5 操作日志 / B6 CSV 导出 /
 //! B7 个人资料 / B8 头像 / B9 菜单幂等补齐。
 //! 起真实进程 + 真库（bee_admin_test），需要 BEE_ADMIN_DB_DSN。

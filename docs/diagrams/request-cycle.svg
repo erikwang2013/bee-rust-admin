@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 780" width="980" height="780" role="img" aria-label="bee-rust 管理后台 请求周期时序图">
-  <title>BRD（Bee Rust Admin）— 请求周期</title>
+  <title>BRA（Bee Rust Admin）— 请求周期</title>
   <desc>浏览器 → nginx → bee_router → Auth 提取器 → handler（权限码校验 + 数据权限）→ bee_orm → MySQL → 统一信封响应</desc>
   <style>
     .bg { fill: #ffffff; }
@@ -38,7 +38,7 @@
   </defs>
 
   <rect class="bg" x="0" y="0" width="980" height="780"/>
-  <text class="t-title" x="24" y="30">BRD · 请求周期</text>
+  <text class="t-title" x="24" y="30">BRA · 请求周期</text>
   <text class="t-sub" x="24" y="48" font-size="10.5">以「管理员列表」为例：GET /api/v1/admins</text>
 
   <!-- 生命线 -->

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="阿守（Keeper）· 超管">
   <title>阿守（Keeper）· 超管</title>
-  <desc>BRD 项目宠物的「超管」状态。</desc>
+  <desc>BRA 项目宠物的「超管」状态。</desc>
   <defs>
     <radialGradient id="bodyGrad" cx="42%" cy="26%" r="82%">
       <stop offset="0%" stop-color="#FFD75E"/><stop offset="62%" stop-color="#FFC12B"/><stop offset="100%" stop-color="#F0A81E"/>

@@ -23,7 +23,7 @@ pnpm preview      # 本地预览 dist/
 
 ```bash
 pnpm analyze      # ANALYZE=1 vite build + 按 chunk 列出每个模块的体积
-                  # 报告写 /tmp/brd-web-stats.{html,json}，不进仓库
+                  # 报告写 /tmp/bra-web-stats.{html,json}，不进仓库
 ```
 
 两条容易踩的线：

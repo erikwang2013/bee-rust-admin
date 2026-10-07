@@ -1,4 +1,4 @@
-# BRD 前端容器内的 nginx 站点（由官方镜像 entrypoint 做 envsubst 生成）
+# BRA 前端容器内的 nginx 站点（由官方镜像 entrypoint 做 envsubst 生成）
 # 只替换 ${BACKEND_UPSTREAM}；nginx 自身的变量（$host/$remote_addr 等）不加大括号，不受影响
 server {
     listen 80;

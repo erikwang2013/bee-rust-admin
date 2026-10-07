@@ -1,4 +1,4 @@
-// BRD 社交预览图（GitHub Social Preview，1280×640）渲染器。
+// BRA 社交预览图（GitHub Social Preview，1280×640）渲染器。
 //
 // 用法： node docs/social/render.mjs          # 出 preview.svg
 //        rsvg-convert -w 1280 docs/social/preview.svg -o docs/social/preview.png
@@ -117,8 +117,8 @@ function mascot() {
 
 // ── 组装 ────────────────────────────────────────────────────
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img"
-     aria-label="BRD · Bee Rust Admin —— 基于 bee-rust 框架的 RBAC 管理后台">
-  <title>BRD · Bee Rust Admin</title>
+     aria-label="BRA · Bee Rust Admin —— 基于 bee-rust 框架的 RBAC 管理后台">
+  <title>BRA · Bee Rust Admin</title>
   <desc>基于 bee-rust 框架的 RBAC 管理后台：Rust 服务端 + React 前端。菜单与按钮级权限、部门数据权限、操作留痕、中英双语。</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
@@ -155,7 +155,7 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" 
     <text x="596" y="150" font-family="${FONT}" font-size="21" font-weight="bold"
           fill="${TEAL}" letter-spacing="5">BEE RUST ADMIN</text>
 
-    <text x="592" y="266" font-family="${FONT}" font-size="112" font-weight="bold" fill="url(#title)">BRD</text>
+    <text x="592" y="266" font-family="${FONT}" font-size="112" font-weight="bold" fill="url(#title)">BRA</text>
 
     <text x="596" y="330" font-family="${FONT}" font-size="35" font-weight="bold" fill="${WHITE}">基于 bee-rust 框架的管理后台</text>
 

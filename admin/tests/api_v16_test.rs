@@ -1,5 +1,5 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-//! BRD v1.6 后端新能力集成测试：C2 定时任务 + 通知公告。
+//! BRA v1.6 后端新能力集成测试：C2 定时任务 + 通知公告。
 //! 起真实进程 + 真库（bee_admin_test），需要 BEE_ADMIN_DB_DSN。
 mod common;
 

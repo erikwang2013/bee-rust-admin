@@ -1,5 +1,5 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-//! BRD v1.4 后端新能力集成测试：A1 路由级 404/405 信封 / A2 登录时序侧信道（行为面）/
+//! BRA v1.4 后端新能力集成测试：A1 路由级 404/405 信封 / A2 登录时序侧信道（行为面）/
 //! A3 退出其他设备 / A4 日志保留策略 / B6 流式 CSV 导出。
 //! 起真实进程 + 真库（bee_admin_test），需要 BEE_ADMIN_DB_DSN。
 mod common;
