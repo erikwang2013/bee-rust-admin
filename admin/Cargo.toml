@@ -39,6 +39,10 @@ tracing = "0.1"
 security-rust = "3"
 # 头像上传：解 data URL 里的 base64
 base64 = "0.22"
+# admin.email / phone 的落库加密（AES-256-GCM，随机 nonce）。**按版本依赖，不要用
+# path**：本机 path 在 CI 与其他机器上不存在，会让构建直接失败。
+# lib 名与包名不同：encryptable-rust → `encryptable`。
+encryptable-rust = "1.2.1"
 # 主键（雪花）+ 对外 id（hashids）。两个包在 crates.io 上都有对应版本，
 # **按版本依赖，不要用 path**：本地 path 会让 CI 与其他机器直接构建失败。
 # lib 名与包名不同：snowflake-id-rust → `snowflake`，hashids-rust → `hashids`。

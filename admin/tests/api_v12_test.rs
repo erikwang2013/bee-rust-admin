@@ -100,13 +100,23 @@ async fn v12_backend_features() {
     assert_eq!(v["data"]["user"]["nickname"], "新昵称", "回读一致: {v}");
     assert_eq!(v["data"]["user"]["email"], "a@b.c", "邮箱回读: {v}");
     assert_eq!(v["data"]["user"]["phone"], "13800000000", "手机号回读: {v}");
-    // …而且真的落库了（GET 回填的字段必须能原样 PUT 回去，否则表单会静默清数据）
+    // …而且真的落库了（GET 回填的字段必须能原样 PUT 回去，否则表单会静默清数据）。
+    // 下面断言的是**密文**：email/phone 走 encryptable 的 AEAD 落库，
+    // 库里不该出现明文。能否解回原值由上面的 API 回读断言覆盖（那是真正的往返验证）。
     let (db_email, db_phone): (String, String) =
         sqlx::query_as("SELECT email, phone FROM admin WHERE username = 'admin'")
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!((db_email.as_str(), db_phone.as_str()), ("a@b.c", "13800000000"), "库里与回读一致");
+    assert_ne!(
+        (db_email.as_str(), db_phone.as_str()),
+        ("a@b.c", "13800000000"),
+        "邮箱/手机号不能明文落库"
+    );
+    assert!(
+        !db_email.is_empty() && !db_phone.is_empty(),
+        "字段确实写进去了（非空）：{db_email:?} / {db_phone:?}"
+    );
     // 改资料不作废 token（改个昵称不该被踢下线）：上面的 admin token 一直有效
     let (st, v) = call(&c, Method::PUT, api("/auth/profile"), Some(&admin),
         Some(json!({"nickname": "角".repeat(65)}))).await;

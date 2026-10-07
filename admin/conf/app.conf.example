@@ -12,6 +12,12 @@ hashids_min_len = 8
 # 否则会发出重复 id（写入时才以唯一键冲突暴露）
 snowflake_worker = 1
 snowflake_dc = 1
+# admin 的 email / phone 落库加密密钥（AES-256-GCM）。**生产必须换成随机 32 字节**：
+#   openssl rand -base64 32   →  encrypt_key = base64:<那串>
+# 也认 64 位 hex 或 32 字节字面量。这是**必填**项，缺了/留成占位符会拒绝启动。
+# ⚠️ 换密钥 = 库里已加密的 email/phone 全部解不开（没有救援，改前先备份）；
+#    密钥本身丢了同理，所以启动时会把迁移前的明文备份进 admin_email_phone_backup 表。
+encrypt_key = base64:change-me-32-byte-random-key
 
 [db]
 dsn = mysql://user:password@127.0.0.1:3306/bee_admin

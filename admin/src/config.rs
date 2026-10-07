@@ -39,6 +39,10 @@ pub struct AppConfig {
     /// 雪花节点号与数据中心号（0-31）：多实例部署时各进程必须不同，否则会撞号
     pub snowflake_worker: i64,
     pub snowflake_dc: i64,
+    /// `admin.email` / `admin.phone` 的落库加密密钥（`base64:<32 字节>` / 64 位 hex /
+    /// 32 字节字面量）。**必填**：缺了直接拒绝启动，不让进程带着「以为加密了其实
+    /// 没加密」跑起来。**换了密钥，库里已加密的数据就解不开了**（不可逆，没有救援）。
+    pub encrypt_key: String,
 }
 
 impl AppConfig {
@@ -70,6 +74,15 @@ impl AppConfig {
         if jwt_secret.len() < 32 || jwt_secret == "changeme" {
             return Err(ConfigError::Invalid(
                 "[jwt] secret 至少 32 字符且不能是 changeme".into(),
+            ));
+        }
+
+        // 加密密钥必填（`get` 缺键就是 `[app] encrypt_key` 的缺键错误）。空值 / 占位符
+        // 一律拒掉：空密钥会让「以为加密了」的部署把明文当密文写，占位符等于公开密钥。
+        let encrypt_key = get("app", "encrypt_key")?;
+        if encrypt_key.trim().is_empty() || encrypt_key.contains("change-me") {
+            return Err(ConfigError::Invalid(
+                "[app] encrypt_key 不能为空或占位符（生产用 `openssl rand -base64 32` 生成，写成 base64:<那串>）".into(),
             ));
         }
 
@@ -123,6 +136,7 @@ impl AppConfig {
             hashids_min_len: hashids_min_len as usize,
             snowflake_worker: num("app", "snowflake_worker", 0)?,
             snowflake_dc: num("app", "snowflake_dc", 0)?,
+            encrypt_key,
         })
     }
 }
@@ -136,6 +150,7 @@ mod tests {
 name = bee-rust-admin
 http_addr = 127.0.0.1:8080
 log_level = info
+encrypt_key = base64:YmVlLWFkbWluLXRlc3Qta2V5LTMyLWJ5dGVzLW9rISE=
 
 [db]
 dsn = mysql://u:p@127.0.0.1:3306/db
@@ -264,5 +279,27 @@ initial_admin_password = admin123
         map.remove("db");
         let err = AppConfig::from_ini(&map).unwrap_err();
         assert!(format!("{err}").contains("[db] dsn"));
+    }
+
+    /// 加密密钥是必填项：缺了要报出具体键，空值/占位符要拒掉 —— 静默放行等于
+    /// 「以为加密了其实没加密」（空密钥）或公开密钥（占位符）。
+    #[test]
+    fn encrypt_key_is_required_and_not_a_placeholder() {
+        assert_eq!(
+            AppConfig::from_ini(&parse()).unwrap().encrypt_key,
+            "base64:YmVlLWFkbWluLXRlc3Qta2V5LTMyLWJ5dGVzLW9rISE="
+        );
+
+        let mut map = parse();
+        map.get_mut("app").unwrap().remove("encrypt_key");
+        let err = AppConfig::from_ini(&map).unwrap_err();
+        assert!(format!("{err}").contains("[app] encrypt_key"), "应报出具体键: {err}");
+
+        for bad in ["", "  ", "base64:change-me-32-random-bytes-here", "change-me"] {
+            let mut map = parse();
+            map.get_mut("app").unwrap().insert("encrypt_key".into(), bad.into());
+            let err = AppConfig::from_ini(&map).unwrap_err();
+            assert!(format!("{err}").contains("encrypt_key"), "应拒绝 {bad:?}: {err}");
+        }
     }
 }

@@ -3,6 +3,7 @@ mod api;
 mod audit;
 mod auth;
 mod config;
+mod crypto;
 mod datascope;
 mod error;
 mod hid;
@@ -95,12 +96,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // JWT 内核（密钥/算法/issuer 在这里定死，签发与校验共用这一份）
     let jwt = std::sync::Arc::new(auth::build_jwt(&cfg).map_err(|e| format!("初始化 JWT 失败: {e}"))?);
 
+    // email / phone 的落库加密守卫。密钥只在启动时解析一次：配置缺键 / 密钥非法都在
+    // 这里炸 —— 绝不让进程带着「以为加密了其实没加密」跑起来（配置校验见 `config.rs`）。
+    let crypto = crypto::build_guard(&cfg.encrypt_key)?;
+
     // 池大小沿用迁移前的 10；`Pool::connect` 是同步的（连接按需惰性建立）
     let db = bee_orm::pool::mysql::Pool::connect(&cfg.db_dsn, 10)?;
     seed::migrate(&db).await?;
-    seed::seed(&db, &cfg, &snowflake).await?;
+    // 存量明文加密（幂等、可重跑）：建表之后、seed 之前 —— 数据正确性不依赖它
+    // （读路径兼容明文），越早跑完越少明文滞留。
+    seed::encrypt_legacy(&db, &crypto).await?;
+    seed::seed(&db, &cfg, &snowflake, &crypto).await?;
     let throttle = api::auth::login_throttle(&cfg);
-    let state = AppState { db, cfg: std::sync::Arc::new(cfg), throttle, snowflake, jwt };
+    let state = AppState { db, cfg: std::sync::Arc::new(cfg), throttle, snowflake, jwt, crypto };
     let addr = state.cfg.http_addr.clone();
 
     // 内存限流的条目只在写路径顺手清窗口内的失败，桶本身（每个用户名/IP 一个）不会

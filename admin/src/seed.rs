@@ -1,5 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use crate::config::AppConfig;
+use crate::crypto;
 use crate::models::{Admin, Job, Menu};
 use crate::util::{hash_password, now};
 use bee_orm::migrate;
@@ -74,6 +75,15 @@ pub async fn migrate(db: &Pool) -> Result<(), OrmError> {
            read_at DATETIME NOT NULL,
            PRIMARY KEY (notice_id, admin_id)
          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+        // email / phone 存量加密前的**明文备份**（`encrypt_legacy` 写）。密钥丢了
+        // 密文就解不开了，这是唯一的退路；只进不改（INSERT IGNORE，首份为准）。
+        "CREATE TABLE IF NOT EXISTS admin_email_phone_backup (
+           id BIGINT NOT NULL,
+           email VARCHAR(255) NOT NULL DEFAULT '',
+           phone VARCHAR(64) NOT NULL DEFAULT '',
+           backed_up_at DATETIME NOT NULL,
+           PRIMARY KEY (id)
+         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
     ] {
         db.execute(ddl, &[]).await?;
     }
@@ -95,6 +105,135 @@ pub async fn migrate(db: &Pool) -> Result<(), OrmError> {
     //    上游属性里没有这两个概念，移到这儿。
     for (table, index, ddl) in CONSTRAINTS {
         ensure_index(db, table, index, ddl).await?;
+    }
+
+    // 4) 列宽：email / phone 落库存密文（比明文长 ≈1/3 再加 30 字节），旧库的
+    //    128 / 20 放不下。上游 migrate 只加列不改类型，只能裸 DDL 改。
+    ensure_encrypted_width(db).await?;
+    Ok(())
+}
+
+/// email / phone 的目标列宽 = 模型上的 `sql_type`。密文长度 = 4 × ceil((明文字节数 + 30) / 3)：
+/// 128 字节明文 → 212 字符，20 字节 → 68 字符，255 都有余量（实测值见 crypto.rs 的 COL_MAX）。
+const ENCRYPTED_COLUMNS: &[(&str, &str, &str)] = &[
+    ("admin", "email", "VARCHAR(255)"),
+    ("admin", "phone", "VARCHAR(255)"),
+];
+
+/// 幂等改列宽：已是目标类型就跳过（每次启动都跑，不能每次 ALTER）。
+async fn ensure_encrypted_width(db: &Pool) -> Result<(), OrmError> {
+    for (table, column, want) in ENCRYPTED_COLUMNS {
+        // **必须显式起别名**：information_schema 里的列名本身是全大写（COLUMN_TYPE），
+        // 结果集的行键跟着走，`r.get("column_type")` 会取到 None —— 那样这段会静默
+        // 跳过 ALTER，旧库启动时直接「Data too long for column 'phone'」（踩过）。
+        // 上游 migrate.rs 也是这个写法（`AS name`）。
+        let rows = db
+            .query(
+                "SELECT column_type AS ty FROM information_schema.columns \
+                 WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?",
+                &[Value::from(*table), Value::from(*column)],
+            )
+            .await?;
+        let Some(current) = rows.first().and_then(|r| r.get("ty")).and_then(|v| v.as_str())
+        else {
+            // 走到这儿说明列不存在：sync 已经建过表，不该发生 —— 响一声，别静默跳过
+            tracing::warn!("查不到 {table}.{column} 的列类型，跳过列宽检查");
+            continue;
+        };
+        if current.eq_ignore_ascii_case(want) {
+            continue;
+        }
+        // MODIFY COLUMN 要写全定义，否则 NOT NULL / DEFAULT 会被一起抹掉
+        let ddl = format!(
+            "ALTER TABLE {table} MODIFY COLUMN {column} {want} NOT NULL DEFAULT ''"
+        );
+        tracing::info!("列宽迁移：{table}.{column} 由 {current} 改为 {want}（要放密文）");
+        db.execute(&ddl, &[]).await?;
+    }
+    Ok(())
+}
+
+/// 一次性存量迁移（幂等、可重跑）：把 `admin.email` / `admin.phone` 里还没加密的
+/// 明文加密回写。每行搬迁前先把**原值**写进 `admin_email_phone_backup`（密钥丢了
+/// 就靠它）。已加密的跳过 —— 重跑不会双重加密。
+///
+/// 放在**启动流程**而不是注册成定时任务，两个理由：
+/// - `[job] enabled=false` 时调度循环根本不启动；安全迁移不该被「临时关掉定时」
+///   这个开关顺带关掉，也不该等一个间隔周期才跑；
+/// - 数据正确性不依赖它（读路径兼容明文），但越早跑完越少明文滞留 —— 启动时扫
+///   一遍最省心，且幂等，多起几次没有副作用。
+///
+/// 每批 500 行、按 id keyset 前进（id 是雪花，正数且单调），内存只与一批成正比。
+pub async fn encrypt_legacy(db: &Pool, guard: &encryptable::guard::Guard) -> Result<(), OrmError> {
+    const BATCH: i64 = 500;
+    let (mut scanned, mut encrypted, mut skipped, mut failed) = (0u64, 0u64, 0u64, 0u64);
+    let mut last = 0i64;
+    loop {
+        let rows = db
+            .query(
+                &format!(
+                    "SELECT id, email, phone FROM admin WHERE id > ? ORDER BY id ASC LIMIT {BATCH}"
+                ),
+                &[Value::from(last)],
+            )
+            .await?;
+        if rows.is_empty() {
+            break;
+        }
+        for row in &rows {
+            scanned += 1;
+            let Some(id) = row.get("id").and_then(|v| v.as_i64()) else { continue };
+            last = id;
+            let email = row.get("email").and_then(|v| v.as_str()).unwrap_or("");
+            let phone = row.get("phone").and_then(|v| v.as_str()).unwrap_or("");
+            if guard.is_encrypted(email) && guard.is_encrypted(phone) {
+                skipped += 1;
+                continue;
+            }
+
+            // 先备份原值再动它：写入失败也只是多一条备份（INSERT IGNORE 不覆盖首份）
+            db.execute(
+                "INSERT IGNORE INTO admin_email_phone_backup (id, email, phone, backed_up_at) \
+                 VALUES (?, ?, ?, ?)",
+                &[Value::from(id), Value::from(email), Value::from(phone), Value::from(now())],
+            )
+            .await?;
+
+            // 逐个字段判定：部分加密的行只补没加密的那列
+            let sealed = |value: &str| -> Result<String, String> {
+                if guard.is_encrypted(value) {
+                    Ok(value.to_owned())
+                } else {
+                    crypto::write(guard, value)
+                }
+            };
+            let (new_email, new_phone) = match (sealed(email), sealed(phone)) {
+                (Ok(e), Ok(p)) => (e, p),
+                (e, p) => {
+                    // 单行搬不动（比如明文是多字节字符、密文撑爆列宽）不能让整个进程
+                    // 起不来：留在明文，日志点名，下次启动再试。
+                    failed += 1;
+                    tracing::warn!(
+                        "管理员 {id} 的 email/phone 加密失败，暂留明文：{}",
+                        e.err().or(p.err()).unwrap_or_default()
+                    );
+                    continue;
+                }
+            };
+            db.execute(
+                "UPDATE admin SET email = ?, phone = ? WHERE id = ?",
+                &[Value::from(new_email.as_str()), Value::from(new_phone.as_str()), Value::from(id)],
+            )
+            .await?;
+            encrypted += 1;
+        }
+    }
+    if encrypted > 0 || failed > 0 {
+        tracing::info!(
+            "存量加密迁移：扫描 {scanned} 行，加密 {encrypted} 行，跳过 {skipped} 行（已是密文），失败 {failed} 行；原值备份在 admin_email_phone_backup"
+        );
+    } else {
+        tracing::debug!("存量加密迁移：无明文（扫描 {scanned} 行）");
     }
     Ok(())
 }
@@ -338,7 +477,12 @@ pub async fn ensure_jobs(db: &Pool, sk: &Shared) -> Result<(), bee_orm::OrmError
 }
 
 /// 首次启动（admin 表空）时写入超管；内置菜单与任务由 `ensure_*` 每次启动补齐。
-pub async fn seed(db: &Pool, cfg: &AppConfig, sk: &Shared) -> Result<(), bee_orm::OrmError> {
+pub async fn seed(
+    db: &Pool,
+    cfg: &AppConfig,
+    sk: &Shared,
+    guard: &encryptable::guard::Guard,
+) -> Result<(), bee_orm::OrmError> {
     ensure_menus(db, sk).await?;
     ensure_jobs(db, sk).await?;
 
@@ -352,8 +496,9 @@ pub async fn seed(db: &Pool, cfg: &AppConfig, sk: &Shared) -> Result<(), bee_orm
         username: "admin".into(),
         password: hash_password(&cfg.initial_admin_password),
         nickname: "超级管理员".into(),
-        email: String::new(),
-        phone: String::new(),
+        // 空串也照常加密：库里 email/phone 的形态只有一种（密文），读路径不用猜
+        email: crypto::write(guard, "").map_err(OrmError::QueryError)?,
+        phone: crypto::write(guard, "").map_err(OrmError::QueryError)?,
         sex: 0,
         avatar: String::new(),
         dept_id: 0,

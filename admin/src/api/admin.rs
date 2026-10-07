@@ -106,7 +106,9 @@ fn validate_password(p: &str) -> Result<(), ApiError> {
     Ok(())
 }
 
-/// 长度上限与模型 `#[bee(len)]`、设计文档 §5.1 列宽一致。
+/// 长度上限是**明文**的业务上限（设计文档 §5.1），与列宽无关：email/phone 落库是
+/// 密文，列宽按密文取（模型上的 `sql_type`）。明文上限是字符数，密文长度按**字节数**
+/// 算，多字节字符会在 [`sealed`] 里被拦下（400），不会把明文截断着存。
 fn validate_profile(
     nickname: &str,
     email: &str,
@@ -117,6 +119,11 @@ fn validate_profile(
     check_len("email", email, 128)?;
     check_len("phone", phone, 20)?;
     check_len("remark", remark, 255)
+}
+
+/// 明文 → 落库密文（`crate::crypto`）。写 email/phone 的地方统一走它，别处不许直接赋值。
+fn sealed(guard: &encryptable::guard::Guard, plain: &str) -> Result<String, ApiError> {
+    crate::crypto::write(guard, plain).map_err(ApiError::BadRequest)
 }
 
 /// 列表与导出共用的筛选条件（不含数据权限）。
@@ -172,6 +179,8 @@ async fn decorate(state: &AppState, rows: Vec<Admin>) -> Result<Vec<Value>, ApiE
         let names: Vec<String> = ids.iter().filter_map(|i| role_names.get(i).cloned()).collect();
         let mut v = serde_json::to_value(&a)
             .map_err(|e| ApiError::internal(format!("序列化失败: {e}")))?;
+        // email / phone 落库是密文，对外一律明文（列表 / 导出共用这条路径）
+        crate::crypto::plain_json(&state.crypto, &mut v)?;
         v["dept_name"] = json!(dept_names.get(&a.dept_id).cloned().unwrap_or_default());
         v["role_names"] = json!(names);
         v["role_ids"] = json!(hid::enc_vec(&ids));
@@ -285,6 +294,8 @@ pub async fn detail(
         .await
         .map_err(ApiError::from)?;
     let mut v = serde_json::to_value(&a).map_err(|e| ApiError::internal(format!("序列化失败: {e}")))?;
+    // email / phone 落库是密文，详情/编辑回显要明文（前端无感）
+    crate::crypto::plain_json(&state.crypto, &mut v)?;
     v["role_ids"] = json!(hid::enc_vec(&role_ids));
     v["is_super"] = json!(a.is_super == 1); // 前端契约：bool
     Ok(ok(v))
@@ -318,8 +329,8 @@ pub async fn create(
         username: body.username.trim().to_string(),
         password: hash_password(&body.password),
         nickname: body.nickname,
-        email: body.email,
-        phone: body.phone,
+        email: sealed(&state.crypto, &body.email)?,
+        phone: sealed(&state.crypto, &body.phone)?,
         sex: body.sex,
         avatar: String::new(),
         dept_id: body.dept_id,
@@ -382,8 +393,8 @@ pub async fn update(
     datascope::ensure_roles_added_grantable(&auth, &state.db, id, &body.role_ids).await?;
 
     a.nickname = body.nickname;
-    a.email = body.email;
-    a.phone = body.phone;
+    a.email = sealed(&state.crypto, &body.email)?;
+    a.phone = sealed(&state.crypto, &body.phone)?;
     a.sex = body.sex;
     a.dept_id = body.dept_id;
     a.status = new_status;

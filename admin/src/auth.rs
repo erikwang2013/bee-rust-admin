@@ -202,6 +202,7 @@ mod tests {
             hashids_min_len: 8,
             snowflake_worker: 0,
             snowflake_dc: 0,
+            encrypt_key: "base64:YmVlLWFkbWluLXRlc3Qta2V5LTMyLWJ5dGVzLW9rISE=".into(),
         }
     }
 

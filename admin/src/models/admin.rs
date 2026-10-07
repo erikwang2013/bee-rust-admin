@@ -18,9 +18,13 @@ pub struct Admin {
     pub password: String,
     #[bee(sql_type = "VARCHAR(64)")]
     pub nickname: String,
-    #[bee(sql_type = "VARCHAR(128)")]
+    /// 落库存密文（见 `crate::crypto`）：255 是**密文**宽度（明文 + 29 字节再 base64，
+    /// ≈4/3 倍），业务上限 128 字符明文写不满。旧库的列窄（128/20），启动时的
+    /// 列宽迁移会改过来（`seed::migrate`）—— 上游 migrate 只加列不改类型。
+    #[bee(sql_type = "VARCHAR(255)")]
     pub email: String,
-    #[bee(sql_type = "VARCHAR(20)")]
+    /// 同上：落库是密文，列宽按密文取（20 位明文 → 约 68 字符密文）
+    #[bee(sql_type = "VARCHAR(255)")]
     pub phone: String,
     pub sex: i8,
     #[bee(sql_type = "VARCHAR(255)")]

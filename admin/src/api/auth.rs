@@ -1,6 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use crate::auth::{Auth, expire_secs, sign_token};
 use crate::config::AppConfig;
+use crate::crypto;
 use crate::hid;
 use crate::error::{ApiError, AppJson, AppPath, ok};
 use crate::models::{Admin, LoginLog, Menu};
@@ -233,6 +234,10 @@ pub async fn login(
 
     write_login_log(&state, admin.id, &admin.username, &headers, 1, "登录成功").await;
 
+    // 库里 email / phone 是密文，出去前解成明文（前端无感）
+    let email = crypto::plain(&state.crypto, &admin.email).map_err(ApiError::internal)?;
+    let phone = crypto::plain(&state.crypto, &admin.phone).map_err(ApiError::internal)?;
+
     Ok(ok(json!({
         "token": token,
         "expires_in": expires_in,
@@ -241,8 +246,8 @@ pub async fn login(
             "username": admin.username,
             "nickname": admin.nickname,
             "avatar": admin.avatar,
-            "email": admin.email,
-            "phone": admin.phone,
+            "email": email,
+            "phone": phone,
             "sex": admin.sex,
             "is_super": admin.is_super == 1,
             "dept_id": hid::enc(admin.dept_id),
@@ -282,19 +287,21 @@ pub async fn logout_others(
     Ok(ok(json!({ "token": token, "expires_in": expires_in })))
 }
 
-pub async fn profile(State(_state): State<AppState>, auth: Auth) -> Result<Json<Value>, ApiError> {
+pub async fn profile(State(state): State<AppState>, auth: Auth) -> Result<Json<Value>, ApiError> {
     let mut perms: Vec<&String> = auth.perms.iter().collect();
     perms.sort();
     let roles: Vec<&str> = auth.roles.iter().map(|r| r.code.as_str()).collect();
+    // 库里是密文，回给前端的是明文（个人中心要回显/编辑这几项，B7）
+    let email = crypto::plain(&state.crypto, &auth.admin.email).map_err(ApiError::internal)?;
+    let phone = crypto::plain(&state.crypto, &auth.admin.phone).map_err(ApiError::internal)?;
     Ok(ok(json!({
         "user": {
             "id": hid::enc(auth.admin.id),
             "username": auth.admin.username,
             "nickname": auth.admin.nickname,
             "avatar": auth.admin.avatar,
-            // 个人中心要回显/编辑这三项（B7）
-            "email": auth.admin.email,
-            "phone": auth.admin.phone,
+            "email": email,
+            "phone": phone,
             "sex": auth.admin.sex,
             "is_super": auth.is_super,
             "dept_id": hid::enc(auth.admin.dept_id),
@@ -393,8 +400,9 @@ pub async fn update_profile(
 
     let mut admin = auth.admin.clone();
     admin.nickname = body.nickname;
-    admin.email = body.email;
-    admin.phone = body.phone;
+    // 写库一律密文（`crate::crypto::write` 对已是密文的输入原样返回，重放安全）
+    admin.email = crypto::write(&state.crypto, &body.email).map_err(ApiError::BadRequest)?;
+    admin.phone = crypto::write(&state.crypto, &body.phone).map_err(ApiError::BadRequest)?;
     admin.updated_at = now();
     admin.update(&state.db).await.map_err(ApiError::from)?;
     Ok(ok(Value::Null))

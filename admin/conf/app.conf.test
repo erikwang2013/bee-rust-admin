@@ -9,6 +9,9 @@ hashids_salt = bee-admin-test-salt
 hashids_min_len = 8
 snowflake_worker = 1
 snowflake_dc = 1
+# email / phone 的落库加密密钥。测试用**固定**值：库每轮重建，密文不需要跨轮可解；
+# 真随机会让「库里是密文而非明文」这类断言没法复现（后端必须与它同源，缺了不启动）
+encrypt_key = base64:YmVlLWFkbWluLXRlc3Qta2V5LTMyLWJ5dGVzLW9rISE=
 
 [db]
 dsn = mysql://root:placeholder@127.0.0.1:3306/bee_admin_test

@@ -3,6 +3,7 @@ use crate::config::AppConfig;
 use crate::error::ApiError;
 // 本项目只连 MySQL，直接持具体池类型（`Db` 是 trait，池层才有事务）
 use bee_orm::pool::mysql::Pool;
+use encryptable::guard::Guard;
 use jwt_rust::Jwt;
 use security_rust::throttle::{MemoryThrottleStore, Throttle};
 use snowflake::Shared;
@@ -21,6 +22,8 @@ pub struct AppState {
     pub snowflake: Shared,
     /// jwt-rust 内核（有状态：密钥 + 配置 + 黑名单存储），启动时按 `[jwt]` 建一次。
     pub jwt: Arc<Jwt>,
+    /// admin.email / phone 的加解密守卫（[`crate::crypto`]）。内部是 Arc，克隆廉价。
+    pub crypto: Guard,
 }
 
 impl AppState {
