@@ -89,6 +89,19 @@ pub async fn write_login_log(
     }
 }
 
+/// 限流窗口与封禁时长（秒）。调用方已保证 `lock_minutes > 0`。
+///
+/// **这里曾经有一个真实存在过的 bug**：原先写成
+/// `lock_minutes.saturating_mul(60).min(u64::MAX as i64) as u64` ——
+/// `u64::MAX as i64` 是 **-1**，对任何正值取 `min` 都得 -1，再 `as u64` 变成
+/// `u64::MAX`：等于把窗口与封禁设成约 584 亿年。前端拿到的仍是
+/// `throttled(lock_minutes)` 那句「请 N 分钟后再试」，两边对不上。
+/// 内存桶进程重启即清，所以这个 bug 一直没被暴露。
+/// 迁移时化简掉了那次多余的 clamp，顺带修好；下面的单测钉住它。
+fn lock_secs(lock_minutes: i64) -> u64 {
+    lock_minutes.saturating_mul(60) as u64
+}
+
 /// 登录限流闸门：`max_fail` 次窗口内失败即封 `lock_minutes` 分钟，账号与 IP 同一阈值。
 /// 两个维度同阈值是有意的：IP 桶比账号桶宽松时，攻击者能用「不触发自己上限」的
 /// 失败量反复把别人的账号刷封，而自己不被拦。
@@ -97,9 +110,7 @@ pub fn login_throttle(cfg: &AppConfig) -> Option<Arc<Throttle<MemoryThrottleStor
     if cfg.max_fail <= 0 || cfg.lock_minutes <= 0 {
         return None;
     }
-    // 饱和乘法自带上限，不必再 clamp 一次；throttle 收 u64 秒
-    // （`lock_minutes > 0` 已由上面的早返回保证，i64 → u64 无损）
-    let secs = cfg.lock_minutes.saturating_mul(60) as u64;
+    let secs = lock_secs(cfg.lock_minutes);
     Some(Arc::new(Throttle::new(
         MemoryThrottleStore::new(),
         ThrottleConfig {
@@ -538,5 +549,18 @@ mod tests {
         // 客户端可控的超长头截到 45 字符（IPv6 文本上限），不会写库超长
         let _ = h.insert("x-real-ip", "x".repeat(300).parse().unwrap());
         assert_eq!(client_ip(&h).len(), 45);
+    }
+
+    /// 钉住一个真实存在过的 bug：窗口/封禁时长曾经因为 `.min(u64::MAX as i64)`
+    /// （= 对任何正值都取 min(-1)）而后 `as u64` 变成 `u64::MAX`，
+    /// 等于「失败 5 次封 584 亿年」，而前端提示的仍是「请 10 分钟后再试」。
+    #[test]
+    fn lock_secs_is_minutes_not_infinite() {
+        assert_eq!(lock_secs(10), 600, "默认 lock_minutes=10 → 600 秒");
+        assert_eq!(lock_secs(1), 60);
+        assert_eq!(lock_secs(1440), 86_400, "一天");
+        // 极端值走饱和：不回绕、不 panic
+        assert_eq!(lock_secs(i64::MAX), i64::MAX as u64);
+        assert_ne!(lock_secs(10), u64::MAX, "绝不能是「永不过期」");
     }
 }
