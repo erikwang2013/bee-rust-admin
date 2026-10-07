@@ -3,6 +3,26 @@
 日期：2026-10-05
 状态：与用户逐块确认完毕（ORM / 后端 / 前端+部署）。nginx 用端口 8081 对外。
 
+> ## ⚠ 实现变更说明（2026-10-07）
+>
+> 本文第 4 章「ORM 执行层」描述的是**本项目当初自写的那套实现**（`meta`/`query`/`syncdb`/`db`）。
+> 框架侧后来长出了完整实现，2026-10-07 已整体迁到上游那份（框架 1.1.5 → 1.2.3），
+> 自写实现已删除。**第 4 章请对照实际代码读**，主要出入：
+>
+> | 本文写的 | 现在的实现 |
+> |---|---|
+> | `#[bee(table, pk = "id")]` + 字段 `unique`/`index`/`len` | 主键写成字段级 `#[bee(pk)]`；**没有 unique/index**，列长度用 `sql_type = "VARCHAR(n)"` |
+> | `syncdb(&[META], SyncdbMode::Safe)` | `migrate::sync::<M>()`（同样只建表/加列）；**唯一键与索引移到 `seed.rs` 的裸 DDL** |
+> | `db.insert(&mut x)`（原地回填主键） | `x.create(db)` 返回读回的实例；`x.insert(db)` **不回填主键** |
+> | `fetch_one` / `fetch_all` / `fetch_page` | `one` / `all`；分页是项目补的 `PagingExt` |
+> | 只有 MySQL（sqlx） | 多后端（mysql_async / tokio-postgres / rusqlite）；**项目只开 mysql 特性** |
+> | `OrmError::DuplicateKey` / `Sqlx` / `Row` | 新枚举只有 `ConnectionError`/`QueryError`/`InvalidField`/`NotFound`；冲突靠 MySQL 报错文本识别 |
+> | 事务走 `db.pool()` | `Db` trait 层**没有事务**，走 `pool::mysql::Pool::get()` + `CheckedConn` |
+> | 模型 id 是 `u64` | **一律 `i64`**（上游 `Value` 不支持 u64） |
+> | 连接表各有模型 | 三个 join 模型已删（上游每模型必须有主键），读写走 `src/relations.rs` 的 `RelationsExt` |
+>
+> 迁移的完整记录见提交 `85cd00d` 与 `docs/superpowers/plans/` 下的相关文档。
+
 ## 1. 目标
 
 在 bee-rust 框架（本仓库 `crates/`）之上交付一个完整的管理后台：登录（JWT）、
