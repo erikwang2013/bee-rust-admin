@@ -142,6 +142,8 @@ admin/                  管理后台服务端（crate bee_admin）
                         登录记录 / 个人中心
 docs/
   diagrams/             ★ 本 README 引用的 4 张 SVG 图
+  pet/                  项目宠物「阿守」的五态 SVG + 渲染器（node render.mjs）
+  social/               社交预览图 1280×640（仓库 Settings → Social preview 上传那份 PNG）
   superpowers/specs/    设计文档（数据模型、接口清单、数据权限规则）
   superpowers/plans/    实施计划（ORM 执行层、后端、前端）
 Dockerfile              后端镜像（多阶段构建）
