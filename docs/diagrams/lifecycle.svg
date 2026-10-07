@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 700" width="980" height="700" role="img" aria-label="BRA 服务生命周期图">
   <title>BRA（Bee Rust Admin）— 服务生命周期</title>
-  <desc>读配置 → 连接 MySQL → syncdb 同步表结构 → 首次种子（幂等）→ 监听端口 → 运行中处理请求 → 收到信号退出</desc>
+  <desc>读配置 → 连接 MySQL → migrate 同步表结构 → 首次种子（幂等）→ 监听端口 → 运行中处理请求 → 收到信号退出</desc>
   <style>
     .bg { fill: #ffffff; }
     .box-start  { fill: #eff6ff; stroke: #3b82f6; stroke-width: 1.5; }
@@ -58,12 +58,12 @@
   <!-- ② -->
   <rect class="box-db" x="120" y="158" width="420" height="50" rx="7"/>
   <text class="t-name" x="136" y="180">② 连接 MySQL（连接池）</text>
-  <text class="t-sub"  x="136" y="197">bee_orm::Db::connect；BEE_ADMIN_DB_DSN 可覆盖配置里的 DSN</text>
+  <text class="t-sub"  x="136" y="197">pool::mysql::Pool::connect；BEE_ADMIN_DB_DSN 可覆盖配置里的 DSN</text>
 
   <!-- ③ -->
   <rect class="box-db" x="120" y="226" width="420" height="50" rx="7"/>
-  <text class="t-name" x="136" y="248">③ syncdb 同步表结构</text>
-  <text class="t-sub"  x="136" y="265">比对模型元数据：建表 / 加列 / 补索引 + 四张关系表 DDL</text>
+  <text class="t-name" x="136" y="248">③ migrate 同步表结构</text>
+  <text class="t-sub"  x="136" y="265">按模型建表 / 补缺列；唯一键、索引与四张关系表走裸 DDL</text>
 
   <!-- ④ 判断 -->
   <rect class="box-decision" x="120" y="294" width="420" height="50" rx="7"/>
@@ -97,7 +97,7 @@
   <text class="t-note" x="674" y="140">changeme → 进程直接退出</text>
 
   <rect class="note" x="660" y="226" width="296" height="60" rx="6"/>
-  <text class="t-note" x="674" y="246">syncdb 只增不删：</text>
+  <text class="t-note" x="674" y="246">migrate 只增不删：</text>
   <text class="t-note" x="674" y="262">绝不删列、不改类型；</text>
   <text class="t-note" x="674" y="278">模型加字段 → 下次启动自动补列</text>
 

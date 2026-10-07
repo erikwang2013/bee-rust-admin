@@ -152,7 +152,7 @@ async fn v12_backend_features() {
 
     let (st, v) = call(&c, Method::GET, api("/audit-logs?module=admin"), Some(&admin), None).await;
     assert_eq!(st, 200, "审计列表: {v}");
-    assert!(v["data"]["total"].as_u64().unwrap() >= 1, "新增管理员必须留痕: {v}");
+    assert!(v["data"]["total"].as_i64().unwrap() >= 1, "新增管理员必须留痕: {v}");
     let row = &v["data"]["list"][0];
     assert_eq!(row["module"], "admin");
     assert_eq!(row["action"], "新增管理员");
@@ -185,7 +185,7 @@ async fn v12_backend_features() {
     let (st, v) = call(&c, Method::POST, api("/roles"), Some(&admin),
         Some(json!({"name": "只读", "code": "readonly", "data_scope": 4}))).await;
     assert_eq!(st, 200, "建角色: {v}");
-    let readonly_role = v["data"]["id"].as_u64().unwrap();
+    let readonly_role = v["data"]["id"].as_i64().unwrap();
     let (st, _v) = call(&c, Method::POST, api("/admins"), Some(&admin), Some(json!({
         "username": "peeper", "password": "peeper123", "role_ids": [readonly_role]
     }))).await;
@@ -197,7 +197,7 @@ async fn v12_backend_features() {
     // 清空：动作本身也被记一条（写操作）
     let (st, v) = call(&c, Method::DELETE, api("/audit-logs?module=auth"), Some(&admin), None).await;
     assert_eq!(st, 200, "清空审计: {v}");
-    assert!(v["data"]["deleted"].as_u64().unwrap() >= 3, "改资料×2 + 上传头像×2: {v}");
+    assert!(v["data"]["deleted"].as_i64().unwrap() >= 3, "改资料×2 + 上传头像×2: {v}");
     let (st, v) = call(&c, Method::GET, api("/audit-logs?module=auth"), Some(&admin), None).await;
     assert_eq!(st, 200);
     assert_eq!(v["data"]["total"], 0, "auth 模块已清空: {v}");
@@ -237,7 +237,7 @@ async fn v12_backend_features() {
     assert_eq!(st, 200);
     let dept_menu = v["data"][0]["children"].as_array().unwrap()
         .iter().find(|m| m["name"] == "部门管理").expect("种子含「部门管理」").clone();
-    let dept_menu_id = dept_menu["id"].as_u64().unwrap();
+    let dept_menu_id = dept_menu["id"].as_i64().unwrap();
 
     let (st, _v) = call(&c, Method::PUT, api(&format!("/roles/{readonly_role}/menus")), Some(&admin),
         Some(json!({"menu_ids": [dept_menu_id]}))).await;
@@ -350,8 +350,8 @@ async fn v12_backend_features() {
     // 删掉审计日志的按钮 + 菜单，重启后应被补齐（既有库也能拿到新菜单）
     let audit_menu = v["data"][0]["children"].as_array().unwrap()
         .iter().find(|m| m["name"] == "操作日志").expect("含「操作日志」菜单").clone();
-    let audit_menu_id = audit_menu["id"].as_u64().unwrap();
-    let btn_id = audit_menu["children"][0]["id"].as_u64().unwrap();
+    let audit_menu_id = audit_menu["id"].as_i64().unwrap();
+    let btn_id = audit_menu["children"][0]["id"].as_i64().unwrap();
     for id in [btn_id, audit_menu_id] {
         let (st, v) = call(&c, Method::DELETE, api(&format!("/menus/{id}")), Some(&admin), None).await;
         assert_eq!(st, 200, "删菜单 {id}: {v}");

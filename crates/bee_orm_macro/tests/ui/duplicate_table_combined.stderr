@@ -1,0 +1,11 @@
+error: bee_orm: duplicate #[bee(table)] attribute
+ --> tests/ui/duplicate_table_combined.rs:7:20
+  |
+7 | #[bee(table = "a", table = "b", nope)]
+  |                    ^^^^^^^^^^^
+
+error: bee_orm: unknown bee attribute for a struct (expected table, hooks, m2m, crate)
+ --> tests/ui/duplicate_table_combined.rs:7:33
+  |
+7 | #[bee(table = "a", table = "b", nope)]
+  |                                 ^^^^

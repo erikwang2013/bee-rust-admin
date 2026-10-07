@@ -11,18 +11,17 @@ categories.workspace = true
 readme.workspace = true
 
 [dependencies]
-bee_config = { version = "1.1.5", path = "../bee_config", optional = true }
-bee_logs = { version = "1.1.5", path = "../bee_logs", optional = true }
-bee_cache = { version = "1.1.5", path = "../bee_cache", optional = true }
-bee_template = { version = "1.1.5", path = "../bee_template", optional = true }
-bee_kv = { version = "1.1.5", path = "../bee_kv", optional = true }
-bee_search = { version = "1.1.5", path = "../bee_search", optional = true }
-bee_graph = { version = "1.1.5", path = "../bee_graph", optional = true }
-bee_tsdb = { version = "1.1.5", path = "../bee_tsdb", optional = true }
-bee_orm = { version = "1.1.5", path = "../bee_orm", optional = true }
-bee_session = { version = "1.1.5", path = "../bee_session", optional = true }
-bee_router = { version = "1.1.5", path = "../bee_router", optional = true }
-security-rust.workspace = true
+bee_config = { version = "1.2.3", path = "../bee_config", optional = true }
+bee_logs = { version = "1.2.3", path = "../bee_logs", optional = true }
+bee_cache = { version = "1.2.3", path = "../bee_cache", optional = true }
+bee_template = { version = "1.2.3", path = "../bee_template", optional = true }
+bee_kv = { version = "1.2.3", path = "../bee_kv", optional = true }
+bee_search = { version = "1.2.3", path = "../bee_search", optional = true }
+bee_graph = { version = "1.2.3", path = "../bee_graph", optional = true }
+bee_tsdb = { version = "1.2.3", path = "../bee_tsdb", optional = true }
+bee_orm = { version = "1.2.3", path = "../bee_orm", optional = true }
+bee_session = { version = "1.2.3", path = "../bee_session", optional = true }
+bee_router = { version = "1.2.3", path = "../bee_router", optional = true }
 
 [features]
 default = ["full"]
@@ -30,6 +29,12 @@ full = ["router", "orm", "kv", "config", "logs", "cache", "session", "security",
 security = ["bee_router/security"]
 router = ["bee_router", "bee_session", "bee_template", "bee_config", "bee_logs"]
 orm = ["bee_orm", "bee_config", "bee_cache"]
+orm-sqlite = ["orm", "bee_orm/sqlite"]
+orm-postgres = ["orm", "bee_orm/postgres"]
+orm-postgres-tls = ["orm", "bee_orm/postgres-tls"]
+orm-mysql = ["orm", "bee_orm/mysql"]
+orm-chrono = ["orm", "bee_orm/chrono"]
+orm-rust_decimal = ["orm", "bee_orm/rust_decimal"]
 kv = ["bee_kv"]
 search = ["bee_search"]
 graph = ["bee_graph"]
@@ -39,3 +44,7 @@ config = ["bee_config"]
 logs = ["bee_logs"]
 cache = ["bee_cache", "bee_config"]
 session = ["bee_session", "bee_cache"]
+
+# Build the docs with every feature: the optional backends gate public modules.
+[package.metadata.docs.rs]
+all-features = true

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 //! 通知公告（v1.6.0 C2b）：管理侧增删改查 + 每个登录用户的未读/标记已读。
 //! `unread` / `{id}/read` 只认登录（和字典下拉同理：每个登录用户都要有的能力，不挂权限码）。
-use crate::api::{check_len, page_size};
+use crate::api::{PagingExt, check_len, page_size};
 use crate::auth::Auth;
 use crate::error::{ApiError, AppJson, AppPath, AppQuery, ok};
 use crate::models::Notice;
@@ -9,7 +9,7 @@ use crate::state::AppState;
 use crate::util::now;
 use axum::Json;
 use axum::extract::State;
-use bee_orm::{Model, OrmError};
+use bee_orm::{Model, OrmError, Value as DbValue};
 use chrono::NaiveDateTime;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -20,10 +20,6 @@ const UNREAD_LIMIT: i64 = 50;
 /// 公告正文上限：TEXT 列是 64KB 字节，按中文 3 字节算 20000 字仍在列内，
 /// 超了直接 400，别让 MySQL 报 1406 变成 500。
 const CONTENT_MAX: usize = 20_000;
-
-fn dberr(e: sqlx::Error) -> ApiError {
-    ApiError::from(OrmError::from(e))
-}
 
 /// 发布语义：置 1 时**只在还是 NULL 时**写 `published_at`；从 1 改回 0 不清空（留痕：曾发布过）。
 fn publish_at(status: i8, current: Option<NaiveDateTime>) -> Option<NaiveDateTime> {
@@ -104,7 +100,7 @@ pub async fn create(
     check_title(&body.title)?;
     check_content(&body.content)?;
 
-    let mut n = Notice {
+    let n = Notice {
         id: 0,
         title: body.title.trim().to_string(),
         content: body.content,
@@ -114,14 +110,14 @@ pub async fn create(
         created_at: now(),
         updated_at: now(),
     };
-    state.db.insert(&mut n).await.map_err(ApiError::from)?;
+    let n = n.create(&state.db).await.map_err(ApiError::from)?;
     Ok(ok(json!({ "id": n.id })))
 }
 
 pub async fn update(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<u64>,
+    AppPath(id): AppPath<i64>,
     AppJson(body): AppJson<NoticeUpdate>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:notice:edit")?;
@@ -131,7 +127,7 @@ pub async fn update(
     let mut n = Notice::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
-        .fetch_one(&state.db)
+        .one(&state.db)
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
@@ -141,7 +137,7 @@ pub async fn update(
     n.status = body.status;
     n.published_at = publish_at(body.status, n.published_at);
     n.updated_at = now();
-    state.db.update(&n).await.map_err(ApiError::from)?;
+    n.update(&state.db).await.map_err(ApiError::from)?;
     Ok(ok(Value::Null))
 }
 
@@ -150,31 +146,36 @@ pub async fn update(
 pub async fn remove(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<u64>,
+    AppPath(id): AppPath<i64>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:notice:remove")?;
     Notice::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
-        .fetch_one(&state.db)
+        .one(&state.db)
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
 
-    // notice_read 是复合主键（notice_id, admin_id），ORM 的按主键删不适用，走裸 SQL；
-    // 事务直接开在 sqlx 上（ORM 的 Tx 不支持带绑定参数的裸查询）
-    let mut tx = state.db.pool().begin().await.map_err(dberr)?;
-    sqlx::query("DELETE FROM notice_read WHERE notice_id = ?")
-        .bind(id)
-        .execute(&mut *tx)
-        .await
-        .map_err(dberr)?;
-    sqlx::query("DELETE FROM notice WHERE id = ?")
-        .bind(id)
-        .execute(&mut *tx)
-        .await
-        .map_err(dberr)?;
-    tx.commit().await.map_err(dberr)?;
+    // notice_read 是复合主键（notice_id, admin_id），按主键删不适用，走带参裸 SQL；
+    // Db 层没有事务，事务开在 Pool::get() 拿到的连接上（两条删除必须在同一个连接上）。
+    let mut conn = state.db.get().await.map_err(ApiError::from)?;
+    conn.begin().await.map_err(ApiError::from)?;
+    let result = async {
+        conn.execute("DELETE FROM notice_read WHERE notice_id = ?", &[DbValue::from(id)])
+            .await?;
+        conn.execute("DELETE FROM notice WHERE id = ?", &[DbValue::from(id)])
+            .await?;
+        Ok::<(), OrmError>(())
+    }
+    .await;
+    match result {
+        Ok(()) => conn.commit().await.map_err(ApiError::from)?,
+        Err(e) => {
+            let _ = conn.rollback().await;
+            return Err(e.into());
+        }
+    }
     Ok(ok(Value::Null))
 }
 
@@ -186,32 +187,39 @@ pub async fn unread(
     State(state): State<AppState>,
     auth: Auth,
 ) -> Result<Json<Value>, ApiError> {
-    let total: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM notice n \
-         LEFT JOIN notice_read r ON r.notice_id = n.id AND r.admin_id = ? \
-         WHERE n.status = 1 AND r.notice_id IS NULL",
-    )
-    .bind(auth.admin.id)
-    .fetch_one(state.db.pool())
-    .await
-    .map_err(dberr)?;
+    // 「已发布 + 我没读过」是 LEFT JOIN 的语义（复合主键的 notice_read 表，
+    // 关联不到 ORM 的单列外键上），保留带参裸 SQL，值仍走绑定。
+    let total: i64 = state
+        .db
+        .query(
+            "SELECT COUNT(*) AS n FROM notice n \
+             LEFT JOIN notice_read r ON r.notice_id = n.id AND r.admin_id = ? \
+             WHERE n.status = 1 AND r.notice_id IS NULL",
+            &[DbValue::from(auth.admin.id)],
+        )
+        .await
+        .map_err(ApiError::from)?
+        .first()
+        .and_then(|r| r.get("n"))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
 
-    let rows = sqlx::query(
-        "SELECT n.* FROM notice n \
-         LEFT JOIN notice_read r ON r.notice_id = n.id AND r.admin_id = ? \
-         WHERE n.status = 1 AND r.notice_id IS NULL \
-         ORDER BY n.id DESC LIMIT ?",
-    )
-    .bind(auth.admin.id)
-    .bind(UNREAD_LIMIT)
-    .fetch_all(state.db.pool())
-    .await
-    .map_err(dberr)?;
+    let rows = state
+        .db
+        .query(
+            "SELECT n.* FROM notice n \
+             LEFT JOIN notice_read r ON r.notice_id = n.id AND r.admin_id = ? \
+             WHERE n.status = 1 AND r.notice_id IS NULL \
+             ORDER BY n.id DESC LIMIT ?",
+            &[DbValue::from(auth.admin.id), DbValue::from(UNREAD_LIMIT)],
+        )
+        .await
+        .map_err(ApiError::from)?;
     let list = rows
         .iter()
         .map(Notice::from_row)
         .collect::<Result<Vec<_>, _>>()
-        .map_err(dberr)?;
+        .map_err(ApiError::from)?;
     Ok(ok(json!({ "total": total, "list": list })))
 }
 
@@ -220,12 +228,12 @@ pub async fn unread(
 pub async fn read(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<u64>,
+    AppPath(id): AppPath<i64>,
 ) -> Result<Json<Value>, ApiError> {
     let n = Notice::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
-        .fetch_one(&state.db)
+        .one(&state.db)
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
@@ -233,13 +241,15 @@ pub async fn read(
         return Err(ApiError::NotFound);
     }
 
-    sqlx::query("INSERT IGNORE INTO notice_read (notice_id, admin_id, read_at) VALUES (?, ?, ?)")
-        .bind(id)
-        .bind(auth.admin.id)
-        .bind(now())
-        .execute(state.db.pool())
+    // INSERT IGNORE 保留裸 SQL：幂等靠主键冲突被忽略，先查后插在并发下会撞唯一键变 500
+    state
+        .db
+        .execute(
+            "INSERT IGNORE INTO notice_read (notice_id, admin_id, read_at) VALUES (?, ?, ?)",
+            &[DbValue::from(id), DbValue::from(auth.admin.id), DbValue::from(now())],
+        )
         .await
-        .map_err(dberr)?;
+        .map_err(ApiError::from)?;
     Ok(ok(Value::Null))
 }
 

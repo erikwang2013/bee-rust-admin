@@ -1,4 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+use std::path::Path;
+
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -22,10 +24,10 @@ enum Commands {
         #[arg(long)]
         watch: bool,
     },
-    /// Run database migrations
+    /// Scaffold and run the database migration binary
     Migrate {
         #[command(subcommand)]
-        direction: MigrateDirection,
+        action: MigrateAction,
     },
     /// Package for deployment
     Pack {
@@ -49,9 +51,11 @@ enum GenerateKind {
 }
 
 #[derive(Subcommand)]
-enum MigrateDirection {
-    Up,
-    Down,
+enum MigrateAction {
+    /// Scaffold src/bin/bee_migrate.rs in the current crate
+    Init,
+    /// Run the scaffolded src/bin/bee_migrate.rs
+    Run,
 }
 
 fn main() {
@@ -65,7 +69,15 @@ fn main() {
             }
         },
         Commands::Run { watch } => bee_cli::run_server(watch),
-        Commands::Migrate { .. } => bee_cli::migrate(),
+        Commands::Migrate { action } => match action {
+            MigrateAction::Init => bee_cli::migrate_init(Path::new(".")),
+            // cargo's own exit code, passed through to the caller's shell.
+            MigrateAction::Run => bee_cli::migrate_run(Path::new(".")).map(|code| {
+                if code != 0 {
+                    std::process::exit(code);
+                }
+            }),
+        },
         Commands::Pack { target } => bee_cli::pack(&target),
         Commands::Pet => bee_cli::pet(),
     };
@@ -143,26 +155,33 @@ mod tests {
     }
 
     #[test]
-    fn test_migrate_up() {
-        let cli = Cli::try_parse_from(["bee-rust", "migrate", "up"]).unwrap();
+    fn test_migrate_init() {
+        let cli = Cli::try_parse_from(["bee-rust", "migrate", "init"]).unwrap();
         match cli.command {
-            Commands::Migrate { direction } => match direction {
-                MigrateDirection::Up => {}
-                _ => panic!("expected Up"),
+            Commands::Migrate { action } => match action {
+                MigrateAction::Init => {}
+                _ => panic!("expected Init"),
             },
             _ => panic!("expected Migrate command"),
         }
     }
 
     #[test]
-    fn test_migrate_down() {
-        let cli = Cli::try_parse_from(["bee-rust", "migrate", "down"]).unwrap();
+    fn test_migrate_run() {
+        let cli = Cli::try_parse_from(["bee-rust", "migrate", "run"]).unwrap();
         match cli.command {
-            Commands::Migrate { direction } => match direction {
-                MigrateDirection::Down => {}
-                _ => panic!("expected Down"),
+            Commands::Migrate { action } => match action {
+                MigrateAction::Run => {}
+                _ => panic!("expected Run"),
             },
             _ => panic!("expected Migrate command"),
+        }
+    }
+
+    #[test]
+    fn test_migrate_rejects_the_old_directions() {
+        for bad in ["up", "down"] {
+            assert!(Cli::try_parse_from(["bee-rust", "migrate", bad]).is_err(), "{bad}");
         }
     }
 

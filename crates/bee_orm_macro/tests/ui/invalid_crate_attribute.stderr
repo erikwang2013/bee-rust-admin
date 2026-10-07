@@ -1,0 +1,23 @@
+error: bee_orm: #[bee(crate = "path")] expects a string literal
+ --> tests/ui/invalid_crate_attribute.rs:7:15
+  |
+7 | #[bee(crate = 42)]
+  |               ^^
+
+error: bee_orm: #[bee(crate = "path")] must not be empty
+  --> tests/ui/invalid_crate_attribute.rs:13:15
+   |
+13 | #[bee(crate = "")]
+   |               ^^
+
+error: bee_orm: #[bee(crate = "path")] is not a valid path
+  --> tests/ui/invalid_crate_attribute.rs:19:15
+   |
+19 | #[bee(crate = "bee_orm Model")]
+   |               ^^^^^^^^^^^^^^^
+
+error: bee_orm: duplicate #[bee(crate)] attribute
+  --> tests/ui/invalid_crate_attribute.rs:25:26
+   |
+25 | #[bee(crate = "bee_orm", crate = "bee_orm")]
+   |                          ^^^^^^^^^^^^^^^^^

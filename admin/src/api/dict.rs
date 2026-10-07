@@ -1,7 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 //! 字典管理（v1.5.0）：字典类型 + 字典项。
 //! 除 `GET /dicts/{code}/items`（下拉数据源，登录即可）外都要权限码。
-use crate::api::{check_len, csv, page_size};
+use crate::api::{PagingExt, check_len, csv, page_size};
 use crate::auth::Auth;
 use crate::error::{ApiError, AppJson, AppPath, AppQuery, ok};
 use crate::models::{DictItem, DictType};
@@ -10,12 +10,30 @@ use crate::util::now;
 use axum::Json;
 use axum::extract::State;
 use axum::response::Response;
-use bee_orm::OrmError;
+use bee_orm::{Model, OrmError, Value as DbValue};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 fn one() -> i8 {
     1
+}
+
+/// 字典编码重复 → 本接口的专属文案（`dict.code_taken`）。
+/// 唯一键冲突的识别在 `ApiError::from` 里按 MySQL 报错文本做（上游 `OrmError`
+/// 没有独立变体），冲突是它唯一映射成 `BadRequest` 的情况，其余是 `NotFound` / `Internal`。
+fn code_taken(e: OrmError) -> ApiError {
+    match ApiError::from(e) {
+        ApiError::BadRequest(_) => ApiError::BadRequest("字典编码已存在".into()),
+        other => other,
+    }
+}
+
+/// 同类型下字典值重复 → `dict.value_taken`（同上）。
+fn value_taken(e: OrmError) -> ApiError {
+    match ApiError::from(e) {
+        ApiError::BadRequest(_) => ApiError::BadRequest("该类型下字典值已存在".into()),
+        other => other,
+    }
 }
 
 /// 字典编码：小写字母/数字/下划线，2~64 位。它既是字典项的关联键，
@@ -111,7 +129,7 @@ pub async fn type_create(
         ));
     }
 
-    let mut t = DictType {
+    let t = DictType {
         id: 0,
         name: body.name.trim().to_string(),
         code: code.to_string(),
@@ -120,18 +138,14 @@ pub async fn type_create(
         created_at: now(),
         updated_at: now(),
     };
-    match state.db.insert(&mut t).await {
-        Ok(_) => {}
-        Err(OrmError::DuplicateKey(_)) => return Err(ApiError::BadRequest("字典编码已存在".into())),
-        Err(e) => return Err(e.into()),
-    }
+    let t = t.create(&state.db).await.map_err(code_taken)?;
     Ok(ok(json!({ "id": t.id })))
 }
 
 pub async fn type_update(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<u64>,
+    AppPath(id): AppPath<i64>,
     AppJson(body): AppJson<DictTypeUpdate>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:dict:edit")?;
@@ -141,7 +155,7 @@ pub async fn type_update(
     let mut t = DictType::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
-        .fetch_one(&state.db)
+        .one(&state.db)
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
@@ -150,11 +164,7 @@ pub async fn type_update(
     t.status = body.status;
     t.remark = body.remark;
     t.updated_at = now();
-    match state.db.update(&t).await {
-        Ok(_) => {}
-        Err(OrmError::DuplicateKey(_)) => return Err(ApiError::BadRequest("字典编码已存在".into())),
-        Err(e) => return Err(e.into()),
-    }
+    t.update(&state.db).await.map_err(code_taken)?;
     Ok(ok(Value::Null))
 }
 
@@ -163,13 +173,13 @@ pub async fn type_update(
 pub async fn type_remove(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<u64>,
+    AppPath(id): AppPath<i64>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:dict:remove")?;
     let t = DictType::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
-        .fetch_one(&state.db)
+        .one(&state.db)
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
@@ -177,16 +187,30 @@ pub async fn type_remove(
     let items = DictItem::query()
         .filter_eq("type_code", &t.code)
         .map_err(ApiError::from)?
-        .fetch_all(&state.db)
+        .all(&state.db)
         .await
         .map_err(ApiError::from)?;
 
-    let mut tx = state.db.begin().await.map_err(ApiError::from)?;
-    for it in &items {
-        tx.delete::<DictItem>(it.id).await.map_err(ApiError::from)?;
+    // Db 层没有事务：事务开在 Pool::get() 拿到的连接上（语句走连接，不能走池）
+    let mut conn = state.db.get().await.map_err(ApiError::from)?;
+    conn.begin().await.map_err(ApiError::from)?;
+    let result = async {
+        for it in &items {
+            conn.execute("DELETE FROM dict_item WHERE id = ?", &[DbValue::from(it.id)])
+                .await?;
+        }
+        conn.execute("DELETE FROM dict_type WHERE id = ?", &[DbValue::from(t.id)])
+            .await?;
+        Ok::<(), OrmError>(())
     }
-    tx.delete::<DictType>(t.id).await.map_err(ApiError::from)?;
-    tx.commit().await.map_err(ApiError::from)?;
+    .await;
+    match result {
+        Ok(()) => conn.commit().await.map_err(ApiError::from)?,
+        Err(e) => {
+            let _ = conn.rollback().await;
+            return Err(e.into());
+        }
+    }
 
     Ok(ok(json!({ "items_deleted": items.len() })))
 }
@@ -196,7 +220,7 @@ async fn type_exists(state: &AppState, code: &str) -> Result<bool, ApiError> {
     Ok(DictType::query()
         .filter_eq("code", code)
         .map_err(ApiError::from)?
-        .fetch_one(&state.db)
+        .one(&state.db)
         .await
         .map_err(ApiError::from)?
         .is_some())
@@ -222,7 +246,7 @@ pub async fn type_items(
         .filter_eq("status", 1)
         .map_err(ApiError::from)?
         .order_by("sort ASC, id ASC")
-        .fetch_all(&state.db)
+        .all(&state.db)
         .await
         .map_err(ApiError::from)?;
     let out: Vec<Value> = rows
@@ -234,7 +258,7 @@ pub async fn type_items(
 
 // ── 字典项 ──────────────────────────────────────────────────
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct DictItemQuery {
     pub page: Option<u32>,
     pub size: Option<u32>,
@@ -320,7 +344,7 @@ pub async fn item_create(
         return Err(ApiError::BadRequest("字典类型不存在".into()));
     }
 
-    let mut it = DictItem {
+    let it = DictItem {
         id: 0,
         type_code: type_code.to_string(),
         label: body.label.trim().to_string(),
@@ -331,20 +355,14 @@ pub async fn item_create(
         created_at: now(),
         updated_at: now(),
     };
-    match state.db.insert(&mut it).await {
-        Ok(_) => {}
-        Err(OrmError::DuplicateKey(_)) => {
-            return Err(ApiError::BadRequest("该类型下字典值已存在".into()));
-        }
-        Err(e) => return Err(e.into()),
-    }
+    let it = it.create(&state.db).await.map_err(value_taken)?;
     Ok(ok(json!({ "id": it.id })))
 }
 
 pub async fn item_update(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<u64>,
+    AppPath(id): AppPath<i64>,
     AppJson(body): AppJson<DictItemUpdate>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:dict:edit")?;
@@ -355,7 +373,7 @@ pub async fn item_update(
     let mut it = DictItem::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
-        .fetch_one(&state.db)
+        .one(&state.db)
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
@@ -366,23 +384,22 @@ pub async fn item_update(
     it.status = body.status;
     it.remark = body.remark;
     it.updated_at = now();
-    match state.db.update(&it).await {
-        Ok(_) => {}
-        Err(OrmError::DuplicateKey(_)) => {
-            return Err(ApiError::BadRequest("该类型下字典值已存在".into()));
-        }
-        Err(e) => return Err(e.into()),
-    }
+    it.update(&state.db).await.map_err(value_taken)?;
     Ok(ok(Value::Null))
 }
 
 pub async fn item_remove(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<u64>,
+    AppPath(id): AppPath<i64>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:dict:remove")?;
-    let n = state.db.delete::<DictItem>(id).await.map_err(ApiError::from)?;
+    let n = DictItem::query()
+        .filter_eq("id", id)
+        .map_err(ApiError::from)?
+        .delete(&state.db)
+        .await
+        .map_err(ApiError::from)?;
     if n == 0 {
         return Err(ApiError::NotFound);
     }
@@ -390,16 +407,17 @@ pub async fn item_remove(
 }
 
 /// 取一批导出数据（keyset：`id < last`，首页不带该条件）。
+/// `QuerySet` 不可克隆，所以每批用筛选条件重建（与列表共用 `filtered_items()`）。
 async fn export_batch(
     state: &AppState,
-    base: &bee_orm::QuerySet<DictItem>,
-    last: Option<u64>,
-) -> Result<Vec<(u64, String)>, ApiError> {
-    let mut qs = base.clone().order_by("id DESC").limit(csv::BATCH);
+    q: &DictItemQuery,
+    last: Option<i64>,
+) -> Result<Vec<(i64, String)>, ApiError> {
+    let mut qs = filtered_items(q)?.order_by("id DESC").limit(csv::BATCH);
     if let Some(last) = last {
-        qs = qs.filter_raw("id < ?", &[last]);
+        qs = qs.filter_lt("id", last).map_err(ApiError::from)?;
     }
-    let rows = qs.fetch_all(&state.db).await.map_err(ApiError::from)?;
+    let rows = qs.all(&state.db).await.map_err(ApiError::from)?;
     Ok(rows
         .into_iter()
         .map(|r| {
@@ -427,14 +445,13 @@ pub async fn item_export(
     AppQuery(q): AppQuery<DictItemQuery>,
 ) -> Result<Response, ApiError> {
     auth.require("system:dict:list")?;
-    let base = filtered_items(&q)?;
     csv::streamed(
         format!("dict-items-{}.csv", csv::today()),
         header_cells(),
         move |last| {
             let state = state.clone();
-            let base = base.clone();
-            async move { export_batch(&state, &base, last).await }
+            let q = q.clone();
+            async move { export_batch(&state, &q, last).await }
         },
     )
     .await

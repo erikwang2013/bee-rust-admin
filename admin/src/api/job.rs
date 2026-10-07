@@ -1,7 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 //! 定时任务（v1.6.0 C2a）：列表 / 改间隔与开关 / 手动触发 / 执行记录。
 //! 任务体不落库（代码注册，见 `crate::jobs`），所以这里没有增删接口。
-use crate::api::page_size;
+use crate::api::{PagingExt, dt_ge, dt_le, page_size};
 use crate::auth::Auth;
 use crate::error::{ApiError, AppJson, AppPath, AppQuery, ok};
 use crate::jobs;
@@ -10,6 +10,7 @@ use crate::state::AppState;
 use crate::util::now;
 use axum::Json;
 use axum::extract::State;
+use bee_orm::Model;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -33,7 +34,7 @@ pub struct JobUpdate {
 /// 0 会让任务每个 tick 都跑，所以不接受（要停就置 status=0）。
 fn check_cron(cron: &str) -> Result<String, ApiError> {
     let s = cron.trim();
-    match s.parse::<u64>() {
+    match s.parse::<i64>() {
         Ok(n) if n >= 1 => Ok(n.to_string()),
         _ => Err(ApiError::BadRequest("间隔必须是正整数秒".into())),
     }
@@ -65,7 +66,7 @@ pub async fn list(
 pub async fn update(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<u64>,
+    AppPath(id): AppPath<i64>,
     AppJson(body): AppJson<JobUpdate>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:job:edit")?;
@@ -74,7 +75,7 @@ pub async fn update(
     let mut job = Job::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
-        .fetch_one(&state.db)
+        .one(&state.db)
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
@@ -82,7 +83,7 @@ pub async fn update(
     job.cron = cron;
     job.status = body.status;
     job.updated_at = now();
-    state.db.update(&job).await.map_err(ApiError::from)?;
+    job.update(&state.db).await.map_err(ApiError::from)?;
     Ok(ok(Value::Null))
 }
 
@@ -91,13 +92,13 @@ pub async fn update(
 pub async fn run(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<u64>,
+    AppPath(id): AppPath<i64>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:job:edit")?;
     let job = Job::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
-        .fetch_one(&state.db)
+        .one(&state.db)
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
@@ -135,11 +136,12 @@ pub async fn log_list(
     if let Some(s) = q.status {
         qs = qs.filter_eq("status", s).map_err(ApiError::from)?;
     }
+    // 区间端点是闭区间：上游只有 `>` / `<`，`dt_ge`/`dt_le` 把端点挪 1 秒换等价（值仍走绑定）
     if let Some(s) = q.start.as_deref().filter(|s| !s.is_empty()) {
-        qs = qs.filter_raw("started_at >= ?", &[s]);
+        qs = qs.filter_gt("started_at", dt_ge(s)).map_err(ApiError::from)?;
     }
     if let Some(e) = q.end.as_deref().filter(|s| !s.is_empty()) {
-        qs = qs.filter_raw("started_at <= ?", &[e]);
+        qs = qs.filter_lt("started_at", dt_le(e)).map_err(ApiError::from)?;
     }
     let (rows, total) = qs
         .order_by("id DESC")

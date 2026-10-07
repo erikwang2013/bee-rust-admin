@@ -2,11 +2,13 @@
 use crate::api::{check_len, would_cycle};
 use crate::auth::Auth;
 use crate::error::{ApiError, AppJson, AppPath, ok};
-use crate::models::{Menu, RoleMenu};
+use crate::models::Menu;
+use crate::relations::RelationsExt;
 use crate::state::AppState;
 use crate::util::now;
 use axum::Json;
 use axum::extract::State;
+use bee_orm::Model;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -14,7 +16,7 @@ use std::collections::HashMap;
 #[derive(Deserialize)]
 pub struct MenuBody {
     #[serde(default)]
-    pub parent_id: u64,
+    pub parent_id: i64,
     pub name: String,
     #[serde(rename = "type")]
     pub menu_type: String,
@@ -64,22 +66,22 @@ fn validate_body(b: &MenuBody) -> Result<(), ApiError> {
 }
 
 /// 父节点必须存在（0 = 根）。
-async fn parent_exists(state: &AppState, parent_id: u64) -> Result<bool, ApiError> {
+async fn parent_exists(state: &AppState, parent_id: i64) -> Result<bool, ApiError> {
     if parent_id == 0 {
         return Ok(true);
     }
     Ok(Menu::query()
         .filter_eq("id", parent_id)
         .map_err(ApiError::from)?
-        .fetch_one(&state.db)
+        .one(&state.db)
         .await
         .map_err(ApiError::from)?
         .is_some())
 }
 
-async fn parent_map(state: &AppState) -> Result<HashMap<u64, u64>, ApiError> {
+async fn parent_map(state: &AppState) -> Result<HashMap<i64, i64>, ApiError> {
     Ok(Menu::query()
-        .fetch_all(&state.db)
+        .all(&state.db)
         .await
         .map_err(ApiError::from)?
         .into_iter()
@@ -88,7 +90,7 @@ async fn parent_map(state: &AppState) -> Result<HashMap<u64, u64>, ApiError> {
 }
 
 /// 全量树（含按钮节点，管理页要看）。
-fn build(all: &[Menu], parent: u64) -> Vec<Value> {
+fn build(all: &[Menu], parent: i64) -> Vec<Value> {
     all.iter()
         .filter(|m| m.parent_id == parent)
         .map(|m| {
@@ -103,7 +105,7 @@ pub async fn tree(State(state): State<AppState>, auth: Auth) -> Result<Json<Valu
     auth.require("system:menu:list")?;
     let all = Menu::query()
         .order_by("sort ASC, id ASC")
-        .fetch_all(&state.db)
+        .all(&state.db)
         .await
         .map_err(ApiError::from)?;
     Ok(ok(build(&all, 0)))
@@ -120,7 +122,7 @@ pub async fn create(
         return Err(ApiError::BadRequest("上级菜单不存在".into()));
     }
 
-    let mut m = Menu {
+    let m = Menu {
         id: 0,
         parent_id: body.parent_id,
         name: body.name.trim().to_string(),
@@ -135,14 +137,14 @@ pub async fn create(
         created_at: now(),
         updated_at: now(),
     };
-    state.db.insert(&mut m).await.map_err(ApiError::from)?;
+    let m = m.create(&state.db).await.map_err(ApiError::from)?;
     Ok(ok(json!({ "id": m.id })))
 }
 
 pub async fn update(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<u64>,
+    AppPath(id): AppPath<i64>,
     AppJson(body): AppJson<MenuBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:menu:edit")?;
@@ -157,7 +159,7 @@ pub async fn update(
     let mut m = Menu::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
-        .fetch_one(&state.db)
+        .one(&state.db)
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
@@ -173,14 +175,14 @@ pub async fn update(
     m.visible = body.visible;
     m.status = body.status;
     m.updated_at = now();
-    state.db.update(&m).await.map_err(ApiError::from)?;
+    m.update(&state.db).await.map_err(ApiError::from)?;
     Ok(ok(Value::Null))
 }
 
 pub async fn remove(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<u64>,
+    AppPath(id): AppPath<i64>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:menu:remove")?;
     let children = Menu::query()
@@ -192,15 +194,15 @@ pub async fn remove(
     if children > 0 {
         return Err(ApiError::BadRequest("请先删除子菜单".into()));
     }
-    let used = RoleMenu::query()
-        .filter_eq("menu_id", id)
-        .map_err(ApiError::from)?
-        .count(&state.db)
-        .await
-        .map_err(ApiError::from)?;
+    let used = state.db.count_refs("role_menu", "menu_id", id).await.map_err(ApiError::from)?;
     if used > 0 {
         return Err(ApiError::BadRequest("该菜单已被角色引用".into()));
     }
-    state.db.delete::<Menu>(id).await.map_err(ApiError::from)?;
+    Menu::query()
+        .filter_eq("id", id)
+        .map_err(ApiError::from)?
+        .delete(&state.db)
+        .await
+        .map_err(ApiError::from)?;
     Ok(ok(Value::Null))
 }

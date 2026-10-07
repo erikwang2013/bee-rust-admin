@@ -7,6 +7,7 @@ use crate::state::AppState;
 use crate::util::now;
 use axum::Json;
 use axum::extract::State;
+use bee_orm::Model;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -14,7 +15,7 @@ use std::collections::HashMap;
 #[derive(Deserialize)]
 pub struct DeptBody {
     #[serde(default)]
-    pub parent_id: u64,
+    pub parent_id: i64,
     pub name: String,
     #[serde(default)]
     pub sort: i32,
@@ -46,22 +47,22 @@ fn validate_body(b: &DeptBody) -> Result<(), ApiError> {
 }
 
 /// 父节点必须存在（0 = 根）。
-async fn parent_exists(state: &AppState, parent_id: u64) -> Result<bool, ApiError> {
+async fn parent_exists(state: &AppState, parent_id: i64) -> Result<bool, ApiError> {
     if parent_id == 0 {
         return Ok(true);
     }
     Ok(Dept::query()
         .filter_eq("id", parent_id)
         .map_err(ApiError::from)?
-        .fetch_one(&state.db)
+        .one(&state.db)
         .await
         .map_err(ApiError::from)?
         .is_some())
 }
 
-async fn parent_map(state: &AppState) -> Result<HashMap<u64, u64>, ApiError> {
+async fn parent_map(state: &AppState) -> Result<HashMap<i64, i64>, ApiError> {
     Ok(Dept::query()
-        .fetch_all(&state.db)
+        .all(&state.db)
         .await
         .map_err(ApiError::from)?
         .into_iter()
@@ -69,7 +70,7 @@ async fn parent_map(state: &AppState) -> Result<HashMap<u64, u64>, ApiError> {
         .collect())
 }
 
-fn build(all: &[Dept], parent: u64) -> Vec<Value> {
+fn build(all: &[Dept], parent: i64) -> Vec<Value> {
     all.iter()
         .filter(|d| d.parent_id == parent)
         .map(|d| {
@@ -84,7 +85,7 @@ pub async fn tree(State(state): State<AppState>, auth: Auth) -> Result<Json<Valu
     auth.require("system:dept:list")?;
     let all = Dept::query()
         .order_by("sort ASC, id ASC")
-        .fetch_all(&state.db)
+        .all(&state.db)
         .await
         .map_err(ApiError::from)?;
     Ok(ok(build(&all, 0)))
@@ -101,7 +102,7 @@ pub async fn create(
         return Err(ApiError::BadRequest("上级部门不存在".into()));
     }
 
-    let mut d = Dept {
+    let d = Dept {
         id: 0,
         parent_id: body.parent_id,
         name: body.name.trim().to_string(),
@@ -112,14 +113,14 @@ pub async fn create(
         created_at: now(),
         updated_at: now(),
     };
-    state.db.insert(&mut d).await.map_err(ApiError::from)?;
+    let d = d.create(&state.db).await.map_err(ApiError::from)?;
     Ok(ok(json!({ "id": d.id })))
 }
 
 pub async fn update(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<u64>,
+    AppPath(id): AppPath<i64>,
     AppJson(body): AppJson<DeptBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:dept:edit")?;
@@ -134,7 +135,7 @@ pub async fn update(
     let mut d = Dept::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
-        .fetch_one(&state.db)
+        .one(&state.db)
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
@@ -146,14 +147,14 @@ pub async fn update(
     d.phone = body.phone;
     d.status = body.status;
     d.updated_at = now();
-    state.db.update(&d).await.map_err(ApiError::from)?;
+    d.update(&state.db).await.map_err(ApiError::from)?;
     Ok(ok(Value::Null))
 }
 
 pub async fn remove(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<u64>,
+    AppPath(id): AppPath<i64>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:dept:remove")?;
     let children = Dept::query()
@@ -174,6 +175,11 @@ pub async fn remove(
     if admins > 0 {
         return Err(ApiError::BadRequest("该部门下还有管理员".into()));
     }
-    state.db.delete::<Dept>(id).await.map_err(ApiError::from)?;
+    Dept::query()
+        .filter_eq("id", id)
+        .map_err(ApiError::from)?
+        .delete(&state.db)
+        .await
+        .map_err(ApiError::from)?;
     Ok(ok(Value::Null))
 }

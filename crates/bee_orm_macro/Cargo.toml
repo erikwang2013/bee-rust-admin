@@ -15,3 +15,17 @@ proc-macro = true
 syn = { version = "2", features = ["full"] }
 quote = "1"
 proc-macro2 = "1"
+
+[dev-dependencies]
+# Dev-dependency cycle (bee_orm depends on this crate): legal in cargo, and the
+# only way the trybuild UI cases can link the generated code against the real
+# `Model` trait.
+bee_orm = { path = "../bee_orm" }
+# §56: only so the UI case can name a `NaiveDate` field while `bee_orm`'s own
+# `chrono` feature stays off — the fail case pins the compile-time contract.
+# Mirrors a user's own `chrono` dep (serde on, per the crate's own defaults).
+chrono = { version = "0.4", features = ["serde"] }
+# Only for the UI pass case spelling `serde_json::Value` (§45) in a model —
+# the derive never emits this crate. Already in the workspace graph.
+serde_json = { workspace = true }
+trybuild = "1"

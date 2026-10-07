@@ -2,32 +2,45 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use redis::AsyncConnectionConfig;
+use redis::aio::{ConnectionManager, ConnectionManagerConfig};
 
 use crate::{KvError, KvStore};
 
-/// A [`KvStore`] backed by a Redis server over an async multiplexed
-/// connection.
+/// A [`KvStore`] backed by a Redis server over a reconnecting async connection
+/// manager.
+///
+/// # Reconnect
+///
+/// The connection is recovered automatically — a Redis restart or a dropped
+/// socket needs no action from the caller — but the *command* that runs into
+/// the broken connection fails with a [`KvError`], and the *next* one succeeds
+/// on a fresh connection. There is no background health-check thread: the
+/// manager only reconnects when a command finds the connection dead (with
+/// exponential backoff and jitter between attempts), so a caller that must not
+/// surface the break has to retry.
 #[cfg(feature = "redis")]
 pub struct RedisStore {
-    conn: redis::aio::MultiplexedConnection,
+    conn: ConnectionManager,
 }
 
 #[cfg(feature = "redis")]
 impl RedisStore {
     /// Create a new `RedisStore` by connecting to the given `addr` (e.g.
     /// `"redis://127.0.0.1:6379"`).
+    ///
+    /// Connects eagerly: as with a plain multiplexed connection, a bad address
+    /// fails here rather than on the first command.
     pub async fn new(addr: &str) -> Result<Self, KvError> {
         let client = redis::Client::open(addr)
             .map_err(|e| KvError::ConnectionError(format!("failed to create client: {e}")))?;
-        let conn = client
-            .get_multiplexed_async_connection_with_config(
-                &AsyncConnectionConfig::new()
-                    .set_connection_timeout(Duration::from_secs(5))
-                    .set_response_timeout(Duration::from_secs(30)),
-            )
-            .await
-            .map_err(|e| KvError::ConnectionError(format!("failed to connect: {e}")))?;
+        let conn = ConnectionManager::new_with_config(
+            client,
+            ConnectionManagerConfig::new()
+                .set_connection_timeout(Duration::from_secs(5))
+                .set_response_timeout(Duration::from_secs(30)),
+        )
+        .await
+        .map_err(|e| KvError::ConnectionError(format!("failed to connect: {e}")))?;
         Ok(Self { conn })
     }
 }

@@ -4,17 +4,17 @@ use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
 #[derive(Model, Serialize, Deserialize, Clone, Debug)]
-#[bee(table = "dept", pk = "id")]
+#[bee(table = "dept")]
 pub struct Dept {
-    #[bee(auto)]
-    pub id: u64,
-    pub parent_id: u64,
-    #[bee(len = 64)]
+    #[bee(pk, auto)]
+    pub id: i64,
+    pub parent_id: i64,
+    #[bee(sql_type = "VARCHAR(64)")]
     pub name: String,
     pub sort: i32,
-    #[bee(len = 64)]
+    #[bee(sql_type = "VARCHAR(64)")]
     pub leader: String,
-    #[bee(len = 20)]
+    #[bee(sql_type = "VARCHAR(20)")]
     pub phone: String,
     pub status: i8,
     #[serde(serialize_with = "crate::util::ser_dt")]

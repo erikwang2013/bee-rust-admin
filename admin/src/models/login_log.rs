@@ -4,18 +4,20 @@ use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
 #[derive(Model, Serialize, Deserialize, Clone, Debug)]
-#[bee(table = "login_log", pk = "id")]
+#[bee(table = "login_log")]
 pub struct LoginLog {
-    #[bee(auto)]
-    pub id: u64,
-    pub admin_id: u64,
-    #[bee(len = 64)]
+    #[bee(pk, auto)]
+    pub id: i64,
+    pub admin_id: i64,
+    #[bee(sql_type = "VARCHAR(64)")]
     pub username: String,
-    #[bee(len = 45)]
+    #[bee(sql_type = "VARCHAR(45)")]
     pub ip: String,
+    #[bee(sql_type = "VARCHAR(255)")]
     pub user_agent: String,
     /// 1 成功 / 0 失败
     pub status: i8,
+    #[bee(sql_type = "VARCHAR(255)")]
     pub msg: String,
     #[serde(serialize_with = "crate::util::ser_dt")]
     pub created_at: NaiveDateTime,

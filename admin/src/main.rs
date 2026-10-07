@@ -7,6 +7,7 @@ mod datascope;
 mod error;
 mod jobs;
 mod models;
+mod relations;
 mod retention;
 mod seed;
 mod state;
@@ -69,7 +70,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _log = bee_rust::bee_logs::Logger::new().level(parse_level(&cfg.log_level)).init()?;
     tracing::info!("{} 启动，配置 {}", cfg.app_name, conf_path);
 
-    let db = bee_orm::Db::connect(&cfg.db_dsn).await?;
+    // 池大小沿用迁移前的 10；`Pool::connect` 是同步的（连接按需惰性建立）
+    let db = bee_orm::pool::mysql::Pool::connect(&cfg.db_dsn, 10)?;
     seed::migrate(&db).await?;
     seed::seed(&db, &cfg).await?;
     let throttle = api::auth::login_throttle(&cfg);

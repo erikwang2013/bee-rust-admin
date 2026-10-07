@@ -11,6 +11,7 @@
 //! - `[job] enabled=false` 时**不启动循环**（手动触发仍可用：运维要能临时关掉定时、手动补跑）。
 use crate::models::{Admin, Job, JobLog};
 use crate::state::AppState;
+use bee_orm::Model;
 use crate::util::now;
 use std::time::Duration;
 
@@ -21,7 +22,7 @@ pub struct JobSpec {
     pub code: &'static str,
     pub name: &'static str,
     /// 首次 seed 写进 `job.cron` 的默认间隔秒数；之后以库里的值为准
-    pub interval_secs: u64,
+    pub interval_secs: i64,
     /// 返回的字符串进 `job_log.msg`
     pub run: fn(AppState) -> JobFuture,
 }
@@ -66,7 +67,7 @@ async fn tick_once(state: &AppState) {
         Ok(qs) => qs,
         Err(e) => return tracing::warn!("构造任务查询失败: {e}"),
     };
-    let jobs = match qs.fetch_all(&state.db).await {
+    let jobs = match qs.all(&state.db).await {
         Ok(v) => v,
         Err(e) => return tracing::warn!("查询到期任务失败: {e}"),
     };
@@ -84,8 +85,8 @@ async fn tick_once(state: &AppState) {
 }
 
 /// `cron`（间隔秒数）→ 秒数。0 / 非数字（手工改库改坏）→ None = 永不到期。
-fn interval_secs(cron: &str) -> Option<u64> {
-    cron.trim().parse::<u64>().ok().filter(|s| *s > 0)
+fn interval_secs(cron: &str) -> Option<i64> {
+    cron.trim().parse::<i64>().ok().filter(|s| *s > 0)
 }
 
 /// 到期判定：没跑过（NULL）= 到期；否则 `now - last_run_at >= 间隔`。
@@ -101,13 +102,13 @@ fn due(job: &Job, now: chrono::NaiveDateTime) -> bool {
 
 /// 执行一个任务：抢占 → 跑 → 写 `job_log` → 回写 job 行的执行结果。
 /// 手动触发与调度循环都走这里（`last_run_at` 两边都更新：UI 的「上次运行」要如实）。
-pub async fn run(state: &AppState, job: Job, spec: &JobSpec) -> (i8, String, u64) {
+pub async fn run(state: &AppState, job: Job, spec: &JobSpec) -> (i8, String, i64) {
     let started = now();
     // 抢占：先把 last_run_at 落库，同一进程的下一 tick 不会再选它
     let mut claimed = job.clone();
     claimed.last_run_at = Some(started);
     claimed.updated_at = started;
-    if let Err(e) = state.db.update(&claimed).await {
+    if let Err(e) = claimed.update(&state.db).await {
         tracing::warn!("抢占任务 {} 失败: {e}", job.code);
     }
 
@@ -116,11 +117,11 @@ pub async fn run(state: &AppState, job: Job, spec: &JobSpec) -> (i8, String, u64
         Ok(m) => (1i8, m),
         Err(e) => (0i8, e),
     };
-    let duration_ms = t0.elapsed().as_millis() as u64;
+    let duration_ms = t0.elapsed().as_millis() as i64;
     // 手工摘要/错误信息可能带换行或超长：列是 varchar(255)
     let msg: String = msg.replace(['\r', '\n'], " ").chars().take(255).collect();
 
-    let mut row = JobLog {
+    let row = JobLog {
         id: 0,
         job_code: job.code.clone(),
         started_at: started,
@@ -128,7 +129,7 @@ pub async fn run(state: &AppState, job: Job, spec: &JobSpec) -> (i8, String, u64
         status,
         msg: msg.clone(),
     };
-    if let Err(e) = state.db.insert(&mut row).await {
+    if let Err(e) = row.insert(&state.db).await {
         tracing::warn!("写任务执行记录失败: {e}");
     }
 
@@ -136,7 +137,7 @@ pub async fn run(state: &AppState, job: Job, spec: &JobSpec) -> (i8, String, u64
     done.last_status = Some(status);
     done.last_msg = msg.clone();
     done.updated_at = now();
-    if let Err(e) = state.db.update(&done).await {
+    if let Err(e) = done.update(&state.db).await {
         tracing::warn!("回写任务 {} 状态失败: {e}", job.code);
     }
     (status, msg, duration_ms)
@@ -180,11 +181,11 @@ async fn avatar_orphan_clean(state: AppState) -> Result<String, String> {
         if stem.is_empty() || !stem.bytes().all(|b| b.is_ascii_digit()) {
             continue;
         }
-        let Ok(id) = stem.parse::<u64>() else { continue };
+        let Ok(id) = stem.parse::<i64>() else { continue };
         let exists = Admin::query()
             .filter_eq("id", id)
             .map_err(|e| format!("构造管理员查询失败: {e}"))?
-            .fetch_one(&state.db)
+            .one(&state.db)
             .await
             .map_err(|e| format!("查管理员 {id} 失败: {e}"))?
             .is_some();

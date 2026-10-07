@@ -1,0 +1,5 @@
+error: bee_orm: #[bee(soft_delete)] is not valid on the primary key field
+ --> tests/ui/soft_delete_on_pk.rs:8:5
+  |
+8 |     id: i64,
+  |     ^^

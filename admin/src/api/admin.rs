@@ -1,5 +1,5 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-use crate::api::{check_len, csv, dedup_ids, page_size};
+use crate::api::{PagingExt, check_len, csv, dedup_ids, page_size};
 use crate::auth::Auth;
 use crate::datascope;
 use crate::error::{ApiError, AppJson, AppPath, AppQuery, ok};
@@ -9,18 +9,19 @@ use crate::util::{hash_password, now};
 use axum::Json;
 use axum::extract::State;
 use axum::response::Response;
-use bee_orm::{OrmError, QuerySet};
+use bee_orm::{Model, OrmError, QuerySet};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use crate::relations::RelationsExt;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct AdminListQuery {
     pub page: Option<u32>,
     pub size: Option<u32>,
     pub username: Option<String>,
     pub status: Option<i8>,
-    pub dept_id: Option<u64>,
+    pub dept_id: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -36,13 +37,13 @@ pub struct AdminCreateBody {
     #[serde(default)]
     pub sex: i8,
     #[serde(default)]
-    pub dept_id: u64,
+    pub dept_id: i64,
     #[serde(default = "status_default")]
     pub status: i8,
     #[serde(default)]
     pub remark: String,
     #[serde(default)]
-    pub role_ids: Vec<u64>,
+    pub role_ids: Vec<i64>,
 }
 
 #[derive(Deserialize)]
@@ -56,13 +57,13 @@ pub struct AdminUpdateBody {
     #[serde(default)]
     pub sex: i8,
     #[serde(default)]
-    pub dept_id: u64,
+    pub dept_id: i64,
     #[serde(default = "status_default")]
     pub status: i8,
     #[serde(default)]
     pub remark: String,
     #[serde(default)]
-    pub role_ids: Vec<u64>,
+    pub role_ids: Vec<i64>,
 }
 
 #[derive(Deserialize)]
@@ -77,7 +78,7 @@ pub struct PasswordBody {
 
 #[derive(Deserialize)]
 pub struct RolesBody {
-    pub role_ids: Vec<u64>,
+    pub role_ids: Vec<i64>,
 }
 
 fn status_default() -> i8 {
@@ -115,12 +116,8 @@ fn validate_profile(
     check_len("remark", remark, 255)
 }
 
-/// 列表与导出共用的筛选 + 数据权限。
-async fn filtered(
-    q: &AdminListQuery,
-    auth: &Auth,
-    state: &AppState,
-) -> Result<QuerySet<Admin>, ApiError> {
+/// 列表与导出共用的筛选条件（不含数据权限）。
+fn filtered_query(q: &AdminListQuery) -> Result<QuerySet<Admin>, ApiError> {
     let mut qs = Admin::query();
     if let Some(u) = q.username.as_deref().filter(|s| !s.trim().is_empty()) {
         qs = qs.filter_contains("username", u.trim()).map_err(ApiError::from)?;
@@ -131,21 +128,30 @@ async fn filtered(
     if let Some(d) = q.dept_id {
         qs = qs.filter_eq("dept_id", d).map_err(ApiError::from)?;
     }
+    Ok(qs)
+}
+
+/// 列表与导出共用的筛选 + 数据权限。
+async fn filtered(
+    q: &AdminListQuery,
+    auth: &Auth,
+    state: &AppState,
+) -> Result<QuerySet<Admin>, ApiError> {
     let scope = datascope::resolve(auth, &state.db).await?;
-    Ok(datascope::apply(qs, &scope, "dept_id", "id"))
+    Ok(datascope::apply(filtered_query(q)?, &scope, "dept_id", "id"))
 }
 
 /// 补 dept_name / role_names / role_ids / is_super（列表与导出共用）。
 async fn decorate(state: &AppState, rows: Vec<Admin>) -> Result<Vec<Value>, ApiError> {
-    let dept_names: HashMap<u64, String> = Dept::query()
-        .fetch_all(&state.db)
+    let dept_names: HashMap<i64, String> = Dept::query()
+        .all(&state.db)
         .await
         .map_err(ApiError::from)?
         .into_iter()
         .map(|d| (d.id, d.name))
         .collect();
-    let role_names: HashMap<u64, String> = Role::query()
-        .fetch_all(&state.db)
+    let role_names: HashMap<i64, String> = Role::query()
+        .all(&state.db)
         .await
         .map_err(ApiError::from)?
         .into_iter()
@@ -197,21 +203,25 @@ fn export_header() -> Vec<String> {
 }
 
 /// 取一批导出数据（keyset：`id < last`，首页不带该条件），补字段/渲染与旧的一次性实现一致。
+/// `QuerySet` 不可克隆，所以每批用筛选条件 + 已解析的数据范围重建（`scope` 只解析一次）。
 async fn export_batch(
     state: &AppState,
-    base: &QuerySet<Admin>,
-    last: Option<u64>,
-) -> Result<Vec<(u64, String)>, ApiError> {
-    let mut qs = base.clone().order_by("id DESC").limit(csv::BATCH);
+    q: &AdminListQuery,
+    scope: &datascope::DataScope,
+    last: Option<i64>,
+) -> Result<Vec<(i64, String)>, ApiError> {
+    let mut qs = datascope::apply(filtered_query(q)?, scope, "dept_id", "id")
+        .order_by("id DESC")
+        .limit(csv::BATCH);
     if let Some(last) = last {
-        qs = qs.filter_raw("id < ?", &[last]);
+        qs = qs.filter_lt("id", last).map_err(ApiError::from)?;
     }
-    let rows = qs.fetch_all(&state.db).await.map_err(ApiError::from)?;
+    let rows = qs.all(&state.db).await.map_err(ApiError::from)?;
     Ok(decorate(state, rows)
         .await?
         .into_iter()
         .map(|v| {
-            let id = v["id"].as_u64().unwrap_or(0);
+            let id = v["id"].as_i64().unwrap_or(0);
             (
                 id,
                 csv::row(&[
@@ -240,11 +250,12 @@ pub async fn export(
     AppQuery(q): AppQuery<AdminListQuery>,
 ) -> Result<Response, ApiError> {
     auth.require("system:admin:list")?;
-    let base = filtered(&q, &auth, &state).await?;
+    let scope = datascope::resolve(&auth, &state.db).await?;
     csv::streamed(format!("admins-{}.csv", csv::today()), export_header(), move |last| {
         let state = state.clone();
-        let base = base.clone();
-        async move { export_batch(&state, &base, last).await }
+        let q = q.clone();
+        let scope = scope.clone();
+        async move { export_batch(&state, &q, &scope, last).await }
     })
     .await
 }
@@ -252,13 +263,13 @@ pub async fn export(
 pub async fn detail(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<u64>,
+    AppPath(id): AppPath<i64>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:admin:list")?;
     let a = Admin::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
-        .fetch_one(&state.db)
+        .one(&state.db)
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
@@ -274,6 +285,16 @@ pub async fn detail(
     Ok(ok(v))
 }
 
+/// 用户名重复 → 该接口的专属文案（`admin.username_taken`）。
+/// 唯一键冲突的识别在 `ApiError::from` 里按 MySQL 报错文本做（上游 `OrmError`
+/// 没有独立变体），冲突是它唯一映射成 `BadRequest` 的情况，其余是 `NotFound` / `Internal`。
+fn username_taken(e: OrmError) -> ApiError {
+    match ApiError::from(e) {
+        ApiError::BadRequest(_) => ApiError::BadRequest("用户名已存在".into()),
+        other => other,
+    }
+}
+
 pub async fn create(
     State(state): State<AppState>,
     auth: Auth,
@@ -287,7 +308,7 @@ pub async fn create(
     datascope::ensure_dept_in_scope(&auth, &state.db, body.dept_id).await?;
     datascope::ensure_roles_grantable(&auth, &state.db, &body.role_ids).await?;
 
-    let mut a = Admin {
+    let a = Admin {
         id: 0,
         username: body.username.trim().to_string(),
         password: hash_password(&body.password),
@@ -306,11 +327,7 @@ pub async fn create(
         created_at: now(),
         updated_at: now(),
     };
-    match state.db.insert(&mut a).await {
-        Ok(_) => {}
-        Err(OrmError::DuplicateKey(_)) => return Err(ApiError::BadRequest("用户名已存在".into())),
-        Err(e) => return Err(e.into()),
-    }
+    let a = a.create(&state.db).await.map_err(username_taken)?;
     state
         .db
         .set_relations("admin_role", ("admin_id", a.id), "role_id", &dedup_ids(body.role_ids))
@@ -323,7 +340,7 @@ pub async fn create(
 pub async fn update(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<u64>,
+    AppPath(id): AppPath<i64>,
     AppJson(body): AppJson<AdminUpdateBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:admin:edit")?;
@@ -331,7 +348,7 @@ pub async fn update(
     let mut a = Admin::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
-        .fetch_one(&state.db)
+        .one(&state.db)
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
@@ -365,7 +382,7 @@ pub async fn update(
     a.status = new_status;
     a.remark = body.remark;
     a.updated_at = now();
-    state.db.update(&a).await.map_err(ApiError::from)?;
+    a.update(&state.db).await.map_err(ApiError::from)?;
     state
         .db
         .set_relations("admin_role", ("admin_id", id), "role_id", &dedup_ids(body.role_ids))
@@ -378,7 +395,7 @@ pub async fn update(
 pub async fn remove(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<u64>,
+    AppPath(id): AppPath<i64>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:admin:remove")?;
     if id == auth.admin.id {
@@ -387,7 +404,7 @@ pub async fn remove(
     let a = Admin::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
-        .fetch_one(&state.db)
+        .one(&state.db)
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
@@ -400,14 +417,14 @@ pub async fn remove(
         .del_relations("admin_role", "admin_id", id)
         .await
         .map_err(ApiError::from)?;
-    state.db.delete::<Admin>(id).await.map_err(ApiError::from)?;
+    a.delete(&state.db).await.map_err(ApiError::from)?;
     Ok(ok(Value::Null))
 }
 
 pub async fn set_status(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<u64>,
+    AppPath(id): AppPath<i64>,
     AppJson(body): AppJson<StatusBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:admin:edit")?;
@@ -417,7 +434,7 @@ pub async fn set_status(
     let mut a = Admin::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
-        .fetch_one(&state.db)
+        .one(&state.db)
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
@@ -430,14 +447,14 @@ pub async fn set_status(
         a.token_version += 1; // 禁用即踢下线
     }
     a.updated_at = now();
-    state.db.update(&a).await.map_err(ApiError::from)?;
+    a.update(&state.db).await.map_err(ApiError::from)?;
     Ok(ok(Value::Null))
 }
 
 pub async fn reset_password(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<u64>,
+    AppPath(id): AppPath<i64>,
     AppJson(body): AppJson<PasswordBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:admin:resetPwd")?;
@@ -445,7 +462,7 @@ pub async fn reset_password(
     let mut a = Admin::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
-        .fetch_one(&state.db)
+        .one(&state.db)
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
@@ -456,21 +473,21 @@ pub async fn reset_password(
     a.password = hash_password(&body.password);
     a.token_version += 1; // 旧 token 立即失效
     a.updated_at = now();
-    state.db.update(&a).await.map_err(ApiError::from)?;
+    a.update(&state.db).await.map_err(ApiError::from)?;
     Ok(ok(Value::Null))
 }
 
 pub async fn set_roles(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<u64>,
+    AppPath(id): AppPath<i64>,
     AppJson(body): AppJson<RolesBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:admin:edit")?;
     let target = Admin::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
-        .fetch_one(&state.db)
+        .one(&state.db)
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;

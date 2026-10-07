@@ -7,7 +7,9 @@ use std::time::{Duration, SystemTime};
 
 pub type CliResult = Result<(), String>;
 
+mod migrate;
 mod pet;
+pub use migrate::{migrate_init, migrate_run};
 pub use pet::pet;
 
 /// Scaffold a new bee-rust project directory with a runnable template.
@@ -33,7 +35,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bee-rust = "1"
+bee_rust = "1"
+async-trait = "0.1"
 tokio = {{ version = "1", features = ["full"] }}
 axum = "0.8"
 serde_json = "1"
@@ -80,11 +83,13 @@ pub fn generate_controller(name: &str) -> CliResult {
     }
     let class = pascal_case(name);
     let content = format!(
-        r#"use bee_rust::prelude::*;
-use bee_rust::bee_router::RouterError;
+        r#"use async_trait::async_trait;
+use bee_rust::bee_router::context::RouterError;
+use bee_rust::prelude::*;
 
 pub struct {class}Controller;
 
+#[async_trait]
 impl Controller for {class}Controller {{
     async fn handle(&self, ctx: &mut Context) -> Result<(), RouterError> {{
         ctx.json(&serde_json::json!({{ "message": "{class}Controller" }}))?;
@@ -129,7 +134,7 @@ pub fn generate_model(name: &str, fields: Option<&str>) -> CliResult {
         }
     }
     let content = format!(
-        r#"use bee_rust::bee_orm::{{self, Model}};
+        r#"use bee_rust::bee_orm::Model;
 
 #[derive(Model)]
 #[allow(dead_code)]
@@ -194,11 +199,6 @@ pub fn pack(target: &str) -> CliResult {
     fs::copy(&src, &dst).map_err(io_err)?;
     println!("packaged `{}` -> `{dst}`", src.display());
     Ok(())
-}
-
-/// Database migrations are not yet implemented.
-pub fn migrate() -> CliResult {
-    Err("migrate is not implemented yet — use your ORM's migration tooling instead".into())
 }
 
 fn spawn_cargo_run() -> Result<Child, String> {
@@ -347,7 +347,8 @@ mod tests {
         assert!(Path::new("myapp/src/models/mod.rs").exists());
         let manifest = fs::read_to_string("myapp/Cargo.toml").unwrap();
         assert!(manifest.contains("name = \"myapp\""));
-        assert!(manifest.contains("bee-rust = \"1\""));
+        // The published package is `bee_rust`: a `bee-rust` key does not resolve.
+        assert!(manifest.contains("bee_rust = \"1\""));
         let main = fs::read_to_string("myapp/src/main.rs").unwrap();
         assert!(main.contains("bee_rust::init()"));
         assert!(main.contains("mod controllers;"));
@@ -369,6 +370,28 @@ mod tests {
         assert!(content.contains("UserController"));
         assert!(content.contains("impl Controller for UserController"));
         assert!(generate_controller("user").is_err());
+        std::env::set_current_dir(old).unwrap();
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn generated_controller_is_in_compilable_form() {
+        let _guard = CWD_LOCK.lock().unwrap();
+        let dir = temp_dir("controller-compile");
+        let old = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        generate_controller("blog_post").unwrap();
+        let content = fs::read_to_string("controllers/blog_post.rs").unwrap();
+        // `Controller` is an `#[async_trait]` trait: the impl carries the same
+        // attribute, so async-trait must be a direct scaffold dependency.
+        assert!(content.contains("use async_trait::async_trait;"));
+        assert!(content.contains("#[async_trait]\nimpl Controller for BlogPostController"));
+        // `RouterError` is defined in `bee_router::context`; the root path is private.
+        assert!(content.contains("use bee_rust::bee_router::context::RouterError;"));
+        assert!(!content.contains("use bee_rust::bee_router::RouterError;"));
+        new_project("blog_app").unwrap();
+        let manifest = fs::read_to_string("blog_app/Cargo.toml").unwrap();
+        assert!(manifest.contains("async-trait = \"0.1\""));
         std::env::set_current_dir(old).unwrap();
         fs::remove_dir_all(&dir).unwrap();
     }
@@ -415,11 +438,6 @@ mod tests {
     }
 
     #[test]
-    fn migrate_reports_not_implemented() {
-        assert!(migrate().unwrap_err().contains("not implemented"));
-    }
-
-    #[test]
     fn names_with_path_separators_are_rejected() {
         let _guard = CWD_LOCK.lock().unwrap();
         let dir = temp_dir("traversal");
@@ -457,7 +475,7 @@ mod tests {
         std::env::set_current_dir(&dir).unwrap();
         generate_model("post", None).unwrap();
         let content = fs::read_to_string("models/post.rs").unwrap();
-        assert!(content.contains("use bee_rust::bee_orm::{self, Model};"));
+        assert!(content.contains("use bee_rust::bee_orm::Model;"));
         assert!(!content.contains("use bee_orm::Model;"));
         std::env::set_current_dir(old).unwrap();
         fs::remove_dir_all(&dir).unwrap();

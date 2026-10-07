@@ -10,11 +10,13 @@ use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use base64::Engine;
+use bee_orm::Model;
 use security_rust::throttle::{MemoryThrottleStore, Throttle, ThrottleConfig, ThrottleDecision};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
+use crate::relations::RelationsExt;
 
 #[derive(Deserialize)]
 pub struct LoginBody {
@@ -65,13 +67,13 @@ fn user_agent(headers: &HeaderMap) -> String {
 
 pub async fn write_login_log(
     state: &AppState,
-    admin_id: u64,
+    admin_id: i64,
     username: &str,
     headers: &HeaderMap,
     status: i8,
     msg: &str,
 ) {
-    let mut log = LoginLog {
+    let log = LoginLog {
         id: 0,
         admin_id,
         username: username.chars().take(64).collect(),
@@ -81,7 +83,7 @@ pub async fn write_login_log(
         msg: msg.chars().take(255).collect(),
         created_at: now(),
     };
-    if let Err(e) = state.db.insert(&mut log).await {
+    if let Err(e) = log.insert(&state.db).await {
         // 登录记录写失败不能影响登录本身
         tracing::error!("写登录记录失败: {e}");
     }
@@ -95,7 +97,9 @@ pub fn login_throttle(cfg: &AppConfig) -> Option<Arc<Throttle<MemoryThrottleStor
     if cfg.max_fail <= 0 || cfg.lock_minutes <= 0 {
         return None;
     }
-    let secs = cfg.lock_minutes.saturating_mul(60).min(u64::MAX as i64) as u64;
+    // 饱和乘法自带上限，不必再 clamp 一次；throttle 收 u64 秒
+    // （`lock_minutes > 0` 已由上面的早返回保证，i64 → u64 无损）
+    let secs = cfg.lock_minutes.saturating_mul(60) as u64;
     Some(Arc::new(Throttle::new(
         MemoryThrottleStore::new(),
         ThrottleConfig {
@@ -169,7 +173,7 @@ pub async fn login(
     let admin = Admin::query()
         .filter_eq("username", username)
         .map_err(ApiError::from)?
-        .fetch_one(&state.db)
+        .one(&state.db)
         .await
         .map_err(ApiError::from)?;
 
@@ -198,7 +202,7 @@ pub async fn login(
     updated.last_login_at = Some(now());
     updated.last_login_ip = client_ip(&headers);
     updated.updated_at = now();
-    state.db.update(&updated).await.map_err(ApiError::from)?;
+    updated.update(&state.db).await.map_err(ApiError::from)?;
 
     // 成功即清掉该账号的失败计数（修复①：4 次失败 + 1 次成功 + 1 次失败不该锁死）。
     // IP 桶**不清**：桶是共享的，攻击者拿自己账号登录一次就能替爆破者洗掉计数，
@@ -236,7 +240,7 @@ pub async fn logout(
     let mut admin = auth.admin.clone();
     admin.token_version += 1; // 当前 token 立即失效
     admin.updated_at = now();
-    state.db.update(&admin).await.map_err(ApiError::from)?;
+    admin.update(&state.db).await.map_err(ApiError::from)?;
     write_login_log(&state, admin.id, &admin.username, &headers, 1, "退出登录").await;
     Ok(ok(Value::Null))
 }
@@ -252,7 +256,7 @@ pub async fn logout_others(
     let mut admin = auth.admin.clone();
     admin.token_version += 1;
     admin.updated_at = now();
-    state.db.update(&admin).await.map_err(ApiError::from)?;
+    admin.update(&state.db).await.map_err(ApiError::from)?;
 
     let (token, expires_in) = sign_token(admin.id, admin.token_version, &state.cfg)?;
     write_login_log(&state, admin.id, &admin.username, &headers, 1, "退出其他设备").await;
@@ -289,14 +293,14 @@ pub async fn menus(State(state): State<AppState>, auth: Auth) -> Result<Json<Val
         .filter_eq("visible", 1)
         .map_err(ApiError::from)?
         .order_by("sort ASC, id ASC")
-        .fetch_all(&state.db)
+        .all(&state.db)
         .await
         .map_err(ApiError::from)?;
 
-    let allowed: Option<Vec<u64>> = if auth.is_super {
+    let allowed: Option<Vec<i64>> = if auth.is_super {
         None
     } else {
-        let mut ids: Vec<u64> = Vec::new();
+        let mut ids: Vec<i64> = Vec::new();
         for rid in auth.roles.iter().filter(|r| r.status == 1).map(|r| r.id) {
             ids.extend(
                 state
@@ -309,7 +313,7 @@ pub async fn menus(State(state): State<AppState>, auth: Auth) -> Result<Json<Val
         ids.sort_unstable();
         ids.dedup();
         // 客户端只提交子节点时（antd 半选不落库），补全祖先，否则拼不出树、侧边栏为空
-        let parent_of: HashMap<u64, u64> = all.iter().map(|m| (m.id, m.parent_id)).collect();
+        let parent_of: HashMap<i64, i64> = all.iter().map(|m| (m.id, m.parent_id)).collect();
         Some(crate::api::with_ancestors(&parent_of, &ids))
     };
 
@@ -322,7 +326,7 @@ pub async fn menus(State(state): State<AppState>, auth: Auth) -> Result<Json<Val
         })
         .collect();
 
-    fn build(parent: u64, nodes: &[&Menu]) -> Vec<Value> {
+    fn build(parent: i64, nodes: &[&Menu]) -> Vec<Value> {
         nodes
             .iter()
             .filter(|m| m.parent_id == parent)
@@ -373,7 +377,7 @@ pub async fn update_profile(
     admin.email = body.email;
     admin.phone = body.phone;
     admin.updated_at = now();
-    state.db.update(&admin).await.map_err(ApiError::from)?;
+    admin.update(&state.db).await.map_err(ApiError::from)?;
     Ok(ok(Value::Null))
 }
 
@@ -406,7 +410,7 @@ fn decode_avatar(data_url: &str) -> Result<(&'static str, Vec<u8>), ApiError> {
     Ok((ext, bytes))
 }
 
-fn avatar_path(cfg: &crate::config::AppConfig, id: u64, ext: &str) -> std::path::PathBuf {
+fn avatar_path(cfg: &crate::config::AppConfig, id: i64, ext: &str) -> std::path::PathBuf {
     std::path::Path::new(&cfg.upload_dir).join("avatar").join(format!("{id}.{ext}"))
 }
 
@@ -432,19 +436,19 @@ pub async fn upload_avatar(
     let mut admin = auth.admin.clone();
     admin.avatar = avatar_url(admin.id);
     admin.updated_at = now();
-    state.db.update(&admin).await.map_err(ApiError::from)?;
+    admin.update(&state.db).await.map_err(ApiError::from)?;
     Ok(ok(json!({ "avatar": admin.avatar })))
 }
 
-fn avatar_url(id: u64) -> String {
+fn avatar_url(id: i64) -> String {
     format!("/api/v1/avatar/{id}")
 }
 
 /// 读头像：公开接口（`<img>` 带不了 Authorization 头），按 id + 扩展名定位文件。
-/// 路径参数是 u64，不存在路径穿越。
+/// 路径参数是 i64，不存在路径穿越。
 pub async fn get_avatar(
     State(state): State<AppState>,
-    AppPath(id): AppPath<u64>,
+    AppPath(id): AppPath<i64>,
 ) -> Result<Response, ApiError> {
     for (ext, ct) in [("png", "image/png"), ("jpg", "image/jpeg")] {
         if let Ok(bytes) = std::fs::read(avatar_path(&state.cfg, id, ext)) {
@@ -476,7 +480,7 @@ pub async fn change_password(
     admin.password = hash_password(&body.new_password);
     admin.token_version += 1; // 全端下线，需重新登录
     admin.updated_at = now();
-    state.db.update(&admin).await.map_err(ApiError::from)?;
+    admin.update(&state.db).await.map_err(ApiError::from)?;
     Ok(ok(Value::Null))
 }
 

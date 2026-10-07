@@ -1,0 +1,5 @@
+error: bee_orm: m2m columns collide: add explicit local and foreign overrides
+ --> tests/ui/m2m_columns_collide.rs:7:11
+  |
+7 | #[bee(m2m(Tag))]
+  |           ^^^

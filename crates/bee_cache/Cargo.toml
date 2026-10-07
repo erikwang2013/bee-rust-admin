@@ -12,7 +12,7 @@ readme.workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
-tokio = { workspace = true, features = ["sync", "time"] }
+tokio = { workspace = true, features = ["sync", "time", "rt"] }
 thiserror.workspace = true
 
 [features]
@@ -22,8 +22,17 @@ memcache = ["dep:memcache"]
 [dependencies.redis]
 version = "0.27"
 optional = true
-features = ["tokio-comp"]
+# `aio` + `connection-manager` mirror bee_kv's redis features: the backend
+# holds a reconnecting `ConnectionManager`.
+features = ["tokio-comp", "aio", "connection-manager"]
 
 [dependencies.memcache]
 version = "0.17"
 optional = true
+# The default `tls` feature pulls `openssl`; the crate compiles without it
+# (TLS to memcached is unsupported here). Flipping this back re-enables it.
+default-features = false
+
+# Build the docs with every feature: the optional backends gate public modules.
+[package.metadata.docs.rs]
+all-features = true

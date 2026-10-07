@@ -110,8 +110,8 @@ async fn v16_job_notice_features() {
         let m = menu(&tree, perm).unwrap_or_else(|| panic!("种子里必须有 {perm} 菜单: {tree}"));
         assert_eq!(m["path"], path, "页面路径");
         assert_eq!(m["component"], comp, "组件路径");
-        let id = m["id"].as_u64().unwrap();
-        let parent_id = m["parent_id"].as_u64().unwrap();
+        let id = m["id"].as_i64().unwrap();
+        let parent_id = m["parent_id"].as_i64().unwrap();
         let dir = tree
             .as_array()
             .unwrap()
@@ -145,8 +145,8 @@ async fn v16_job_notice_features() {
     assert_eq!(retention["name"], "日志清理", "{v}");
     assert_eq!(retention["cron"], "86400", "默认间隔 24 小时: {v}");
     assert_eq!(retention["status"], 1, "默认启用: {v}");
-    let retention_id = retention["id"].as_u64().unwrap();
-    let avatar_id = avatar_job["id"].as_u64().unwrap();
+    let retention_id = retention["id"].as_i64().unwrap();
+    let avatar_id = avatar_job["id"].as_i64().unwrap();
 
     // 筛选
     let (_st, v) = call(&c, Method::GET, api("/jobs?name=日志"), Some(&admin), None).await;
@@ -256,7 +256,7 @@ async fn v16_job_notice_features() {
     // ── 头像孤儿清理的行为 ─────────────────────────────────────
     let dir = std::path::Path::new("target/test-uploads/avatar");
     std::fs::create_dir_all(dir).unwrap();
-    let admin_id = sqlx::query_scalar::<_, u64>("SELECT id FROM admin WHERE username = 'admin'")
+    let admin_id = sqlx::query_scalar::<_, i64>("SELECT id FROM admin WHERE username = 'admin'")
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -296,7 +296,7 @@ async fn v16_job_notice_features() {
         "title": "系统维护", "content": "今晚 22:00 停机维护", "status": 1,
     }))).await;
     assert_eq!(st, 200, "发公告: {v}");
-    let n1 = v["data"]["id"].as_u64().unwrap();
+    let n1 = v["data"]["id"].as_i64().unwrap();
     let n1_published: chrono::NaiveDateTime = sqlx::query_scalar("SELECT published_at FROM notice WHERE id = ?")
         .bind(n1)
         .fetch_one(&pool)
@@ -308,7 +308,7 @@ async fn v16_job_notice_features() {
         "title": "草稿箱", "content": "还没想好", "status": 0,
     }))).await;
     assert_eq!(st, 200, "存草稿: {v}");
-    let n2 = v["data"]["id"].as_u64().unwrap();
+    let n2 = v["data"]["id"].as_i64().unwrap();
     let n2_published: Option<chrono::NaiveDateTime> = sqlx::query_scalar("SELECT published_at FROM notice WHERE id = ?")
         .bind(n2)
         .fetch_one(&pool)
@@ -340,7 +340,7 @@ async fn v16_job_notice_features() {
         "name": "v16_none", "code": "v16_none", "data_scope": 4, "status": 1,
     }))).await;
     assert_eq!(st, 200, "建空角色: {v}");
-    let empty_role = v["data"]["id"].as_u64().unwrap();
+    let empty_role = v["data"]["id"].as_i64().unwrap();
     let (st, v) = call(&c, Method::POST, api("/admins"), Some(&admin), Some(json!({
         "username": "v16user", "password": "v16user123", "role_ids": [empty_role],
     }))).await;
@@ -462,7 +462,7 @@ async fn v16_job_notice_features() {
     let list = v["data"]["list"].as_array().unwrap();
     assert_eq!(list.len(), 50, "列表只回最近 50 条: {v}");
     // 排序 id DESC，且摘掉一条后从列表消失
-    let ids: Vec<u64> = list.iter().map(|n| n["id"].as_u64().unwrap()).collect();
+    let ids: Vec<i64> = list.iter().map(|n| n["id"].as_i64().unwrap()).collect();
     assert!(ids.windows(2).all(|w| w[0] > w[1]), "按 id DESC: {ids:?}");
     let first_id = ids[0];
     let (st, v) = call(&c, Method::POST, api(&format!("/notices/{first_id}/read")), Some(&plain), None).await;
@@ -470,7 +470,7 @@ async fn v16_job_notice_features() {
     let (st, v) = call(&c, Method::GET, api("/notices/unread"), Some(&plain), None).await;
     assert_eq!(st, 200, "{v}");
     assert_eq!(v["data"]["total"], 52, "读一条少一条: {v}");
-    let ids: Vec<u64> = v["data"]["list"].as_array().unwrap().iter().map(|n| n["id"].as_u64().unwrap()).collect();
+    let ids: Vec<i64> = v["data"]["list"].as_array().unwrap().iter().map(|n| n["id"].as_i64().unwrap()).collect();
     assert!(!ids.contains(&first_id), "读过的必须从列表消失: {ids:?}");
 
     // ── 删除：同一事务里清 notice_read ──────────────────────────
@@ -537,7 +537,7 @@ async fn v16_job_notice_features() {
     assert_eq!(st, 200, "{v}");
     assert_eq!(v["data"]["total"], 2, "补齐不受开关影响（运维要能看到任务）: {v}");
     let rid = v["data"]["list"].as_array().unwrap().iter()
-        .find(|j| j["code"] == "log_retention").unwrap()["id"].as_u64().unwrap();
+        .find(|j| j["code"] == "log_retention").unwrap()["id"].as_i64().unwrap();
     // 新库 last_run_at 全空 = 一旦循环启动，第一个 tick 就会跑；等 5 秒断言没跑
     tokio::time::sleep(Duration::from_secs(5)).await;
     let n = job_log_count(&pool, "log_retention").await;

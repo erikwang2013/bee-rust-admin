@@ -5,6 +5,7 @@ use crate::api::auth::client_ip;
 use crate::auth::verify_token;
 use crate::models::{Admin, AuditLog};
 use crate::state::AppState;
+use bee_orm::Model;
 use crate::util::now;
 use axum::body::Body;
 use axum::extract::{Request, State};
@@ -33,7 +34,7 @@ pub async fn audit_mw(State(state): State<AppState>, req: Request, next: Next) -
 
     let started = Instant::now();
     let mut resp = next.run(req).await;
-    let duration_ms = started.elapsed().as_millis() as u64;
+    let duration_ms = started.elapsed().as_millis() as i64;
     let status = resp.status().is_success();
 
     // 失败时取出信封里的 msg 留档。成功响应（含 CSV 大附件）不碰 body。
@@ -57,7 +58,7 @@ pub async fn audit_mw(State(state): State<AppState>, req: Request, next: Next) -
     }
 
     let (module, action) = module_action(&method, &path);
-    let mut row = AuditLog {
+    let row = AuditLog {
         id: 0,
         admin_id,
         username,
@@ -71,7 +72,7 @@ pub async fn audit_mw(State(state): State<AppState>, req: Request, next: Next) -
         ip,
         created_at: now(),
     };
-    if let Err(e) = state.db.insert(&mut row).await {
+    if let Err(e) = row.insert(&state.db).await {
         tracing::error!("写操作日志失败: {e}");
     }
     resp
@@ -79,7 +80,7 @@ pub async fn audit_mw(State(state): State<AppState>, req: Request, next: Next) -
 
 /// 从 Authorization 头解出操作者：只解 token + 一次按 id 查用户名（只发生在写操作上）。
 /// 凭据无效不拦请求（各接口自己的 Auth 提取器会给 401），这里退化成匿名记录。
-async fn actor(state: &AppState, headers: &axum::http::HeaderMap) -> (u64, String) {
+async fn actor(state: &AppState, headers: &axum::http::HeaderMap) -> (i64, String) {
     let Some(token) = headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
@@ -97,7 +98,7 @@ async fn actor(state: &AppState, headers: &axum::http::HeaderMap) -> (u64, Strin
             return (claims.sub, String::new());
         }
     };
-    let name = match qs.fetch_one(&state.db).await {
+    let name = match qs.one(&state.db).await {
         Ok(Some(a)) => a.username,
         // 管理员被删但 token 还没过期：留匿名记录即可，不是错误
         Ok(None) => String::new(),

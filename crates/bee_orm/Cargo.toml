@@ -8,25 +8,86 @@ description.workspace = true
 readme.workspace = true
 repository.workspace = true
 
-[features]
-# 目前只有 MySQL 后端（sqlx）。Postgres/SQLite 需要占位符改写与各自的 FromRow，
-# 等真有项目用再加。
-default = []
-
 [dependencies]
 async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-bee_orm_macro = { version = "1.1.5", path = "../bee_orm_macro" }
-chrono = { version = "0.4", features = ["serde"] }
-sqlx = { version = "0.8", default-features = false, features = [
-    "runtime-tokio",
-    "mysql",
-    "chrono",
-    "json",
-    "tls-none",
-] }
+bee_orm_macro = { version="1.2.3", path = "../bee_orm_macro" }
+
+[features]
+sqlite = ["dep:rusqlite", "dep:r2d2", "dep:r2d2_sqlite", "dep:tokio"]
+postgres = ["dep:tokio-postgres", "dep:deadpool-postgres", "dep:tokio", "rust_decimal?/db-tokio-postgres"]
+postgres-tls = ["postgres", "dep:tokio-postgres-rustls", "dep:rustls", "dep:webpki-roots"]
+mysql = ["dep:mysql_async", "dep:tokio"]
+# `?/` weak activation: the chrono/decimal driver integrations turn on only
+# when the matching backend feature is also on. The `tokio-postgres` dep line
+# below must not gain `with-chrono-0_4`: that would pull chrono whenever
+# postgres is on, breaking "feature off = no new dependencies".
+chrono = ["dep:chrono", "tokio-postgres?/with-chrono-0_4", "mysql_async?/chrono"]
+rust_decimal = ["dep:rust_decimal"]
+
+[dependencies.rusqlite]
+version = "0.32"
+optional = true
+features = ["bundled"]
+
+[dependencies.r2d2]
+version = "0.8"
+optional = true
+
+[dependencies.r2d2_sqlite]
+version = "0.25"
+optional = true
+
+[dependencies.tokio]
+workspace = true
+optional = true
+
+[dependencies.tokio-postgres]
+version = "0.7"
+optional = true
+features = ["with-serde_json-1"]
+
+[dependencies.deadpool-postgres]
+version = "0.14"
+optional = true
+
+[dependencies.mysql_async]
+version = "0.34"
+optional = true
+default-features = false
+features = ["default-rustls"]
+
+[dependencies.tokio-postgres-rustls]
+version = "0.14"
+optional = true
+default-features = false
+
+[dependencies.rustls]
+version = "0.23"
+optional = true
+default-features = false
+features = ["ring", "std", "tls12"]
+
+[dependencies.webpki-roots]
+version = "1"
+optional = true
+
+# `serde` is not in chrono's default features; without it the read path
+# (serde blanket) would not compile.
+[dependencies.chrono]
+version = "0.4"
+features = ["serde"]
+optional = true
+
+[dependencies.rust_decimal]
+version = "1"
+optional = true
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }
+tokio = { workspace = true }
+
+# Build the docs with every feature: the optional backends gate public modules.
+[package.metadata.docs.rs]
+all-features = true

@@ -1,0 +1,5 @@
+error: bee_orm: duplicate m2m target: each target can appear only once
+ --> tests/ui/duplicate_m2m_target.rs:7:11
+  |
+7 | #[bee(m2m(Tag))]
+  |           ^^^

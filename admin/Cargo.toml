@@ -6,17 +6,22 @@ license = "Apache-2.0"
 publish = false
 
 [dependencies]
-bee_rust = { version = "1.1.5", path = "../crates/bee_rust" }
-# 派生宏生成的代码引用 bee_orm::… 路径，必须直接依赖
-bee_orm = { version = "1.1.5", path = "../crates/bee_orm" }
+# 不用默认的 "full"：它会打开 bee_router 的 security（拉 security-rust 1.x），
+# 而本项目用的是 3.x 的 throttle，两者会同时进依赖图。
+#
+# 注意 `router` 只启用 **依赖** `bee_logs`/`bee_config`，而 `bee_rust::bee_logs`
+# 这类 re-export 由**同名特性** `logs`/`config` 门控 —— 两组都得列。
+bee_rust = { version = "1.2.3", path = "../crates/bee_rust", default-features = false, features = ["router", "orm", "logs", "config"] }
+# 派生宏生成的代码引用 bee_orm::… 路径，必须直接依赖。
+# mysql：本项目只连 MySQL（上游按后端分特性，默认一个都没开）；
+# chrono：模型里大量 chrono::NaiveDateTime 字段，不开这个特性读取路径编不过。
+bee_orm = { version = "1.2.3", path = "../crates/bee_orm", features = ["mysql", "chrono"] }
 axum = { version = "0.8" }
 tokio = { version = "1", features = ["full"] }
 # CSV 流式导出：Body::from_stream 要一个 Stream，而 tokio 1.5x 的 mpsc::Receiver
 # 不再自带 Stream 实现（tokio 的 stream 特性已移除），用 tokio-stream 的适配器
 tokio-stream = "0.1"
 serde = { version = "1", features = ["derive"] }
-# 登录记录清空需要按条件批量删（ORM 无此能力），直接在 src/ 里用 sqlx
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "mysql", "tls-none"] }
 serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }
 jsonwebtoken = "9"
@@ -26,10 +31,17 @@ argon2 = { version = "0.5", features = ["std"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
 thiserror = "2"
 tracing = "0.1"
-# 登录限流用它的 throttle 模块；bee_rust 不转发这个依赖（只转发了 bee_* 系列）
-security-rust = { workspace = true }
+# 登录限流用它的 throttle 模块。**不走 workspace = true**：workspace 表里那条
+# `security-rust = "1"` 是给 bee_router 的可选 security 特性的，1.x 没有 throttle。
+security-rust = "3"
 # 头像上传：解 data URL 里的 base64
 base64 = "0.22"
 
 [dev-dependencies]
+# 集成测试直连 MySQL 建库/清表/断言用（src 已不再依赖 sqlx —— 迁移后连裸 SQL
+# 都走框架的 Db::query/execute）。
+# `chrono` 特性是必须的：迁移前它是被旧 bee_orm（基于 sqlx）传递带进来的，
+# 换成 mysql_async 之后这层特性合并就没了，测试里读 DATETIME 列会报
+# `NaiveDateTime: sqlx::Type/Decode` 未实现。
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "mysql", "tls-none", "chrono"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

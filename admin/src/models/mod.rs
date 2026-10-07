@@ -7,7 +7,6 @@ pub mod job;
 pub mod login_log;
 pub mod menu;
 pub mod notice;
-pub mod relations;
 pub mod role;
 
 pub use admin::Admin;
@@ -18,5 +17,4 @@ pub use job::{Job, JobLog};
 pub use login_log::LoginLog;
 pub use menu::Menu;
 pub use notice::Notice;
-pub use relations::{AdminRole, RoleDept, RoleMenu};
 pub use role::Role;

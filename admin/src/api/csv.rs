@@ -73,8 +73,8 @@ pub async fn streamed<F, Fut>(
     mut next: F,
 ) -> Result<Response, ApiError>
 where
-    F: FnMut(Option<u64>) -> Fut + Send + 'static,
-    Fut: std::future::Future<Output = Result<Vec<(u64, String)>, ApiError>> + Send + 'static,
+    F: FnMut(Option<i64>) -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = Result<Vec<(i64, String)>, ApiError>> + Send + 'static,
 {
     let first = next(None).await?;
     // 通道小一点：生产端本来就是一整批一整批地送，backpressure 让它别跑太远

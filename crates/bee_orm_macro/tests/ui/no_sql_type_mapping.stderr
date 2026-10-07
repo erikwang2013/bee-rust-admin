@@ -1,0 +1,5 @@
+error: bee_orm: no SQL type mapping for `u64`: add #[bee(sql_type = "...")] to override
+ --> tests/ui/no_sql_type_mapping.rs:9:11
+  |
+9 |     hits: u64,
+  |           ^^^

@@ -25,7 +25,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "1.1.5"
+version = "1.2.3"
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/erikwang2013/bee-rust"
@@ -44,5 +44,8 @@ thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 async-trait = "0.1"
-security-rust = "3"
+# 上游给 bee_router 的可选 security 特性（注入检测引擎）用的是 1.x；
+# admin 用的是 3.x 的 throttle 模块，两者互不相干 —— admin 在自己的
+# Cargo.toml 里直接声明 "3"，并且关掉 bee_rust 的默认特性（full 会拉 1.x）
+security-rust = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

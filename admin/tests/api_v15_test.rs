@@ -76,8 +76,8 @@ async fn v15_dict_features() {
         .unwrap_or_else(|| panic!("种子里必须有字典管理菜单: {tree}"));
     assert_eq!(dict_menu["path"], "/system/dict", "页面路径");
     assert_eq!(dict_menu["component"], "system/dict/index", "组件路径");
-    let dict_id = dict_menu["id"].as_u64().unwrap();
-    let parent_id = dict_menu["parent_id"].as_u64().unwrap();
+    let dict_id = dict_menu["id"].as_i64().unwrap();
+    let parent_id = dict_menu["parent_id"].as_i64().unwrap();
     let system_dir = tree
         .as_array()
         .unwrap()
@@ -100,13 +100,13 @@ async fn v15_dict_features() {
         "name": "用户性别", "code": "user_sex", "status": 1, "remark": "性别枚举",
     }))).await;
     assert_eq!(st, 200, "建类型: {v}");
-    let sex_id = v["data"]["id"].as_u64().expect("创建要回 id");
+    let sex_id = v["data"]["id"].as_i64().expect("创建要回 id");
 
     let (st, v) = call(&c, Method::POST, api("/dicts"), Some(&admin), Some(json!({
         "name": "订单状态", "code": "order_status", "status": 0, "remark": "",
     }))).await;
     assert_eq!(st, 200, "建第二个类型: {v}");
-    let order_id = v["data"]["id"].as_u64().unwrap();
+    let order_id = v["data"]["id"].as_i64().unwrap();
 
     // 下拉的两种“空”要分开：类型不存在 → 404；类型在但没配条目 → 200 + []
     let (st, v) = call(&c, Method::GET, api("/dicts/no_such_code/items"), Some(&admin), None).await;
@@ -178,14 +178,14 @@ async fn v15_dict_features() {
         let (st, v) = call(&c, Method::POST, api("/dict-items"), Some(&admin),
             Some(mk_item("user_sex", label, value, sort, status))).await;
         assert_eq!(st, 200, "建字典项 {label}: {v}");
-        item_ids.push(v["data"]["id"].as_u64().unwrap());
+        item_ids.push(v["data"]["id"].as_i64().unwrap());
     }
     // 另一个类型下的同名 value：证明唯一键是 (type_code, value) 而不是全局
     // （先建成停用：顺手验「条目全停用」也是 200 + []）
     let (st, v) = call(&c, Method::POST, api("/dict-items"), Some(&admin),
         Some(mk_item("order_status", "待付款", "1", 1, 0))).await;
     assert_eq!(st, 200, "别的类型下同 value 允许: {v}");
-    let order_item_id = v["data"]["id"].as_u64().unwrap();
+    let order_item_id = v["data"]["id"].as_i64().unwrap();
     let (st, v) = call(&c, Method::GET, api("/dicts/order_status/items"), Some(&admin), None).await;
     assert_eq!(st, 200, "条目全停用仍是合法空下拉（不是 404）: {v}");
     assert_eq!(v["data"], json!([]), "{v}");
@@ -214,7 +214,7 @@ async fn v15_dict_features() {
         "name": "v15_none", "code": "v15_none", "data_scope": 4, "status": 1,
     }))).await;
     assert_eq!(st, 200, "建空角色: {v}");
-    let empty_role = v["data"]["id"].as_u64().unwrap();
+    let empty_role = v["data"]["id"].as_i64().unwrap();
     let (st, v) = call(&c, Method::POST, api("/admins"), Some(&admin), Some(json!({
         "username": "v15user", "password": "v15user123", "role_ids": [empty_role],
     }))).await;

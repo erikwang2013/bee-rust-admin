@@ -46,20 +46,20 @@ async fn full_admin_flow() {
     let (st, v) = call(&c, Method::POST, api("/depts"), Some(&admin_token),
         Some(json!({"parent_id": 0, "name": "研发部", "sort": 1}))).await;
     assert_eq!(st, 200, "建部门: {v}");
-    let dept_id = v["data"]["id"].as_u64().expect("返回部门 id");
+    let dept_id = v["data"]["id"].as_i64().expect("返回部门 id");
 
     // ── 3. 建角色（数据范围=本部门）并勾选「管理员管理」菜单
     let (st, v) = call(&c, Method::POST, api("/roles"), Some(&admin_token),
         Some(json!({"name": "运维", "code": "ops", "sort": 1, "data_scope": 3}))).await;
     assert_eq!(st, 200, "建角色: {v}");
-    let role_id = v["data"]["id"].as_u64().expect("返回角色 id");
+    let role_id = v["data"]["id"].as_i64().expect("返回角色 id");
 
     let (st, v) = call(&c, Method::GET, api("/menus/tree"), Some(&admin_token), None).await;
     assert_eq!(st, 200, "菜单树: {v}");
-    let root_menu_id = v["data"][0]["id"].as_u64().expect("根目录 id");
+    let root_menu_id = v["data"][0]["id"].as_i64().expect("根目录 id");
     let admin_menu_id = v["data"][0]["children"].as_array().expect("根目录有子菜单")
         .iter().find(|m| m["name"] == "管理员管理").expect("种子菜单含「管理员管理」")["id"]
-        .as_u64().expect("菜单 id");
+        .as_i64().expect("菜单 id");
 
     let (st, v) = call(&c, Method::PUT, api(&format!("/roles/{role_id}/menus")), Some(&admin_token),
         Some(json!({"menu_ids": [admin_menu_id]}))).await;
@@ -74,7 +74,7 @@ async fn full_admin_flow() {
         "dept_id": dept_id, "role_ids": [role_id],
     }))).await;
     assert_eq!(st, 200, "建管理员: {v}");
-    let op1_id = v["data"]["id"].as_u64().expect("返回管理员 id");
+    let op1_id = v["data"]["id"].as_i64().expect("返回管理员 id");
 
     // ── 5. op1：错密码 400（留一条失败记录）→ 正确登录 → 数据权限=本部门，只看到自己
     let (st, v) = call(&c, Method::POST, api("/auth/login"), None,
@@ -106,7 +106,7 @@ async fn full_admin_flow() {
         .iter().find(|m| m["name"] == "管理员管理").expect("管理员管理菜单")["children"]
         .as_array().expect("管理员管理有按钮子菜单")
         .iter().find(|m| m["name"] == "编辑").expect("种子含「编辑」按钮")["id"]
-        .as_u64().expect("按钮菜单 id");
+        .as_i64().expect("按钮菜单 id");
     let (st, v) = call(&c, Method::PUT, api(&format!("/roles/{role_id}/menus")), Some(&admin_token),
         Some(json!({"menu_ids": [admin_menu_id, edit_btn_id]}))).await;
     assert_eq!(st, 200, "给角色补编辑按钮: {v}");
@@ -150,7 +150,7 @@ async fn full_admin_flow() {
     // ── 8. 登录记录：查询 + 按条件清空（只删 op1 的）
     let (st, v) = call(&c, Method::GET, api("/login-logs"), Some(&admin_token), None).await;
     assert_eq!(st, 200, "登录记录: {v}");
-    assert!(v["data"]["total"].as_u64().unwrap() >= 3,
+    assert!(v["data"]["total"].as_i64().unwrap() >= 3,
         "至少 3 条（超管成功 / op1 失败 / op1 成功）: {v}");
     let (st, v) = call(&c, Method::DELETE, api("/login-logs?username=op1"), Some(&admin_token), None).await;
     assert_eq!(st, 200, "清空 op1 的记录: {v}");
@@ -181,7 +181,7 @@ async fn full_admin_flow() {
         "perm": "system:admin:export", "sort": 9,
     }))).await;
     assert_eq!(st, 200, "建按钮菜单: {v}");
-    let btn_id = v["data"]["id"].as_u64().expect("返回菜单 id");
+    let btn_id = v["data"]["id"].as_i64().expect("返回菜单 id");
     let (st, v) = call(&c, Method::DELETE, api(&format!("/menus/{btn_id}")), Some(&admin_token), None).await;
     assert_eq!(st, 200, "删按钮菜单: {v}");
     let (st, v) = call(&c, Method::DELETE, api(&format!("/menus/{root_menu_id}")), Some(&admin_token), None).await;

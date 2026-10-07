@@ -226,11 +226,21 @@ fn envelope_opt(status: StatusCode, msg: &str, err: Option<&str>, args: Option<&
     (status, Json(body)).into_response()
 }
 
+/// 唯一键冲突的识别。上游 `OrmError` 只有四个变体（ConnectionError / QueryError /
+/// InvalidField / NotFound），没有专门的冲突变体，驱动报错一律落在 `QueryError(String)` 里，
+/// 所以只能看文本：MySQL 的重复键是 errno 1062，消息前缀 "Duplicate entry"。
+/// **这是框架侧缺的东西**——将来上游补了独立变体，这里应该换回按变体匹配。
+fn is_duplicate_key(msg: &str) -> bool {
+    msg.contains("Duplicate entry") || msg.contains("1062")
+}
+
 impl From<OrmError> for ApiError {
     fn from(e: OrmError) -> Self {
         match e {
-            OrmError::DuplicateKey(_) => ApiError::BadRequest("数据已存在（唯一约束冲突）".into()),
             OrmError::NotFound => ApiError::NotFound,
+            OrmError::QueryError(ref m) if is_duplicate_key(m) => {
+                ApiError::BadRequest("数据已存在（唯一约束冲突）".into())
+            }
             other => ApiError::Internal(format!("数据库错误: {other}")),
         }
     }

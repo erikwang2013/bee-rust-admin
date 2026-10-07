@@ -23,6 +23,8 @@ pub fn now() -> NaiveDateTime {
 }
 
 /// 当前 unix 秒（限流模块的时间基准）。
+/// 秒级时间戳。**保持 u64**：唯一的消费者是 security-rust 的限流（throttle 的
+/// API 全是 u64）。它不是一个 id，别跟着 i64 化。
 pub fn now_unix() -> u64 {
     chrono::Utc::now().timestamp().max(0) as u64
 }

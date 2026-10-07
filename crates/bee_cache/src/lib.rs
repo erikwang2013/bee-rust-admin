@@ -6,6 +6,15 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use tokio::sync::RwLock;
 
+#[cfg(feature = "memcache")]
+mod memcache_cache;
+#[cfg(feature = "memcache")]
+pub use memcache_cache::MemcacheCache;
+#[cfg(feature = "redis")]
+mod redis_cache;
+#[cfg(feature = "redis")]
+pub use redis_cache::RedisCache;
+
 #[derive(Debug, thiserror::Error)]
 pub enum CacheError {
     #[error("key not found")]

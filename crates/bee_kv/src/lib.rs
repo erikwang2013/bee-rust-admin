@@ -1,7 +1,18 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+//! Key-value stores behind one async trait, [`KvStore`].
+//!
+//! `RedisStore` (the `redis` feature) recovers a dropped connection by itself:
+//! a restarted server needs no action from the caller, but the command that
+//! runs into the break fails with a [`KvError`] and the following one succeeds
+//! on a fresh connection. There is no background health-check thread.
+
 use async_trait::async_trait;
 use thiserror::Error;
 
+#[cfg(feature = "memcached")]
+mod memcache_store;
+#[cfg(feature = "memcached")]
+pub use memcache_store::MemcacheStore;
 #[cfg(feature = "redis")]
 mod redis_store;
 #[cfg(feature = "redis")]

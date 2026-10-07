@@ -61,7 +61,7 @@ INI 配置），前端是 Vite + React 18 + Ant Design 5 单页应用，两者�
 | 客户端 | 浏览器 SPA | React 18 + TypeScript + Ant Design 5（Vite 构建） |
 | 接入层 | nginx :8081 | 提供前端静态资源，`/api/` 反向代理到后端并透传 `X-Real-IP` |
 | 应用层 | `bee_admin` | bee_router（axum）· Auth 提取器 · 62 个 API handler · datascope 数据权限 · 统一响应信封 |
-| 框架层 | bee_orm / bee_config / bee_logs | 连接池、QuerySet、CRUD、M2M、syncdb；INI 配置；tracing 日志 |
+| 框架层 | bee_orm / bee_config / bee_logs | 多后端连接池、QuerySet、CRUD、M2M、migrate 迁移；INI 配置；tracing 日志 |
 | 数据层 | MySQL 8.4 | 15 张表（11 张业务表 + 4 张关系表） |
 
 ## 功能设计
@@ -87,7 +87,8 @@ INI 配置），前端是 Vite + React 18 + Ant Design 5 单页应用，两者�
 ![服务生命周期](docs/diagrams/lifecycle.svg)
 
 启动路径：读配置（JWT secret 少于 32 字符或为 `changeme` → **拒绝启动**）→ 连接 MySQL →
-`syncdb` 同步表结构（**只建表 / 加列 / 补索引，绝不删列改类型**，模型加字段下次启动自动补列）→
+`migrate::sync` 同步表结构（**只建表 / 加列，绝不删列改类型**，模型加字段下次启动自动补列；
+唯一键与索引由 `seed.rs` 的裸 DDL 建 —— 上游的模型属性只表达列、主键与外键，没有 unique/index）→
 首次启动（`admin` 表为空）在**单事务内**写入超管与菜单权限树 → 监听 `127.0.0.1:8080` → 运行 →
 收到 `SIGTERM` 退出（systemd 策略 `on-failure` 自动重启）。
 
@@ -114,21 +115,24 @@ INI 配置），前端是 Vite + React 18 + Ant Design 5 单页应用，两者�
 
 ```
 crates/                 bee-rust 框架（workspace 成员，本后台直接依赖）
-  bee_orm/              ★ ORM 执行层：连接池 / QuerySet / CRUD / M2M / syncdb / 事务
+  bee_orm/              ★ ORM 执行层：多后端连接池 / QuerySet / CRUD / M2M / migrate
   bee_orm_macro/        ★ #[derive(Model)]：元数据 + 行映射 + 参数绑定代码生成
   bee_router/           axum 封装的路由
   bee_config/           INI 配置（含解析与监听）
   bee_logs/             tracing 日志初始化
   bee_cli/ bee_kv/ ...  其余框架 crate
 admin/                  管理后台服务端（crate bee_admin）
-  src/main.rs           启动：配置 → 连库 → syncdb → 种子 → 路由 → 监听
+  src/main.rs           启动：配置 → 连库 → migrate → 种子 → 路由 → 监听
   src/config.rs         INI 配置与启动校验（JWT secret 强度、DSN 覆盖）
   src/error.rs          ApiError + 统一信封（code/msg/err/args）+ 错误码表 + 请求体提取器
   src/auth.rs           JWT 签发校验 + Auth 提取器（权限码加载、token_version 校验）
   src/datascope.rs      数据权限解析与查询注入（部门子树 / 本人 / 自定义）
   src/api/              auth · admin · role · menu · dept · dict · job · notice · login_log · audit_log 十个模块
-  src/models/           14 个模型（syncdb 生成）；`notice_read` 是复合主键、无模型结构体，
-                        建表与读写走裸 SQL（与 `role_dept` 等关系表同一处理方式）
+  src/models/           11 个模型（migrate 建表）。列长度用 `sql_type = "VARCHAR(n)"` 声明；
+                        **唯一键与索引不走模型**（上游属性没有这两个概念），集中在
+                        `src/seed.rs` 的 CONSTRAINTS 里建。连接表（admin_role/role_menu/
+                        role_dept/notice_read）是复合主键、无模型结构体，走 seed 的裸 DDL，
+                        读写见 src/relations.rs
   src/seed.rs           建表、连接表 DDL、首次种子（超管 + 菜单权限树）
   conf/                 app.conf（gitignore）· app.conf.example · app.conf.test
   deploy/               systemd 单元 + nginx 站点配置

@@ -4,23 +4,24 @@ use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
 #[derive(Model, Serialize, Deserialize, Clone, Debug)]
-#[bee(table = "menu", pk = "id")]
+#[bee(table = "menu")]
 pub struct Menu {
-    #[bee(auto)]
-    pub id: u64,
-    pub parent_id: u64,
-    #[bee(len = 64)]
+    #[bee(pk, auto)]
+    pub id: i64,
+    pub parent_id: i64,
+    #[bee(sql_type = "VARCHAR(64)")]
     pub name: String,
     /// M 目录 / C 菜单 / F 按钮（列名用 menu_type，JSON 对外叫 type）
     #[serde(rename = "type")]
+    #[bee(sql_type = "VARCHAR(255)")]
     pub menu_type: String,
-    #[bee(len = 128)]
+    #[bee(sql_type = "VARCHAR(128)")]
     pub perm: String,
-    #[bee(len = 128)]
+    #[bee(sql_type = "VARCHAR(128)")]
     pub path: String,
-    #[bee(len = 128)]
+    #[bee(sql_type = "VARCHAR(128)")]
     pub component: String,
-    #[bee(len = 64)]
+    #[bee(sql_type = "VARCHAR(64)")]
     pub icon: String,
     pub sort: i32,
     pub visible: i8,

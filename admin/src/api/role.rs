@@ -1,16 +1,17 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-use crate::api::{check_len, dedup_ids, page_size};
+use crate::api::{PagingExt, check_len, dedup_ids, page_size};
 use crate::auth::Auth;
 use crate::datascope;
 use crate::error::{ApiError, AppJson, AppPath, AppQuery, ok};
-use crate::models::{AdminRole, Role};
+use crate::models::Role;
 use crate::state::AppState;
 use crate::util::now;
 use axum::Json;
 use axum::extract::State;
-use bee_orm::OrmError;
+use bee_orm::{Model, OrmError};
 use serde::Deserialize;
 use serde_json::{Value, json};
+use crate::relations::RelationsExt;
 
 #[derive(Deserialize)]
 pub struct RoleListQuery {
@@ -35,12 +36,12 @@ pub struct RoleBody {
 
 #[derive(Deserialize)]
 pub struct MenuIdsBody {
-    pub menu_ids: Vec<u64>,
+    pub menu_ids: Vec<i64>,
 }
 
 #[derive(Deserialize)]
 pub struct DeptIdsBody {
-    pub dept_ids: Vec<u64>,
+    pub dept_ids: Vec<i64>,
 }
 
 fn status_default() -> i8 {
@@ -130,19 +131,29 @@ pub async fn list(
 pub async fn detail(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<u64>,
+    AppPath(id): AppPath<i64>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:list")?;
     let r = Role::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
-        .fetch_one(&state.db)
+        .one(&state.db)
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
     // 详情同样带 grantable（前端编辑弹窗里也要判）
     let v = with_grantable(&state, &auth, vec![r]).await?.pop().unwrap_or(Value::Null);
     Ok(ok(v))
+}
+
+/// 角色标识重复 → 该接口的专属文案（`role.code_taken`）。
+/// 唯一键冲突的识别在 `ApiError::from` 里按 MySQL 报错文本做（上游 `OrmError`
+/// 没有独立变体），冲突是它唯一映射成 `BadRequest` 的情况，其余是 `NotFound` / `Internal`。
+fn code_taken(e: OrmError) -> ApiError {
+    match ApiError::from(e) {
+        ApiError::BadRequest(_) => ApiError::BadRequest("角色标识已存在".into()),
+        other => other,
+    }
 }
 
 pub async fn create(
@@ -153,7 +164,7 @@ pub async fn create(
     auth.require("system:role:add")?;
     validate_body(&body)?;
 
-    let mut r = Role {
+    let r = Role {
         id: 0,
         name: body.name.trim().to_string(),
         code: body.code.trim().to_string(),
@@ -164,18 +175,14 @@ pub async fn create(
         created_at: now(),
         updated_at: now(),
     };
-    match state.db.insert(&mut r).await {
-        Ok(_) => {}
-        Err(OrmError::DuplicateKey(_)) => return Err(ApiError::BadRequest("角色标识已存在".into())),
-        Err(e) => return Err(e.into()),
-    }
+    let r = r.create(&state.db).await.map_err(code_taken)?;
     Ok(ok(json!({ "id": r.id })))
 }
 
 pub async fn update(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<u64>,
+    AppPath(id): AppPath<i64>,
     AppJson(body): AppJson<RoleBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:edit")?;
@@ -184,7 +191,7 @@ pub async fn update(
     let mut r = Role::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
-        .fetch_one(&state.db)
+        .one(&state.db)
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
@@ -196,39 +203,35 @@ pub async fn update(
     r.status = body.status;
     r.remark = body.remark;
     r.updated_at = now();
-    match state.db.update(&r).await {
-        Ok(_) => {}
-        Err(OrmError::DuplicateKey(_)) => return Err(ApiError::BadRequest("角色标识已存在".into())),
-        Err(e) => return Err(e.into()),
-    }
+    r.update(&state.db).await.map_err(code_taken)?;
     Ok(ok(Value::Null))
 }
 
 pub async fn remove(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<u64>,
+    AppPath(id): AppPath<i64>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:remove")?;
-    let used = AdminRole::query()
-        .filter_eq("role_id", id)
-        .map_err(ApiError::from)?
-        .count(&state.db)
-        .await
-        .map_err(ApiError::from)?;
+    let used = state.db.count_refs("admin_role", "role_id", id).await.map_err(ApiError::from)?;
     if used > 0 {
         return Err(ApiError::BadRequest("该角色已被管理员使用，不能删除".into()));
     }
     state.db.del_relations("role_menu", "role_id", id).await.map_err(ApiError::from)?;
     state.db.del_relations("role_dept", "role_id", id).await.map_err(ApiError::from)?;
-    state.db.delete::<Role>(id).await.map_err(ApiError::from)?;
+    Role::query()
+        .filter_eq("id", id)
+        .map_err(ApiError::from)?
+        .delete(&state.db)
+        .await
+        .map_err(ApiError::from)?;
     Ok(ok(Value::Null))
 }
 
 pub async fn get_menus(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<u64>,
+    AppPath(id): AppPath<i64>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:list")?;
     let ids = state
@@ -242,14 +245,14 @@ pub async fn get_menus(
 pub async fn set_menus(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<u64>,
+    AppPath(id): AppPath<i64>,
     AppJson(body): AppJson<MenuIdsBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:edit")?;
     let exists = Role::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
-        .fetch_one(&state.db)
+        .one(&state.db)
         .await
         .map_err(ApiError::from)?;
     if exists.is_none() {
@@ -266,7 +269,7 @@ pub async fn set_menus(
 pub async fn get_depts(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<u64>,
+    AppPath(id): AppPath<i64>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:list")?;
     let ids = state
@@ -280,14 +283,14 @@ pub async fn get_depts(
 pub async fn set_depts(
     State(state): State<AppState>,
     auth: Auth,
-    AppPath(id): AppPath<u64>,
+    AppPath(id): AppPath<i64>,
     AppJson(body): AppJson<DeptIdsBody>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:edit")?;
     let exists = Role::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
-        .fetch_one(&state.db)
+        .one(&state.db)
         .await
         .map_err(ApiError::from)?;
     if exists.is_none() {

@@ -9,11 +9,13 @@ use axum::http::request::Parts;
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use crate::relations::RelationsExt;
+use crate::api::ids_to_values;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
     /// admin.id
-    pub sub: u64,
+    pub sub: i64,
     /// token_version：管理员改密/被禁用后自增，旧 token 立即失效
     pub ver: i32,
     pub iat: i64,
@@ -21,7 +23,7 @@ pub struct Claims {
 }
 
 /// 签发 token，返回 (token, 有效期秒数)。
-pub fn sign_token(admin_id: u64, ver: i32, cfg: &AppConfig) -> Result<(String, i64), ApiError> {
+pub fn sign_token(admin_id: i64, ver: i32, cfg: &AppConfig) -> Result<(String, i64), ApiError> {
     let now = chrono::Utc::now().timestamp();
     let exp = now + cfg.jwt_expire_hours * 3600;
     let claims = Claims { sub: admin_id, ver, iat: now, exp };
@@ -79,7 +81,7 @@ impl FromRequestParts<AppState> for Auth {
         let admin = Admin::query()
             .filter_eq("id", claims.sub)
             .map_err(ApiError::from)?
-            .fetch_one(&state.db)
+            .one(&state.db)
             .await
             .map_err(ApiError::from)?
             .ok_or(ApiError::Unauthorized)?;
@@ -99,9 +101,9 @@ impl FromRequestParts<AppState> for Auth {
             Vec::new()
         } else {
             Role::query()
-                .filter_in("id", role_ids)
+                .filter_in("id", &ids_to_values(&role_ids))
                 .map_err(ApiError::from)?
-                .fetch_all(&state.db)
+                .all(&state.db)
                 .await
                 .map_err(ApiError::from)?
         };
@@ -109,7 +111,7 @@ impl FromRequestParts<AppState> for Auth {
         let perms = if is_super {
             HashSet::from(["*:*:*".to_string()])
         } else {
-            let mut menu_ids: Vec<u64> = Vec::new();
+            let mut menu_ids: Vec<i64> = Vec::new();
             for rid in roles.iter().filter(|r| r.status == 1).map(|r| r.id) {
                 let ids = state
                     .db
@@ -124,12 +126,12 @@ impl FromRequestParts<AppState> for Auth {
                 HashSet::new()
             } else {
                 Menu::query()
-                    .filter_in("id", menu_ids)
+                    .filter_in("id", &ids_to_values(&menu_ids))
                     .map_err(ApiError::from)?
                     // 禁用的菜单/按钮即时收权：状态改了不用重启，下一请求就少这个码
                     .filter_eq("status", 1)
                     .map_err(ApiError::from)?
-                    .fetch_all(&state.db)
+                    .all(&state.db)
                     .await
                     .map_err(ApiError::from)?
                     .into_iter()

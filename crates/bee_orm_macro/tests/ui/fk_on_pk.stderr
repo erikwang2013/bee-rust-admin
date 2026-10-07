@@ -1,0 +1,5 @@
+error: bee_orm: #[bee(fk)] is not valid on the primary key field
+ --> tests/ui/fk_on_pk.rs:8:5
+  |
+8 |     id: i64,
+  |     ^^

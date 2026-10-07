@@ -1,0 +1,5 @@
+error: bee_orm: duplicate #[bee(table)] attribute
+ --> tests/ui/duplicate_table.rs:6:20
+  |
+6 | #[bee(table = "a", table = "b")]
+  |                    ^^^^^^^^^^^

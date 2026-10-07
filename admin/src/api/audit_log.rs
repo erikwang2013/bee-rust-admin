@@ -1,5 +1,5 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-use crate::api::{csv, page_size};
+use crate::api::{PagingExt, csv, dt_ge, dt_le, page_size};
 use crate::auth::Auth;
 use crate::datascope;
 use crate::error::{ApiError, AppQuery, ok};
@@ -11,7 +11,7 @@ use axum::response::Response;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct AuditListQuery {
     pub page: Option<u32>,
     pub size: Option<u32>,
@@ -38,16 +38,15 @@ fn filtered(
     if let Some(s) = q.status {
         qs = qs.filter_eq("status", s).map_err(ApiError::from)?;
     }
+    // 区间端点是闭区间：上游只有 `>` / `<`，`dt_ge`/`dt_le` 把端点挪 1 秒换等价
     if let Some(s) = q.start.as_deref().filter(|s| !s.is_empty()) {
-        qs = qs.filter_raw("created_at >= ?", &[s]);
+        qs = qs.filter_gt("created_at", dt_ge(s)).map_err(ApiError::from)?;
     }
     if let Some(e) = q.end.as_deref().filter(|s| !s.is_empty()) {
-        qs = qs.filter_raw("created_at <= ?", &[e]);
+        qs = qs.filter_lt("created_at", dt_le(e)).map_err(ApiError::from)?;
     }
-    // 与登录记录同规则：非超管按数据权限看（部门 / 仅本人）
-    if let Some((sql, params)) = scope.admin_id_condition() {
-        qs = qs.filter_raw(sql, &params);
-    }
+    // 与登录记录同规则：非超管按数据权限看（部门 / 仅本人，条件是内联整数，无注入面）
+    qs = datascope::apply_admin_scope(qs, scope);
     Ok(qs)
 }
 
@@ -76,10 +75,10 @@ pub async fn clear(
     auth.require("system:auditlog:remove")?;
     let scope = datascope::resolve(&auth, &state.db).await?;
     let rows = filtered(&q, &scope)?
-        .fetch_all(&state.db)
+        .all(&state.db)
         .await
         .map_err(ApiError::from)?;
-    let ids: Vec<u64> = rows.iter().map(|r| r.id).collect();
+    let ids: Vec<i64> = rows.iter().map(|r| r.id).collect();
     let deleted = crate::api::delete_by_ids(&state, "audit_log", &ids).await?;
     Ok(ok(json!({ "deleted": deleted })))
 }
@@ -90,17 +89,60 @@ fn header_cells() -> Vec<String> {
         .to_vec()
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bee_orm::Value;
+    use chrono::NaiveDateTime;
+    use crate::datascope::DataScope;
+
+    fn dt(s: &str) -> Value {
+        Value::from(NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").unwrap())
+    }
+
+    /// 与登录记录同规则：闭区间 = 端点挪 1 秒 + 开区间，端点走绑定参数。
+    #[test]
+    fn date_bounds_are_closed_intervals_with_bound_params() {
+        let q = AuditListQuery {
+            page: None,
+            size: None,
+            username: None,
+            module: Some("dict".into()),
+            status: None,
+            start: Some("2026-01-02 03:04:05".into()),
+            end: Some("2026-01-02 09:00:00".into()),
+        };
+        let qs = filtered(&q, &DataScope { all: true, ..Default::default() }).unwrap();
+        let sql = qs.to_sql();
+        assert!(sql.contains("module = ?"), "{sql}");
+        assert!(sql.contains("created_at > ?"), "{sql}");
+        assert!(sql.contains("created_at < ?"), "{sql}");
+        assert!(!sql.contains("2026-01-02"), "端点必须走绑定参数: {sql}");
+        assert_eq!(
+            qs.params(),
+            &[
+                Value::from("dict"),
+                dt("2026-01-02 03:04:04"), // start - 1s（`>= start`）
+                dt("2026-01-02 09:00:01"), // end + 1s（`<= end`）
+            ],
+        );
+    }
+}
+
 /// 取一批导出数据（keyset：`id < last`，首页不带该条件），行渲染与旧的一次性实现逐字段一致。
 async fn export_batch(
     state: &AppState,
-    base: &bee_orm::QuerySet<AuditLog>,
-    last: Option<u64>,
-) -> Result<Vec<(u64, String)>, ApiError> {
-    let mut qs = base.clone().order_by("id DESC").limit(csv::BATCH);
+    q: &AuditListQuery,
+    scope: &datascope::DataScope,
+    last: Option<i64>,
+) -> Result<Vec<(i64, String)>, ApiError> {
+    // 上游 `QuerySet` 不是 `Clone`（导出闭包每批调一次，得能重建）：按同一套筛选条件
+    // 现搭一个，SQL 与 list 逐字一致（`filtered()` 只拼条件串，不查库）。
+    let mut qs = filtered(q, scope)?.order_by("id DESC").limit(csv::BATCH);
     if let Some(last) = last {
-        qs = qs.filter_raw("id < ?", &[last]);
+        qs = qs.filter_lt("id", last).map_err(ApiError::from)?;
     }
-    let rows = qs.fetch_all(&state.db).await.map_err(ApiError::from)?;
+    let rows = qs.all(&state.db).await.map_err(ApiError::from)?;
     Ok(rows
         .into_iter()
         .map(|r| {
@@ -133,11 +175,11 @@ pub async fn export(
 ) -> Result<Response, ApiError> {
     auth.require("system:auditlog:list")?;
     let scope = datascope::resolve(&auth, &state.db).await?;
-    let base = filtered(&q, &scope)?;
     csv::streamed(format!("audit-logs-{}.csv", csv::today()), header_cells(), move |last| {
         let state = state.clone();
-        let base = base.clone();
-        async move { export_batch(&state, &base, last).await }
+        let q = q.clone();
+        let scope = scope.clone();
+        async move { export_batch(&state, &q, &scope, last).await }
     })
     .await
 }

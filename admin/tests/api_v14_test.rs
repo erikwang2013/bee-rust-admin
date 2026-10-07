@@ -47,10 +47,10 @@ async fn csv_lines(c: &reqwest::Client, url: String, token: &str) -> Vec<String>
 }
 
 /// 菜单树里按权限码取菜单 id（B5 造角色要勾菜单）。
-fn menu_id(menus: &Value, perm: &str) -> Option<u64> {
+fn menu_id(menus: &Value, perm: &str) -> Option<i64> {
     for m in menus.as_array()? {
         if m["perm"].as_str() == Some(perm) {
-            return m["id"].as_u64();
+            return m["id"].as_i64();
         }
         if let Some(id) = menu_id(&m["children"], perm) {
             return Some(id);
@@ -67,8 +67,8 @@ async fn make_role(
     name: &str,
     scope: i8,
     status: i8,
-    menu_ids: &[u64],
-) -> u64 {
+    menu_ids: &[i64],
+) -> i64 {
     let (st, v) = call(
         c,
         Method::POST,
@@ -78,7 +78,7 @@ async fn make_role(
     )
     .await;
     assert_eq!(st, 200, "建角色 {name}: {v}");
-    let id = v["data"]["id"].as_u64().unwrap();
+    let id = v["data"]["id"].as_i64().unwrap();
     let (st, v) = call(
         c,
         Method::PUT,
@@ -191,8 +191,8 @@ async fn v14_backend_features() {
         .unwrap();
     }
     let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM login_log").fetch_one(&pool).await.unwrap();
-    // id 列是 BIGINT UNSIGNED，sqlx 只肯解码成 u64（COUNT(*) 才有符号）
-    let (min_id, max_id): (u64, u64) =
+    // id 列是 BIGINT UNSIGNED，sqlx 只肯解码成 i64（COUNT(*) 才有符号）
+    let (min_id, max_id): (i64, i64) =
         sqlx::query_as("SELECT MIN(id), MAX(id) FROM login_log").fetch_one(&pool).await.unwrap();
 
     let lines = csv_lines(&c, api("/login-logs/export"), &admin).await;
@@ -267,10 +267,10 @@ async fn v14_backend_features() {
     // 场景：操作者 b5op 是 scope=3（本部门 A）；目标 t1 在 A 部、t2 在 B 部
     let (st, v) = call(&c, Method::POST, api("/depts"), Some(&admin), Some(json!({"name": "B5-A部"}))).await;
     assert_eq!(st, 200, "建部门 A: {v}");
-    let dept_a = v["data"]["id"].as_u64().unwrap();
+    let dept_a = v["data"]["id"].as_i64().unwrap();
     let (st, v) = call(&c, Method::POST, api("/depts"), Some(&admin), Some(json!({"name": "B5-B部"}))).await;
     assert_eq!(st, 200, "建部门 B: {v}");
-    let dept_b = v["data"]["id"].as_u64().unwrap();
+    let dept_b = v["data"]["id"].as_i64().unwrap();
 
     let (st, v) = call(&c, Method::GET, api("/menus/tree"), Some(&admin), None).await;
     assert_eq!(st, 200);
@@ -279,7 +279,7 @@ async fn v14_backend_features() {
 
     // 操作者：管理员管理全套权限（list/add/edit/remove/resetPwd）+ 角色列表（分配角色
     // 时得看得见角色）+ scope=3
-    let op_menus: Vec<u64> = [
+    let op_menus: Vec<i64> = [
         "system:admin:list", "system:admin:add", "system:admin:edit",
         "system:admin:remove", "system:admin:resetPwd", "system:role:list",
     ].iter().map(|p| perm_menu(p)).collect();
@@ -297,17 +297,17 @@ async fn v14_backend_features() {
         "username": "b5op", "password": "b5op12345", "dept_id": dept_a, "role_ids": [op_role],
     }))).await;
     assert_eq!(st, 200, "建操作者: {v}");
-    let op_id = v["data"]["id"].as_u64().unwrap();
+    let op_id = v["data"]["id"].as_i64().unwrap();
     let (st, v) = call(&c, Method::POST, api("/admins"), Some(&admin), Some(json!({
         "username": "b5t1", "password": "b5t12345", "dept_id": dept_a,
     }))).await;
     assert_eq!(st, 200, "建 A 部目标: {v}");
-    let t1 = v["data"]["id"].as_u64().unwrap();
+    let t1 = v["data"]["id"].as_i64().unwrap();
     let (st, v) = call(&c, Method::POST, api("/admins"), Some(&admin), Some(json!({
         "username": "b5t2", "password": "b5t12345", "dept_id": dept_b,
     }))).await;
     assert_eq!(st, 200, "建 B 部目标: {v}");
-    let t2 = v["data"]["id"].as_u64().unwrap();
+    let t2 = v["data"]["id"].as_i64().unwrap();
 
     let op = common::login(&base, "b5op", "b5op12345").await.expect("操作者登录");
 
@@ -381,7 +381,7 @@ async fn v14_backend_features() {
     // 角色列表/详情带 grantable：前端照它灰掉选项，别摆出「点了才被骂」的角色
     let (st, v) = call(&c, Method::GET, api("/roles?size=100"), Some(&op), None).await;
     assert_eq!(st, 200, "操作者读角色列表: {v}");
-    let grant = |id: u64| {
+    let grant = |id: i64| {
         v["data"]["list"].as_array().unwrap().iter()
             .find(|r| r["id"] == json!(id))
             .unwrap_or_else(|| panic!("角色 {id} 不在列表里: {v}"))["grantable"]
