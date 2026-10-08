@@ -177,12 +177,26 @@ CREATE DATABASE bee_admin DEFAULT CHARSET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
 ```bash
 cp admin/conf/app.conf.example admin/conf/app.conf
-# 填 [db] dsn（MySQL 账号密码）与 [jwt] secret（≥32 字符随机串，且不能是 changeme）
+# 必填三项：
+#   [db] dsn                              MySQL 账号密码
+#   [jwt] secret                          ≥32 字符随机串，且不能是 changeme
+#   [app] encrypt_key                     base64:<32 字节>，生成：openssl rand -base64 32 | sed 's/^/base64:/'
+# 建议两项（部署间必须不同）：
+#   [app] hashids_salt                    对外 id 短串的盐
+#   [app] snowflake_worker / snowflake_dc 多实例各进程必须不同，否则撞号
 ```
+
+> ⚠️ `encrypt_key` **缺失时服务拒绝启动**（刻意的：不允许「以为加密了其实没加密」地跑起来），
+> 且它**不可更换** —— 换了密钥，库里已加密的邮箱/手机号就解不开了。
+> 同理 `hashids_salt` 一换，已发出去的短串 id 全部作废。
 
 其余可选开关见示例文件：`[log] retain_days`（日志保留天数，`0` = 永久，同时作用于
 登录/操作/任务执行记录）、`[job] enabled`（定时任务总开关，关掉后仍可手动补跑）、
-`[auth] max_fail` / `lock_minutes`（登录失败锁定）。
+`[auth] max_fail` / `lock_minutes`（登录失败锁定）、`[auth] captcha`（登录图形验证码，
+默认开）。
+
+> 升级已有部署时：验证码凭据由新前端提交。**若先换后端、暂不重建前端，先把
+> `[auth] captcha` 写成 `false`**，否则老前端的登录会被判 400（验证码错误）。
 
 **3. 起服务**（首次启动自动建表、写入超管与菜单权限种子）
 
