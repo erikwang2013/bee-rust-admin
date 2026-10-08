@@ -94,10 +94,6 @@ const ERR_TABLE: &[(&str, &str)] = &[
     (CAPTCHA_FAILED, "auth.captcha_failed"),
     // avatar
     ("头像不能超过 512 KB", "avatar.too_large"),
-    ("头像仅支持 PNG/JPEG", "avatar.bad_type"),
-    ("头像数据格式错误", "avatar.bad_data"),
-    ("头像 base64 解码失败", "avatar.bad_base64"),
-    ("文件内容不是有效的图片", "avatar.not_an_image"),
     // admin
     ("密码至少 6 位", "admin.weak_password"),
     ("用户名长度需 3-64 个字符", "admin.username_length"),
