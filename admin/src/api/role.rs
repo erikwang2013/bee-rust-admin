@@ -106,6 +106,32 @@ fn validate_body(b: &RoleBody) -> Result<(), ApiError> {
     check_len("remark", &b.remark, 255)
 }
 
+#[apidoc::title("角色列表")]
+#[apidoc::desc("名称模糊 + 状态筛选 + 分页；每条带 grantable（当前操作者能否把这个角色授出去）")]
+#[apidoc::url("/api/v1/roles")]
+#[apidoc::method("GET")]
+#[apidoc::tag("角色")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::query(name = "page", ty = "int", desc = "页码，从 1 开始，默认 1", mock = "1")]
+#[apidoc::query(name = "size", ty = "int", desc = "每页条数，默认 10，上限 100", mock = "10")]
+#[apidoc::query(name = "name", ty = "string", desc = "角色名模糊匹配")]
+#[apidoc::query(name = "status", ty = "int", desc = "状态：1 启用 / 0 禁用")]
+#[apidoc::response_status("200")]
+#[apidoc::returned(name = "data", ty = "object", desc = "分页结果", children = [
+            {name = "list", ty = "array", required, desc = "角色列表", children = [
+            {name = "id", ty = "string", required, desc = "对外 id（hashids 短串）"},
+            {name = "name", ty = "string", required, desc = "角色名"},
+            {name = "code", ty = "string", required, desc = "角色标识（权限码前缀）"},
+            {name = "sort", ty = "int", desc = "排序（升序）"},
+            {name = "data_scope", ty = "int", desc = "数据范围：1 全部 / 2 自定义 / 3 本部门 / 4 本部门及以下 / 5 仅本人"},
+            {name = "status", ty = "int", desc = "状态：1 启用 / 0 禁用"},
+            {name = "grantable", ty = "bool", desc = "当前操作者能否把这个角色授出去（超管范围之外为 false）"},
+            {name = "remark", ty = "string", desc = "备注"},
+            {name = "created_at", ty = "string", desc = "创建时间"},
+            {name = "updated_at", ty = "string", desc = "更新时间"},
+        ]},
+            {name = "total", ty = "int", required, desc = "筛选后的总条数"},
+        ])]
 pub async fn list(
     State(state): State<AppState>,
     auth: Auth,
@@ -131,6 +157,27 @@ pub async fn list(
     Ok(ok(json!({ "list": list, "total": total })))
 }
 
+#[apidoc::title("角色详情")]
+#[apidoc::desc("编辑弹窗回显，同样带 grantable")]
+#[apidoc::url("/api/v1/roles/{id}")]
+#[apidoc::method("GET")]
+#[apidoc::tag("角色")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "角色对外 id（hashids 短串）")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("404")]
+#[apidoc::returned(name = "data", ty = "object", desc = "角色对象", children = [
+            {name = "id", ty = "string", required, desc = "对外 id（hashids 短串）"},
+            {name = "name", ty = "string", required, desc = "角色名"},
+            {name = "code", ty = "string", required, desc = "角色标识（权限码前缀）"},
+            {name = "sort", ty = "int", desc = "排序（升序）"},
+            {name = "data_scope", ty = "int", desc = "数据范围：1 全部 / 2 自定义 / 3 本部门 / 4 本部门及以下 / 5 仅本人"},
+            {name = "status", ty = "int", desc = "状态：1 启用 / 0 禁用"},
+            {name = "grantable", ty = "bool", desc = "当前操作者能否把这个角色授出去（超管范围之外为 false）"},
+            {name = "remark", ty = "string", desc = "备注"},
+            {name = "created_at", ty = "string", desc = "创建时间"},
+            {name = "updated_at", ty = "string", desc = "更新时间"},
+        ])]
 pub async fn detail(
     State(state): State<AppState>,
     auth: Auth,
@@ -160,6 +207,23 @@ fn code_taken(e: OrmError) -> ApiError {
     }
 }
 
+#[apidoc::title("新建角色")]
+#[apidoc::desc("角色标识唯一；标识重复回 400（专属文案 role.code_taken）")]
+#[apidoc::url("/api/v1/roles")]
+#[apidoc::method("POST")]
+#[apidoc::tag("角色")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::param(name = "name", ty = "string", required, desc = "角色名，最长 64 字符")]
+#[apidoc::param(name = "code", ty = "string", required, desc = "角色标识（唯一），最长 64 字符")]
+#[apidoc::param(name = "sort", ty = "int", desc = "排序，默认 0")]
+#[apidoc::param(name = "data_scope", ty = "int", required, desc = "数据范围：1 全部 / 2 自定义 / 3 本部门 / 4 本部门及以下 / 5 仅本人")]
+#[apidoc::param(name = "status", ty = "int", desc = "状态：1 启用 / 0 禁用，默认 1")]
+#[apidoc::param(name = "remark", ty = "string", desc = "备注，最长 255 字符")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("400")]
+#[apidoc::returned(name = "data", ty = "object", desc = "新建结果", children = [
+            {name = "id", ty = "string", required, desc = "新角色对外 id（hashids 短串）"},
+        ])]
 pub async fn create(
     State(state): State<AppState>,
     auth: Auth,
@@ -184,6 +248,22 @@ pub async fn create(
     Ok(ok(json!({ "id": hid::enc(r.id) })))
 }
 
+#[apidoc::title("编辑角色")]
+#[apidoc::desc("字段与新建一致（整批提交）；角色名与标识重复回 400")]
+#[apidoc::url("/api/v1/roles/{id}")]
+#[apidoc::method("PUT")]
+#[apidoc::tag("角色")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "角色对外 id（hashids 短串）")]
+#[apidoc::param(name = "name", ty = "string", required, desc = "角色名，最长 64 字符")]
+#[apidoc::param(name = "code", ty = "string", required, desc = "角色标识（唯一），最长 64 字符")]
+#[apidoc::param(name = "sort", ty = "int", desc = "排序，默认 0")]
+#[apidoc::param(name = "data_scope", ty = "int", required, desc = "数据范围：1 全部 / 2 自定义 / 3 本部门 / 4 本部门及以下 / 5 仅本人")]
+#[apidoc::param(name = "status", ty = "int", desc = "状态：1 启用 / 0 禁用，默认 1")]
+#[apidoc::param(name = "remark", ty = "string", desc = "备注，最长 255 字符")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("400")]
+#[apidoc::returned(name = "data", ty = "null", desc = "无数据（成功时固定为 null）")]
 pub async fn update(
     State(state): State<AppState>,
     auth: Auth,
@@ -213,6 +293,16 @@ pub async fn update(
     Ok(ok(Value::Null))
 }
 
+#[apidoc::title("删除角色")]
+#[apidoc::desc("已被管理员使用时拒绝（400）；连带删角色-菜单、角色-部门关联")]
+#[apidoc::url("/api/v1/roles/{id}")]
+#[apidoc::method("DELETE")]
+#[apidoc::tag("角色")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "角色对外 id（hashids 短串）")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("400")]
+#[apidoc::returned(name = "data", ty = "null", desc = "无数据（成功时固定为 null）")]
 pub async fn remove(
     State(state): State<AppState>,
     auth: Auth,
@@ -235,6 +325,15 @@ pub async fn remove(
     Ok(ok(Value::Null))
 }
 
+#[apidoc::title("角色的菜单 id 列表")]
+#[apidoc::desc("前端「授权」弹窗的回显；data 直接是短串数组（不是对象）")]
+#[apidoc::url("/api/v1/roles/{id}/menus")]
+#[apidoc::method("GET")]
+#[apidoc::tag("角色")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "角色对外 id（hashids 短串）")]
+#[apidoc::response_status("200")]
+#[apidoc::returned(name = "data", ty = "array", desc = "菜单短串数组")]
 pub async fn get_menus(
     State(state): State<AppState>,
     auth: Auth,
@@ -250,6 +349,17 @@ pub async fn get_menus(
     Ok(ok(hid::enc_vec(&ids))) // 前端契约：data 直接是 id 短串数组
 }
 
+#[apidoc::title("设置角色的菜单")]
+#[apidoc::desc("整批覆盖；服务端把祖先节点补全后再落库（antd 半选的父节点不会提交）")]
+#[apidoc::url("/api/v1/roles/{id}/menus")]
+#[apidoc::method("PUT")]
+#[apidoc::tag("角色")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "角色对外 id（hashids 短串）")]
+#[apidoc::param(name = "menu_ids", ty = "array", required, desc = "菜单短串数组（整批覆盖，重复项自动去重）")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("404")]
+#[apidoc::returned(name = "data", ty = "null", desc = "无数据（成功时固定为 null）")]
 pub async fn set_menus(
     State(state): State<AppState>,
     auth: Auth,
@@ -275,6 +385,15 @@ pub async fn set_menus(
     Ok(ok(Value::Null))
 }
 
+#[apidoc::title("角色的部门 id 列表")]
+#[apidoc::desc("数据范围 = 自定义时，前端回显的角色部门；data 直接是短串数组")]
+#[apidoc::url("/api/v1/roles/{id}/depts")]
+#[apidoc::method("GET")]
+#[apidoc::tag("角色")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "角色对外 id（hashids 短串）")]
+#[apidoc::response_status("200")]
+#[apidoc::returned(name = "data", ty = "array", desc = "部门短串数组")]
 pub async fn get_depts(
     State(state): State<AppState>,
     auth: Auth,
@@ -290,6 +409,17 @@ pub async fn get_depts(
     Ok(ok(hid::enc_vec(&ids))) // 前端契约：data 直接是 id 短串数组
 }
 
+#[apidoc::title("设置角色的部门")]
+#[apidoc::desc("整批覆盖；只在数据范围 = 自定义时有意义")]
+#[apidoc::url("/api/v1/roles/{id}/depts")]
+#[apidoc::method("PUT")]
+#[apidoc::tag("角色")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "角色对外 id（hashids 短串）")]
+#[apidoc::param(name = "dept_ids", ty = "array", required, desc = "部门短串数组（整批覆盖，重复项自动去重）")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("404")]
+#[apidoc::returned(name = "data", ty = "null", desc = "无数据（成功时固定为 null）")]
 pub async fn set_depts(
     State(state): State<AppState>,
     auth: Auth,

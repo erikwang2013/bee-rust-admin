@@ -199,11 +199,14 @@ mod tests {
             captcha: true,
             retain_days: 90,
             job_enabled: true,
+            security_scan: None,
             hashids_salt: "test-salt".into(),
             hashids_min_len: 8,
             snowflake_worker: 0,
             snowflake_dc: 0,
             encrypt_key: "base64:YmVlLWFkbWluLXRlc3Qta2V5LTMyLWJ5dGVzLW9rISE=".into(),
+            apidoc_enabled: false,
+            apidoc_password: String::new(),
         }
     }
 

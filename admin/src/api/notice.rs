@@ -70,6 +70,17 @@ pub struct NoticeUpdate {
     pub status: i8,
 }
 
+#[apidoc::title("公告列表")]
+#[apidoc::desc("标题模糊 + 状态筛选 + 分页（管理页）")]
+#[apidoc::url("/api/v1/notices")]
+#[apidoc::method("GET")]
+#[apidoc::tag("公告")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::query(name = "page", ty = "int", desc = "页码，从 1 开始，默认 1")]
+#[apidoc::query(name = "size", ty = "int", desc = "每页条数，默认 10，上限 100")]
+#[apidoc::query(name = "title", ty = "string", desc = "标题模糊匹配")]
+#[apidoc::query(name = "status", ty = "int", desc = "状态：1 已发布 / 0 草稿")]
+#[apidoc::response_status("200")]
 pub async fn list(
     State(state): State<AppState>,
     auth: Auth,
@@ -92,6 +103,17 @@ pub async fn list(
     Ok(ok(json!({ "list": rows, "total": total })))
 }
 
+#[apidoc::title("新建公告")]
+#[apidoc::desc("标题 / 正文长度校验不通过回 400")]
+#[apidoc::url("/api/v1/notices")]
+#[apidoc::method("POST")]
+#[apidoc::tag("公告")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::param(name = "title", ty = "string", required, desc = "标题")]
+#[apidoc::param(name = "content", ty = "string", required, desc = "正文")]
+#[apidoc::param(name = "status", ty = "int", desc = "状态：1 发布 / 0 草稿，默认 0")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("400")]
 pub async fn create(
     State(state): State<AppState>,
     auth: Auth,
@@ -116,6 +138,18 @@ pub async fn create(
     Ok(ok(json!({ "id": hid::enc(n.id) })))
 }
 
+#[apidoc::title("编辑公告")]
+#[apidoc::desc("发布时补 publish_at（草稿不补）")]
+#[apidoc::url("/api/v1/notices/{id}")]
+#[apidoc::method("PUT")]
+#[apidoc::tag("公告")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "公告对外 id（hashids 短串）")]
+#[apidoc::param(name = "title", ty = "string", required, desc = "标题")]
+#[apidoc::param(name = "content", ty = "string", required, desc = "正文")]
+#[apidoc::param(name = "status", ty = "int", desc = "状态：1 发布 / 0 草稿")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("400")]
 pub async fn update(
     State(state): State<AppState>,
     auth: Auth,
@@ -146,6 +180,15 @@ pub async fn update(
 
 /// 删公告连带删它的已读记录，**同一事务**（与字典的级联删一致）：
 /// 残留行会让「已读」在 id 复用（本项目 id 不复用）时串味，留着也是垃圾。
+#[apidoc::title("删除公告")]
+#[apidoc::desc("连带删它的已读记录，**同一事务**")]
+#[apidoc::url("/api/v1/notices/{id}")]
+#[apidoc::method("DELETE")]
+#[apidoc::tag("公告")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "公告对外 id（hashids 短串）")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("404")]
 pub async fn remove(
     State(state): State<AppState>,
     auth: Auth,
@@ -187,6 +230,17 @@ pub async fn remove(
 
 /// 当前用户的未读列表：已发布 + 自己没读过，按 id DESC 取最近 50 条。
 /// `total` 是**未读总数**（铃铛角标用它，不能拿 `list.length`——超过 50 条就少报了）。
+#[apidoc::title("我的未读公告")]
+#[apidoc::desc("登录即可。已发布 + 自己没读过，按 id DESC 取最近 50 条；total 是**未读总数**（铃铛角标用它）")]
+#[apidoc::url("/api/v1/notices/unread")]
+#[apidoc::method("GET")]
+#[apidoc::tag("公告")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::response_status("200")]
+#[apidoc::returned(name = "data", ty = "object", desc = "未读结果", children = [
+            {name = "list", ty = "array", desc = "最近 50 条未读公告"},
+            {name = "total", ty = "int", desc = "未读总数（不受 50 条上限影响）"},
+        ])]
 pub async fn unread(
     State(state): State<AppState>,
     auth: Auth,
@@ -229,6 +283,16 @@ pub async fn unread(
 
 /// 标记已读：**幂等**（`INSERT IGNORE` 语义），重复标记仍 200。
 /// 目标是草稿或不存在时 404——草稿不属于任何人可见的未读集合（也不该借它探到草稿存在）。
+#[apidoc::title("标记公告已读")]
+#[apidoc::desc("登录即可。**幂等**（INSERT IGNORE 语义），重复标记仍 200；目标不存在或是草稿回 404")]
+#[apidoc::url("/api/v1/notices/{id}/read")]
+#[apidoc::method("POST")]
+#[apidoc::tag("公告")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "公告对外 id（hashids 短串）")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("404")]
+#[apidoc::returned(name = "data", ty = "null", desc = "无数据（成功时固定为 null）")]
 pub async fn read(
     State(state): State<AppState>,
     auth: Auth,

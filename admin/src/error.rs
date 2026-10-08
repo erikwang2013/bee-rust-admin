@@ -73,6 +73,10 @@ impl ApiError {
 /// 免得两边各写一遍字符串、改一处漏一处（`err` 会静默消失，前端回落中文）。
 pub const CAPTCHA_FAILED: &str = "验证码错误";
 
+/// 安全扫描拦截（403）的文案。`[security] scan = high/critical` 时命中达到阈值，
+/// 由 [`crate::security_scan`] 返回这个 `msg`（`ERR_TABLE` 里挂着 `security.blocked`）。
+pub const SECURITY_BLOCKED: &str = "请求被安全策略拦截";
+
 /// 稳定业务错误码表：`(中文原文 msg, err)`。
 /// **这张表是前后端唯一耦合点**，行与 `err` 逐字照抄
 /// `docs/superpowers/plans/2026-10-06-bra-v1.5-c-modules.md` 的「C3 契约 · 错误码表」。
@@ -142,6 +146,8 @@ const ERR_TABLE: &[(&str, &str)] = &[
     ("不能授予数据范围更宽的角色", "scope.wider_role"),
     ("不能授予包含你没有的权限的角色", "scope.extra_perms"),
     ("角色不存在或已停用", "scope.role_unavailable"),
+    // security（阶段 5a：请求安全扫描，拦截模式下命中阈值时 403）
+    (SECURITY_BLOCKED, "security.blocked"),
     // common（框架层兜底）
     ("数据已存在（唯一约束冲突）", "common.duplicate"),
     ("资源不存在", "common.not_found"),

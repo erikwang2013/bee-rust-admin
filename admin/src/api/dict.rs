@@ -100,6 +100,17 @@ fn filtered_types(q: &DictTypeQuery) -> Result<bee_orm::QuerySet<DictType>, ApiE
     Ok(qs)
 }
 
+#[apidoc::title("字典类型列表")]
+#[apidoc::desc("字典名模糊 + 状态筛选 + 分页")]
+#[apidoc::url("/api/v1/dicts")]
+#[apidoc::method("GET")]
+#[apidoc::tag("字典")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::query(name = "page", ty = "int", desc = "页码，从 1 开始，默认 1")]
+#[apidoc::query(name = "size", ty = "int", desc = "每页条数，默认 10，上限 100")]
+#[apidoc::query(name = "name", ty = "string", desc = "字典名模糊匹配")]
+#[apidoc::query(name = "status", ty = "int", desc = "状态：1 启用 / 0 禁用")]
+#[apidoc::response_status("200")]
 pub async fn type_list(
     State(state): State<AppState>,
     auth: Auth,
@@ -115,6 +126,18 @@ pub async fn type_list(
     Ok(ok(json!({ "list": rows, "total": total })))
 }
 
+#[apidoc::title("新建字典类型")]
+#[apidoc::desc("code 唯一且只允许小写字母/数字/下划线（唯一键冲突回 400）")]
+#[apidoc::url("/api/v1/dicts")]
+#[apidoc::method("POST")]
+#[apidoc::tag("字典")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::param(name = "code", ty = "string", required, desc = "字典标识（唯一，关联字典项）")]
+#[apidoc::param(name = "name", ty = "string", required, desc = "字典名")]
+#[apidoc::param(name = "status", ty = "int", desc = "状态：1 启用 / 0 禁用，默认 1")]
+#[apidoc::param(name = "remark", ty = "string", desc = "备注")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("400")]
 pub async fn type_create(
     State(state): State<AppState>,
     auth: Auth,
@@ -144,6 +167,18 @@ pub async fn type_create(
     Ok(ok(json!({ "id": hid::enc(t.id) })))
 }
 
+#[apidoc::title("编辑字典类型")]
+#[apidoc::desc("更新体里没有 code：它是关联键，改了会把已有字典项变成孤儿")]
+#[apidoc::url("/api/v1/dicts/{id}")]
+#[apidoc::method("PUT")]
+#[apidoc::tag("字典")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "字典类型对外 id（hashids 短串）")]
+#[apidoc::param(name = "name", ty = "string", required, desc = "字典名")]
+#[apidoc::param(name = "status", ty = "int", desc = "状态：1 启用 / 0 禁用")]
+#[apidoc::param(name = "remark", ty = "string", desc = "备注")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("400")]
 pub async fn type_update(
     State(state): State<AppState>,
     auth: Auth,
@@ -173,6 +208,15 @@ pub async fn type_update(
 
 /// 删类型连带删它的字典项，同一事务：中途失败回滚，不留「类型没了项还在」的孤儿行。
 /// 项数按字典量级（一条几到几十个）逐条删够用。
+#[apidoc::title("删除字典类型")]
+#[apidoc::desc("连带删它的字典项，**同一事务**（不留「类型没了项还在」的孤儿行）")]
+#[apidoc::url("/api/v1/dicts/{id}")]
+#[apidoc::method("DELETE")]
+#[apidoc::tag("字典")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "字典类型对外 id（hashids 短串）")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("404")]
 pub async fn type_remove(
     State(state): State<AppState>,
     auth: Auth,
@@ -235,6 +279,16 @@ async fn type_exists(state: &AppState, code: &str) -> Result<bool, ApiError> {
 ///
 /// 类型不存在回 404（拼错 code 的人该看到「类型不存在」而不是一个空下拉，
 /// 分不清「没配数据」和「写错了」）；类型在但没启用项回 200 + `[]`——那是合法状态。
+#[apidoc::title("按 code 取字典项下拉数据")]
+#[apidoc::desc("登录即可（不挂权限码）。类型不存在回 404（拼错 code 该看到「类型不存在」，而不是一个空下拉）；类型在但没启用项回 200 + 空数组")]
+#[apidoc::url("/api/v1/dicts/{code}/items")]
+#[apidoc::method("GET")]
+#[apidoc::tag("字典")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "code", ty = "string", required, desc = "字典标识 code")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("404")]
+#[apidoc::returned(name = "data", ty = "array", desc = "启用中的字典项 [{ value, label }, …]")]
 pub async fn type_items(
     State(state): State<AppState>,
     _auth: Auth,
@@ -318,6 +372,17 @@ fn filtered_items(q: &DictItemQuery) -> Result<bee_orm::QuerySet<DictItem>, ApiE
     Ok(qs)
 }
 
+#[apidoc::title("字典项列表")]
+#[apidoc::desc("按类型 code + 标签模糊筛选 + 分页")]
+#[apidoc::url("/api/v1/dict-items")]
+#[apidoc::method("GET")]
+#[apidoc::tag("字典")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::query(name = "page", ty = "int", desc = "页码，从 1 开始，默认 1")]
+#[apidoc::query(name = "size", ty = "int", desc = "每页条数，默认 10，上限 100")]
+#[apidoc::query(name = "type_code", ty = "string", desc = "所属字典标识 code")]
+#[apidoc::query(name = "label", ty = "string", desc = "标签模糊匹配")]
+#[apidoc::response_status("200")]
 pub async fn item_list(
     State(state): State<AppState>,
     auth: Auth,
@@ -334,6 +399,20 @@ pub async fn item_list(
     Ok(ok(json!({ "list": rows, "total": total })))
 }
 
+#[apidoc::title("新建字典项")]
+#[apidoc::desc("同一类型下 value 唯一；label 超长回 400")]
+#[apidoc::url("/api/v1/dict-items")]
+#[apidoc::method("POST")]
+#[apidoc::tag("字典")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::param(name = "type_code", ty = "string", required, desc = "所属字典标识 code（必须已存在）")]
+#[apidoc::param(name = "label", ty = "string", required, desc = "展示文案")]
+#[apidoc::param(name = "value", ty = "string", required, desc = "实际值（同类型下唯一）")]
+#[apidoc::param(name = "sort", ty = "int", desc = "排序，默认 0")]
+#[apidoc::param(name = "status", ty = "int", desc = "状态：1 启用 / 0 禁用，默认 1")]
+#[apidoc::param(name = "remark", ty = "string", desc = "备注")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("400")]
 pub async fn item_create(
     State(state): State<AppState>,
     auth: Auth,
@@ -364,6 +443,20 @@ pub async fn item_create(
     Ok(ok(json!({ "id": hid::enc(it.id) })))
 }
 
+#[apidoc::title("编辑字典项")]
+#[apidoc::desc("更新体里没有 type_code：它是关联键（前端提交了也忽略）")]
+#[apidoc::url("/api/v1/dict-items/{id}")]
+#[apidoc::method("PUT")]
+#[apidoc::tag("字典")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "字典项对外 id（hashids 短串）")]
+#[apidoc::param(name = "label", ty = "string", required, desc = "展示文案")]
+#[apidoc::param(name = "value", ty = "string", required, desc = "实际值（同类型下唯一）")]
+#[apidoc::param(name = "sort", ty = "int", desc = "排序")]
+#[apidoc::param(name = "status", ty = "int", desc = "状态：1 启用 / 0 禁用")]
+#[apidoc::param(name = "remark", ty = "string", desc = "备注")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("400")]
 pub async fn item_update(
     State(state): State<AppState>,
     auth: Auth,
@@ -394,6 +487,15 @@ pub async fn item_update(
     Ok(ok(Value::Null))
 }
 
+#[apidoc::title("删除字典项")]
+#[apidoc::desc("不存在回 404")]
+#[apidoc::url("/api/v1/dict-items/{id}")]
+#[apidoc::method("DELETE")]
+#[apidoc::tag("字典")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "字典项对外 id（hashids 短串）")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("404")]
 pub async fn item_remove(
     State(state): State<AppState>,
     auth: Auth,
@@ -446,6 +548,16 @@ async fn export_batch(
 }
 
 /// 导出当前筛选结果（不含分页）：筛选条件与列表共用 `filtered_items()`，导出范围不会漂移。
+#[apidoc::title("导出字典项 CSV")]
+#[apidoc::desc("导出当前筛选结果（不含分页，流式），筛选条件与列表共用")]
+#[apidoc::url("/api/v1/dict-items/export")]
+#[apidoc::method("GET")]
+#[apidoc::tag("字典")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::query(name = "type_code", ty = "string", desc = "所属字典标识 code")]
+#[apidoc::query(name = "label", ty = "string", desc = "标签模糊匹配")]
+#[apidoc::response_status("200")]
+#[apidoc::not_debug]
 pub async fn item_export(
     State(state): State<AppState>,
     auth: Auth,

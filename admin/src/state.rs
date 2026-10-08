@@ -35,6 +35,12 @@ pub struct AppState {
     /// 插件默认存储不会自动清扫过期 key，不设闸门就是一个公开的内存增长口，
     /// 见 `api::auth::captcha_create_throttle`。
     pub captcha_throttle: Arc<Throttle<MemoryThrottleStore>>,
+    /// 请求安全扫描器（security-rust 3.0.0，32 个检测器）。
+    ///
+    /// 无状态、纯同步，但构造要编译 32 组正则 —— 进程内建一次共享，别按请求建。
+    /// 拦截阈值在 `[security] scan`（[`AppConfig::security_scan`]，默认 `None` = 只报告），
+    /// 扫描与留痕见 [`crate::security_scan`]。
+    pub scanner: Arc<security_rust::Scanner>,
     /// 头像分片上传的运行时（aetherupload-rust 内核 + 进程内秒传表）。
     ///
     /// 构造后不可变、按 `[app] upload_dir` 装配（见 `api::avatar::build_runtime`），

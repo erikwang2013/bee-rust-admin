@@ -15,7 +15,7 @@ pub struct AuditLog {
     pub admin_id: i64,
     #[bee(sql_type = "VARCHAR(64)")]
     pub username: String,
-    /// 模块码：admin / role / menu / dept / dict / loginlog / auditlog / auth / other
+    /// 模块码：admin / role / menu / dept / dict / loginlog / auditlog / auth / security / other
     #[bee(sql_type = "VARCHAR(32)")]
     pub module: String,
     /// 动作中文名，如「新增管理员」

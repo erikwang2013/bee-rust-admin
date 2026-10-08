@@ -86,7 +86,7 @@ pub async fn audit_mw(State(state): State<AppState>, req: Request, next: Next) -
 
 /// 从 Authorization 头解出操作者：只解 token + 一次按 id 查用户名（只发生在写操作上）。
 /// 凭据无效不拦请求（各接口自己的 Auth 提取器会给 401），这里退化成匿名记录。
-async fn actor(state: &AppState, headers: &axum::http::HeaderMap) -> (i64, String) {
+pub(crate) async fn actor(state: &AppState, headers: &axum::http::HeaderMap) -> (i64, String) {
     let Some(token) = headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())

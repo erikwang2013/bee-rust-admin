@@ -231,6 +231,15 @@ fn verify_captcha(
 ///
 /// `[auth] captcha = false` 时 `data` 为 `null`：开关只在这一处判断，前端不需要另开
 /// 一个「查配置」接口，也不会出现「前端显示了验证码而后端根本不校验」的错位。
+#[apidoc::title("生成登录验证码")]
+#[apidoc::desc("**公开接口**。返回 poster-rust 的验证码载荷（key + 图形数据），登录时随登录体一起提交校验；按 IP 限流（60 秒窗口）")]
+#[apidoc::url("/api/v1/captcha/new")]
+#[apidoc::method("GET")]
+#[apidoc::tag("认证")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("429")]
+#[apidoc::returned(name = "data", ty = "object", desc = "插件原始载荷：key + 图形数据（字段随验证码类型
+（点击 / 旋转 / 滑块，每次随机切）变化）")]
 pub async fn captcha_new(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -262,6 +271,33 @@ pub async fn captcha_new(
     Ok(ok(value))
 }
 
+#[apidoc::title("登录")]
+#[apidoc::desc("用户名 + 密码登录，返回 JWT 与当前用户信息。受失败锁定（[auth] max_fail / lock_minutes）与图形验证码（[auth] captcha）保护：过不去就不比密码，响应不泄露密码是否正确")]
+#[apidoc::url("/api/v1/auth/login")]
+#[apidoc::method("POST")]
+#[apidoc::tag("认证")]
+#[apidoc::param(name = "username", ty = "string", required, desc = "用户名", mock = "admin")]
+#[apidoc::param(name = "password", ty = "string", required, desc = "密码（明文提交，务必走 HTTPS）", mock = "admin123")]
+#[apidoc::param(name = "captcha_key", ty = "string", desc = "[auth] captcha = true 时必填：/api/v1/captcha/new 返回的 key")]
+#[apidoc::param(name = "captcha_answer", ty = "object", desc = "验证码答案，形状同 poster-rust Answer（Slider 滑动 / Rotate 旋转 / Click 点选）")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("400")]
+#[apidoc::response_status("429")]
+#[apidoc::returned(name = "data", ty = "object", desc = "登录结果", children = [
+            {name = "token", ty = "string", required, desc = "JWT，后续请求放 Authorization: Bearer <token>"},
+            {name = "expires_in", ty = "int", required, desc = "有效期（秒）"},
+            {name = "user", ty = "object", required, desc = "当前用户", children = [
+            {name = "id", ty = "string", required, desc = "对外 id（hashids 短串）"},
+            {name = "username", ty = "string", required, desc = "用户名"},
+            {name = "nickname", ty = "string", desc = "昵称"},
+            {name = "avatar", ty = "string", desc = "头像地址（无头像为空串）"},
+            {name = "email", ty = "string", desc = "邮箱（库里密文，出口明文）"},
+            {name = "phone", ty = "string", desc = "手机号（同上）"},
+            {name = "sex", ty = "int", desc = "性别：0 未知 / 1 男 / 2 女"},
+            {name = "is_super", ty = "bool", desc = "是否超级管理员"},
+            {name = "dept_id", ty = "string", desc = "部门短串（0 = 无部门）"},
+        ]},
+        ])]
 pub async fn login(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -378,6 +414,14 @@ pub async fn login(
     })))
 }
 
+#[apidoc::title("退出登录")]
+#[apidoc::desc("当前设备的 token 立即失效（token_version 自增）。需要登录")]
+#[apidoc::url("/api/v1/auth/logout")]
+#[apidoc::method("POST")]
+#[apidoc::tag("认证")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::response_status("200")]
+#[apidoc::returned(name = "data", ty = "null", desc = "无数据（成功时固定为 null）")]
 pub async fn logout(
     State(state): State<AppState>,
     auth: Auth,
@@ -394,6 +438,17 @@ pub async fn logout(
 /// 退出其他设备（A3）：token_version 自增让所有旧 token 作废，然后给当前设备
 /// 换发一枚新版本的 token —— 用旧版本签的当前设备 token 也一起失效了，
 /// 不回新就得把发起者自己也踢下线。前端契约：新 token 在 `data.token`。
+#[apidoc::title("退出其他设备")]
+#[apidoc::desc("所有旧 token 一起作废，并给当前设备换发新 token（不回新 token 会把发起者自己也踢下线）。需要登录")]
+#[apidoc::url("/api/v1/auth/logout-others")]
+#[apidoc::method("POST")]
+#[apidoc::tag("认证")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::response_status("200")]
+#[apidoc::returned(name = "data", ty = "object", desc = "新 token", children = [
+            {name = "token", ty = "string", required, desc = "换发后的 JWT"},
+            {name = "expires_in", ty = "int", required, desc = "有效期（秒）"},
+        ])]
 pub async fn logout_others(
     State(state): State<AppState>,
     auth: Auth,
@@ -410,6 +465,28 @@ pub async fn logout_others(
     Ok(ok(json!({ "token": token, "expires_in": expires_in })))
 }
 
+#[apidoc::title("当前用户信息")]
+#[apidoc::desc("个人中心回显：用户资料 + 角色标识 + 权限码集合（email / phone 出口解密为明文）。需要登录")]
+#[apidoc::url("/api/v1/auth/profile")]
+#[apidoc::method("GET")]
+#[apidoc::tag("认证")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::response_status("200")]
+#[apidoc::returned(name = "data", ty = "object", desc = "用户 + 角色 + 权限", children = [
+            {name = "user", ty = "object", required, desc = "当前用户", children = [
+            {name = "id", ty = "string", required, desc = "对外 id（hashids 短串）"},
+            {name = "username", ty = "string", required, desc = "用户名"},
+            {name = "nickname", ty = "string", desc = "昵称"},
+            {name = "avatar", ty = "string", desc = "头像地址（无头像为空串）"},
+            {name = "email", ty = "string", desc = "邮箱（库里密文，出口明文）"},
+            {name = "phone", ty = "string", desc = "手机号（同上）"},
+            {name = "sex", ty = "int", desc = "性别：0 未知 / 1 男 / 2 女"},
+            {name = "is_super", ty = "bool", desc = "是否超级管理员"},
+            {name = "dept_id", ty = "string", desc = "部门短串（0 = 无部门）"},
+        ]},
+            {name = "roles", ty = "array", required, desc = "角色标识数组，如 [\"super\"]"},
+            {name = "perms", ty = "array", required, desc = "权限码数组，如 [\"system:admin:list\"]"},
+        ])]
 pub async fn profile(State(state): State<AppState>, auth: Auth) -> Result<Json<Value>, ApiError> {
     let mut perms: Vec<&String> = auth.perms.iter().collect();
     perms.sort();
@@ -436,6 +513,21 @@ pub async fn profile(State(state): State<AppState>, auth: Auth) -> Result<Json<V
 }
 
 /// 当前用户的菜单树（只含目录/菜单；超管全量，否则按角色勾选）。
+#[apidoc::title("当前用户菜单树")]
+#[apidoc::desc("只含目录 / 菜单（不含按钮）；超管拿全量，其余按已启用角色勾选（缺祖先节点时自动补全）。需要登录")]
+#[apidoc::url("/api/v1/auth/menus")]
+#[apidoc::method("GET")]
+#[apidoc::tag("认证")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::response_status("200")]
+#[apidoc::returned(name = "data", ty = "array", desc = "菜单树（顶层节点数组）", children = [
+            {name = "id", ty = "string", required, desc = "对外 id（hashids 短串）"},
+            {name = "parent_id", ty = "string", required, desc = "父节点短串（0 = 顶层）"},
+            {name = "name", ty = "string", required, desc = "菜单名"},
+            {name = "path", ty = "string", desc = "前端路由路径"},
+            {name = "icon", ty = "string", desc = "图标名"},
+            {name = "children", ty = "array", desc = "子节点（同结构，递归）"},
+        ])]
 pub async fn menus(State(state): State<AppState>, auth: Auth) -> Result<Json<Value>, ApiError> {
     let all = Menu::query()
         .filter_eq("status", 1)
@@ -507,6 +599,18 @@ pub struct ProfileBody {
 }
 
 /// 改自己的资料。不碰密码/状态/角色，也不换 token（否则改个昵称就被踢下线）。
+#[apidoc::title("修改个人资料")]
+#[apidoc::desc("只改自己的昵称 / 邮箱 / 手机号：不碰密码、状态、角色，也不换 token（改个昵称不该被踢下线）")]
+#[apidoc::url("/api/v1/auth/profile")]
+#[apidoc::method("PUT")]
+#[apidoc::tag("认证")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::param(name = "nickname", ty = "string", desc = "昵称，最长 64 字符")]
+#[apidoc::param(name = "email", ty = "string", desc = "邮箱（落库加密），最长 128 字符")]
+#[apidoc::param(name = "phone", ty = "string", desc = "手机号（落库加密），最长 20 字符")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("400")]
+#[apidoc::returned(name = "data", ty = "null", desc = "无数据（成功时固定为 null）")]
 pub async fn update_profile(
     State(state): State<AppState>,
     auth: Auth,
@@ -526,6 +630,17 @@ pub async fn update_profile(
     Ok(ok(Value::Null))
 }
 
+#[apidoc::title("修改自己的密码")]
+#[apidoc::desc("校验原密码后换成新密码（argon2id）；成功后所有端下线（token_version 自增），需重新登录")]
+#[apidoc::url("/api/v1/auth/password")]
+#[apidoc::method("PUT")]
+#[apidoc::tag("认证")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::param(name = "old_password", ty = "string", required, desc = "原密码")]
+#[apidoc::param(name = "new_password", ty = "string", required, desc = "新密码，至少 6 位")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("400")]
+#[apidoc::returned(name = "data", ty = "null", desc = "无数据（成功时固定为 null）")]
 pub async fn change_password(
     State(state): State<AppState>,
     auth: Auth,

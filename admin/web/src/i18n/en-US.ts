@@ -341,6 +341,7 @@ export const enUS: Record<I18nKey, string> = {
   'err.scope.wider_role': 'Cannot grant a role with a wider data scope',
   'err.scope.extra_perms': 'Cannot grant a role containing permissions you do not have',
   'err.scope.role_unavailable': 'The role does not exist or is disabled',
+  'err.security.blocked': 'Request blocked by security policy',
   'err.common.too_long': '{field} must not exceed {max} characters',
   'err.common.duplicate': 'Data already exists (unique constraint conflict)',
   'err.common.not_found': 'Resource not found',

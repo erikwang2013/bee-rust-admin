@@ -154,6 +154,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "apidoc-macros"
+version = "1.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a6b64338f71f883fa0f0134e6eb7a10299759ea1f21cd4417cc8eb02216cdd6c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "apidoc-rust"
+version = "1.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "812305c5ddf868e2789df2d8580d65d51c03ba3da4f387618dc1be008b26e2ec"
+dependencies = [
+ "apidoc-macros",
+ "axum",
+ "fake",
+ "linkme",
+ "md5",
+ "serde",
+ "serde_json",
+ "tower-http 0.7.1",
+]
+
+[[package]]
 name = "approx"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -207,6 +234,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f28d99ec8bfea296261ca1af174f24225171fea9664ba9003cbebee704810528"
 dependencies = [
  "num-traits",
+]
+
+[[package]]
+name = "atomic"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a89cbf775b137e9b968e67227ef7f775587cde3fd31b0d8599dbd0f598a48340"
+dependencies = [
+ "bytemuck",
 ]
 
 [[package]]
@@ -330,6 +366,7 @@ name = "bee_admin"
 version = "0.1.0"
 dependencies = [
  "aetherupload-rust",
+ "apidoc-rust",
  "argon2",
  "axum",
  "base64 0.22.1",
@@ -337,8 +374,10 @@ dependencies = [
  "bee_rust",
  "chrono",
  "encryptable-rust",
+ "form_urlencoded",
  "hashids-rust",
  "jwt-rust",
+ "linkme",
  "poster-rust",
  "rand_core 0.6.4",
  "reqwest",
@@ -1281,6 +1320,18 @@ checksum = "5a23add41df1562121a9393cb065eab5146a1242410f23a644851e90cfd669d2"
 dependencies = [
  "parking",
  "pin-project-lite",
+]
+
+[[package]]
+name = "fake"
+version = "3.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aef603df4ba9adbca6a332db7da6f614f21eafefbaf8e087844e452fdec152d0"
+dependencies = [
+ "chrono",
+ "deunicode",
+ "rand 0.8.8",
+ "uuid",
 ]
 
 [[package]]
@@ -2307,6 +2358,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "linkme"
+version = "0.3.37"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3045e122bd98aef8ec3ad58ce84f0791f64e70163d1a02710af4aa11a4d54cc5"
+dependencies = [
+ "linkme-impl",
+]
+
+[[package]]
+name = "linkme-impl"
+version = "0.3.37"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77060ebe535362c3da75682cd17b0431017b6e7c5661e714fc69a7ad017d1301"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.6",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2392,6 +2463,12 @@ dependencies = [
  "cfg-if",
  "digest 0.11.3",
 ]
+
+[[package]]
+name = "md5"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "490cc448043f947bae3cbee9c203358d62dbee0db12107a74be5c30ccfd09771"
 
 [[package]]
 name = "memcache"
@@ -3503,7 +3580,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tower",
- "tower-http",
+ "tower-http 0.6.11",
  "tower-service",
  "url",
  "wasm-bindgen",
@@ -4621,6 +4698,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "tower-http"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08a05a66a4fdd61cbbe0a1d755ffe0ca6aba159dd4820936a0ff8a8278245b9c"
+dependencies = [
+ "bitflags 2.13.2",
+ "bytes",
+ "http",
+ "percent-encoding",
+ "pin-project-lite",
+ "tower-layer",
+ "tower-service",
+]
+
+[[package]]
 name = "tower-layer"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4861,9 +4953,12 @@ version = "1.26.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2ef6dac1e96601b4fb3acccccff2139741fcb757cb9a36089bf5be91cfb285ce"
 dependencies = [
+ "atomic",
  "getrandom 0.4.3",
  "js-sys",
+ "md-5 0.10.6",
  "rand 0.10.3",
+ "sha1_smol",
  "wasm-bindgen",
 ]
 

@@ -230,6 +230,39 @@ cd admin/web && pnpm build && pnpm preview   # http://localhost:8081
 > 提示：`BEE_ADMIN_CONF` 可指定配置文件路径；`BEE_ADMIN_DB_DSN` 覆盖数据库连接串；
 > `BEE_ADMIN_HTTP_ADDR` 覆盖监听地址（容器里绑 `0.0.0.0:8080` 时必须用）。
 
+### 接口文档站（apidoc-rust）
+
+后台内置 apidoc-rust 的接口文档站，**默认关闭**（文档页会把整个后台的接口面、请求/响应
+结构都摊开，它是开发/交付工具，不该跟着生产实例一起对外）。要开就在 `app.conf` 里写：
+
+```ini
+[apidoc]
+enabled = true
+password = <自己定一个口令>
+```
+
+- `enabled = true` 而 `password` 空着 → **拒绝启动**（与 `encrypt_key` 一个态度：不允许
+  「以为有口令其实没有」地跑起来）；非法布尔值同样拒绝启动
+- 挂载点：`/apidoc`（UI，浏览器直接开）、`/apidoc/api.json`（原始接口清单，64 个接口）
+- 文档站**不在审计 / 安全扫描层的覆盖范围内**（它 merge 在全部中间件之后，读文档不是业务
+  操作，记进操作日志只是噪音），整棵树也在 `/api/v1` 之外，与业务接口互不影响
+
+数据路由（`api.json` / `export` / `mock` / `share` / `generate`）要带 token：先拿口令的
+md5 去换 token，再把 token 带在 query 上（token 里有 `+` `/` 等字符，要 URL 编码）：
+
+```bash
+MD5=$(printf '%s' '你的口令' | md5sum | cut -d' ' -f1)   # 收尾别带换行
+TOKEN=$(curl -s "http://127.0.0.1:8080/apidoc/auth?password=$MD5" | sed 's/.*"token":"\([^"]*\)".*/\1/')
+curl -G --data-urlencode "token=$TOKEN" http://127.0.0.1:8080/apidoc/api.json
+```
+
+`/apidoc`（UI 页本身）不设守卫，口令只在取 token 时校验 —— 别把 UI 当成「有密码的站点」。
+
+> ⚠️ **插件那套口令的凭据是 `md5(口令)` 放在 query 上，等价于一个可重放的通行证** ——
+> URL 在访问日志 / 浏览器历史 / 跳板机记录里留一次，抓到的人就能一直换 token；且 md5 无盐、
+> 弱口令可离线爆破，插件默认的 `secret_key` 又是公开常量。所以**只在可信网络（内网 /
+> 跳板机）里开**，别对着公网。
+
 ### Docker 一键部署
 
 仓库里已备好容器化配置：

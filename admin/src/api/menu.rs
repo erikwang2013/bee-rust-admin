@@ -102,6 +102,13 @@ fn build(all: &[Menu], parent: i64) -> Vec<Value> {
         .collect()
 }
 
+#[apidoc::title("菜单树")]
+#[apidoc::desc("全量树（含按钮节点，管理页要看）。需要登录")]
+#[apidoc::url("/api/v1/menus/tree")]
+#[apidoc::method("GET")]
+#[apidoc::tag("菜单")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::response_status("200")]
 pub async fn tree(State(state): State<AppState>, auth: Auth) -> Result<Json<Value>, ApiError> {
     auth.require("system:menu:list")?;
     let all = Menu::query()
@@ -112,6 +119,14 @@ pub async fn tree(State(state): State<AppState>, auth: Auth) -> Result<Json<Valu
     Ok(ok(build(&all, 0)))
 }
 
+#[apidoc::title("新建菜单")]
+#[apidoc::desc("父节点必须存在；类型/名称校验不通过回 400")]
+#[apidoc::url("/api/v1/menus")]
+#[apidoc::method("POST")]
+#[apidoc::tag("菜单")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("400")]
 pub async fn create(
     State(state): State<AppState>,
     auth: Auth,
@@ -143,6 +158,15 @@ pub async fn create(
     Ok(ok(json!({ "id": hid::enc(m.id) })))
 }
 
+#[apidoc::title("编辑菜单")]
+#[apidoc::desc("父节点必须存在，且不能挂到自己的后代下（防环）")]
+#[apidoc::url("/api/v1/menus/{id}")]
+#[apidoc::method("PUT")]
+#[apidoc::tag("菜单")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "菜单对外 id（hashids 短串）")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("400")]
 pub async fn update(
     State(state): State<AppState>,
     auth: Auth,
@@ -182,6 +206,15 @@ pub async fn update(
     Ok(ok(Value::Null))
 }
 
+#[apidoc::title("删除菜单")]
+#[apidoc::desc("连带清理角色-菜单关联")]
+#[apidoc::url("/api/v1/menus/{id}")]
+#[apidoc::method("DELETE")]
+#[apidoc::tag("菜单")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "菜单对外 id（hashids 短串）")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("404")]
 pub async fn remove(
     State(state): State<AppState>,
     auth: Auth,

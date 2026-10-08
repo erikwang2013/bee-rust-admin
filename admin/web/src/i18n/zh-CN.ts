@@ -348,6 +348,7 @@ export const zhCN = {
   'err.scope.wider_role': '不能授予数据范围更宽的角色',
   'err.scope.extra_perms': '不能授予包含你没有的权限的角色',
   'err.scope.role_unavailable': '角色不存在或已停用',
+  'err.security.blocked': '请求被安全策略拦截',
   'err.common.too_long': '{field} 长度不能超过 {max} 个字符',
   'err.common.duplicate': '数据已存在（唯一约束冲突）',
   'err.common.not_found': '资源不存在',

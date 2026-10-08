@@ -193,6 +193,41 @@ async fn decorate(state: &AppState, rows: Vec<Admin>) -> Result<Vec<Value>, ApiE
 }
 
 /// 列表：筛选 + 数据权限 + 分页；补 dept_name / role_names。
+#[apidoc::title("管理员列表")]
+#[apidoc::desc("筛选 + 数据权限 + 分页，列表补 dept_name / role_names / role_ids（email / phone 出口解密为明文）")]
+#[apidoc::url("/api/v1/admins")]
+#[apidoc::method("GET")]
+#[apidoc::tag("管理员")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::query(name = "page", ty = "int", desc = "页码，从 1 开始，默认 1", mock = "1")]
+#[apidoc::query(name = "size", ty = "int", desc = "每页条数，默认 10，上限 100", mock = "10")]
+#[apidoc::query(name = "username", ty = "string", desc = "用户名模糊匹配")]
+#[apidoc::query(name = "status", ty = "int", desc = "状态：1 启用 / 0 禁用")]
+#[apidoc::query(name = "dept_id", ty = "string", desc = "部门短串（含子部门，受数据权限约束）")]
+#[apidoc::response_status("200")]
+#[apidoc::returned(name = "data", ty = "object", desc = "分页结果", children = [
+            {name = "list", ty = "array", required, desc = "管理员列表", children = [
+            {name = "id", ty = "string", required, desc = "对外 id（hashids 短串）"},
+            {name = "username", ty = "string", required, desc = "用户名"},
+            {name = "nickname", ty = "string", desc = "昵称"},
+            {name = "avatar", ty = "string", desc = "头像地址（无头像为空串）"},
+            {name = "email", ty = "string", desc = "邮箱（库里密文，出口明文）"},
+            {name = "phone", ty = "string", desc = "手机号（同上）"},
+            {name = "sex", ty = "int", desc = "性别：0 未知 / 1 男 / 2 女"},
+            {name = "dept_id", ty = "string", desc = "部门短串（0 = 无部门）"},
+            {name = "dept_name", ty = "string", desc = "部门名（列表补的）"},
+            {name = "status", ty = "int", desc = "状态：1 启用 / 0 禁用"},
+            {name = "is_super", ty = "bool", desc = "是否超级管理员"},
+            {name = "remark", ty = "string", desc = "备注"},
+            {name = "last_login_at", ty = "string", desc = "最后登录时间（空 = 从未登录）"},
+            {name = "last_login_ip", ty = "string", desc = "最后登录 IP"},
+            {name = "created_at", ty = "string", desc = "创建时间"},
+            {name = "updated_at", ty = "string", desc = "更新时间"},
+            {name = "role_ids", ty = "array", desc = "角色短串数组"},
+            {name = "role_names", ty = "array", desc = "角色名数组"},
+        ]},
+            {name = "total", ty = "int", required, desc = "筛选后的总条数"},
+        ])]
 pub async fn list(
     State(state): State<AppState>,
     auth: Auth,
@@ -259,6 +294,17 @@ async fn export_batch(
 /// 导出当前筛选结果（不含分页）；鉴权复用 list 权限码。
 /// 流式：筛选 + 数据权限与 list 共用 `filtered()`，按 keyset 分批取（B6），
 /// 内存只与一批（含该批的 decorate）成正比。
+#[apidoc::title("导出管理员 CSV")]
+#[apidoc::desc("导出当前筛选结果（不含分页，流式，列与列表一致）；鉴权复用列表权限码")]
+#[apidoc::url("/api/v1/admins/export")]
+#[apidoc::method("GET")]
+#[apidoc::tag("管理员")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::query(name = "username", ty = "string", desc = "用户名模糊匹配")]
+#[apidoc::query(name = "status", ty = "int", desc = "状态：1 启用 / 0 禁用")]
+#[apidoc::query(name = "dept_id", ty = "string", desc = "部门短串")]
+#[apidoc::response_status("200")]
+#[apidoc::not_debug]
 pub async fn export(
     State(state): State<AppState>,
     auth: Auth,
@@ -275,6 +321,35 @@ pub async fn export(
     .await
 }
 
+#[apidoc::title("管理员详情")]
+#[apidoc::desc("编辑弹窗回显：管理员字段 + role_ids（email / phone 明文），目标超出数据范围时 403")]
+#[apidoc::url("/api/v1/admins/{id}")]
+#[apidoc::method("GET")]
+#[apidoc::tag("管理员")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "管理员对外 id（hashids 短串）")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("404")]
+#[apidoc::returned(name = "data", ty = "object", desc = "管理员对象", children = [
+            {name = "id", ty = "string", required, desc = "对外 id（hashids 短串）"},
+            {name = "username", ty = "string", required, desc = "用户名"},
+            {name = "nickname", ty = "string", desc = "昵称"},
+            {name = "avatar", ty = "string", desc = "头像地址（无头像为空串）"},
+            {name = "email", ty = "string", desc = "邮箱（库里密文，出口明文）"},
+            {name = "phone", ty = "string", desc = "手机号（同上）"},
+            {name = "sex", ty = "int", desc = "性别：0 未知 / 1 男 / 2 女"},
+            {name = "dept_id", ty = "string", desc = "部门短串（0 = 无部门）"},
+            {name = "dept_name", ty = "string", desc = "部门名（列表补的）"},
+            {name = "status", ty = "int", desc = "状态：1 启用 / 0 禁用"},
+            {name = "is_super", ty = "bool", desc = "是否超级管理员"},
+            {name = "remark", ty = "string", desc = "备注"},
+            {name = "last_login_at", ty = "string", desc = "最后登录时间（空 = 从未登录）"},
+            {name = "last_login_ip", ty = "string", desc = "最后登录 IP"},
+            {name = "created_at", ty = "string", desc = "创建时间"},
+            {name = "updated_at", ty = "string", desc = "更新时间"},
+            {name = "role_ids", ty = "array", desc = "角色短串数组"},
+            {name = "role_names", ty = "array", desc = "角色名数组"},
+        ])]
 pub async fn detail(
     State(state): State<AppState>,
     auth: Auth,
@@ -315,6 +390,27 @@ fn username_taken(e: OrmError) -> ApiError {
     }
 }
 
+#[apidoc::title("新建管理员")]
+#[apidoc::desc("用户名 3-64 字符（字母/数字/下划线）；部门与角色都不能超出操作者的数据范围")]
+#[apidoc::url("/api/v1/admins")]
+#[apidoc::method("POST")]
+#[apidoc::tag("管理员")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::param(name = "username", ty = "string", required, desc = "用户名，3-64 个字符（字母 / 数字 / 下划线，唯一）")]
+#[apidoc::param(name = "password", ty = "string", required, desc = "登录密码，至少 6 位")]
+#[apidoc::param(name = "nickname", ty = "string", desc = "昵称，最长 64 字符")]
+#[apidoc::param(name = "email", ty = "string", desc = "邮箱（落库加密），最长 128 字符")]
+#[apidoc::param(name = "phone", ty = "string", desc = "手机号（落库加密），最长 20 字符")]
+#[apidoc::param(name = "sex", ty = "int", desc = "性别：0 未知 / 1 男 / 2 女")]
+#[apidoc::param(name = "dept_id", ty = "string", desc = "部门短串（0 = 无部门）")]
+#[apidoc::param(name = "status", ty = "int", desc = "状态：1 启用 / 0 禁用，默认 1")]
+#[apidoc::param(name = "remark", ty = "string", desc = "备注，最长 255 字符")]
+#[apidoc::param(name = "role_ids", ty = "array", desc = "角色短串数组")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("400")]
+#[apidoc::returned(name = "data", ty = "object", desc = "新建结果", children = [
+            {name = "id", ty = "string", required, desc = "新管理员对外 id（hashids 短串）"},
+        ])]
 pub async fn create(
     State(state): State<AppState>,
     auth: Auth,
@@ -358,6 +454,24 @@ pub async fn create(
     Ok(ok(json!({ "id": hid::enc(a.id) })))
 }
 
+#[apidoc::title("编辑管理员")]
+#[apidoc::desc("本接口同样能改状态：禁用即踢下线；不能改自己 / 超管的状态，目标与要授的角色都不能超出操作者范围")]
+#[apidoc::url("/api/v1/admins/{id}")]
+#[apidoc::method("PUT")]
+#[apidoc::tag("管理员")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "管理员对外 id（hashids 短串）")]
+#[apidoc::param(name = "nickname", ty = "string", desc = "昵称，最长 64 字符")]
+#[apidoc::param(name = "email", ty = "string", desc = "邮箱（落库加密），最长 128 字符")]
+#[apidoc::param(name = "phone", ty = "string", desc = "手机号（落库加密），最长 20 字符")]
+#[apidoc::param(name = "sex", ty = "int", desc = "性别：0 未知 / 1 男 / 2 女")]
+#[apidoc::param(name = "dept_id", ty = "string", desc = "部门短串（0 = 无部门）")]
+#[apidoc::param(name = "status", ty = "int", desc = "状态：1 启用 / 0 禁用")]
+#[apidoc::param(name = "remark", ty = "string", desc = "备注，最长 255 字符")]
+#[apidoc::param(name = "role_ids", ty = "array", desc = "角色短串数组（整批覆盖）")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("400")]
+#[apidoc::returned(name = "data", ty = "null", desc = "无数据（成功时固定为 null）")]
 pub async fn update(
     State(state): State<AppState>,
     auth: Auth,
@@ -414,6 +528,16 @@ pub async fn update(
     Ok(ok(Value::Null))
 }
 
+#[apidoc::title("删除管理员")]
+#[apidoc::desc("连带删管理员-角色关联；不能删自己，也不能删超管")]
+#[apidoc::url("/api/v1/admins/{id}")]
+#[apidoc::method("DELETE")]
+#[apidoc::tag("管理员")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "管理员对外 id（hashids 短串）")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("400")]
+#[apidoc::returned(name = "data", ty = "null", desc = "无数据（成功时固定为 null）")]
 pub async fn remove(
     State(state): State<AppState>,
     auth: Auth,
@@ -444,6 +568,17 @@ pub async fn remove(
     Ok(ok(Value::Null))
 }
 
+#[apidoc::title("启用 / 禁用管理员")]
+#[apidoc::desc("禁用即踢下线（token_version 自增）；不能改自己或超管的状态")]
+#[apidoc::url("/api/v1/admins/{id}/status")]
+#[apidoc::method("PUT")]
+#[apidoc::tag("管理员")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "管理员对外 id（hashids 短串）")]
+#[apidoc::param(name = "status", ty = "int", required, desc = "状态：1 启用 / 0 禁用")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("400")]
+#[apidoc::returned(name = "data", ty = "null", desc = "无数据（成功时固定为 null）")]
 pub async fn set_status(
     State(state): State<AppState>,
     auth: Auth,
@@ -475,6 +610,17 @@ pub async fn set_status(
     Ok(ok(Value::Null))
 }
 
+#[apidoc::title("重置管理员密码")]
+#[apidoc::desc("新密码至少 6 位；旧 token 立即失效（token_version 自增）。不能重置其他超管的密码")]
+#[apidoc::url("/api/v1/admins/{id}/password")]
+#[apidoc::method("PUT")]
+#[apidoc::tag("管理员")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "管理员对外 id（hashids 短串）")]
+#[apidoc::param(name = "password", ty = "string", required, desc = "新密码，至少 6 位")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("400")]
+#[apidoc::returned(name = "data", ty = "null", desc = "无数据（成功时固定为 null）")]
 pub async fn reset_password(
     State(state): State<AppState>,
     auth: Auth,
@@ -502,6 +648,17 @@ pub async fn reset_password(
     Ok(ok(Value::Null))
 }
 
+#[apidoc::title("设置管理员角色")]
+#[apidoc::desc("整批覆盖；新增的角色不能超出操作者的数据范围（防自我提权）")]
+#[apidoc::url("/api/v1/admins/{id}/roles")]
+#[apidoc::method("PUT")]
+#[apidoc::tag("管理员")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "管理员对外 id（hashids 短串）")]
+#[apidoc::param(name = "role_ids", ty = "array", required, desc = "角色短串数组（整批覆盖，重复项自动去重）")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("400")]
+#[apidoc::returned(name = "data", ty = "null", desc = "无数据（成功时固定为 null）")]
 pub async fn set_roles(
     State(state): State<AppState>,
     auth: Auth,

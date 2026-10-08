@@ -158,12 +158,19 @@ pub async fn reset_db(dsn: &str) {
 
 /// 用随机端口起真实进程；返回 (进程守卫, base_url)。
 pub async fn start_server() -> (Server, String) {
+    start_server_conf(|c| c).await
+}
+
+/// 同 [`start_server`]，但起服务前可改配置文本（如追加 `[security] scan = high`）。
+/// 配置在启动时读取（拒绝非法值也是），所以需要不同配置的用例必须换一个进程。
+pub async fn start_server_conf(patch: impl FnOnce(String) -> String) -> (Server, String) {
     let port = {
         let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         l.local_addr().unwrap().port()
     };
     let conf = std::fs::read_to_string("conf/app.conf.test").unwrap();
     let conf = conf.replace("127.0.0.1:0", &format!("127.0.0.1:{port}"));
+    let conf = patch(conf);
     let tmp = std::env::temp_dir().join(format!("bee_admin_test_{port}.conf"));
     std::fs::write(&tmp, conf).unwrap();
 

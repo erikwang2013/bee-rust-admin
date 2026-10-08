@@ -63,6 +63,18 @@ hashids-rust = { version = "1.0.10", features = ["axum"] }
 # 这里只用不依赖框架的核心 `Guard`（core 不挂 feature 门控），路由自己挂。
 # 更不要 `bee-rust` 特性 —— 它会从 crates.io 再拉一份 bee_router，与 workspace 的 path 版打架。
 poster-rust = "1.1.2"
+# 接口文档站（阶段 5b）。**按版本依赖，不要用 path**：本机 path 在 CI 与其他机器上不存在。
+# lib 名与包名不同：apidoc-rust → `apidoc`（注解宏生成的 `apidoc::…` 路径靠它解析）。
+# `axum` 特性给的是 `apidoc::axum::apidoc_routes(cfg)`（内含 /apidoc、/apidoc/api.json 等），
+# 路由由我们自己 merge（默认关闭，见 [apidoc] enabled）。
+apidoc-rust = { version = "1.6.2", features = ["axum"] }
+# 注解宏生成的注册项引用 `::linkme::…`（属性的 `crate = …` 未被 apidoc 宏设置），
+# 所以消费方必须**直接**依赖 linkme，不能只靠 apidoc 的 re-export。
+linkme = "0.3"
+# URL 解码（安全扫描扫百分号编码的 payload，见 src/security_scan.rs）。用标准实现，
+# 别手写 percent-decode；它本来就在依赖树里（axum → serde_urlencoded → form_urlencoded），
+# 只多一行声明，不新增编译成本。
+form_urlencoded = "1"
 
 [dev-dependencies]
 # 集成测试直连 MySQL 建库/清表/断言用（src 已不再依赖 sqlx —— 迁移后连裸 SQL

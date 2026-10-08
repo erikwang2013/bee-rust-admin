@@ -1,4 +1,5 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
+use security_rust::RiskLevel;
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -38,6 +39,12 @@ pub struct AppConfig {
     pub retain_days: i64,
     /// 定时任务总开关（`[job] enabled`）：false = 不启动调度循环（手动触发仍可用）
     pub job_enabled: bool,
+    /// 请求安全扫描的拦截阈值（`[security] scan`）：`None` = `off`（**默认**，只报告不拦截）。
+    ///
+    /// `Some(High)` / `Some(Critical)` = 扫描等级达到该值就 403 + `err = "security.blocked"`
+    /// （见 [`crate::security_scan`]）。默认 off 是刻意的：扫描是「有攻击迹象就记一笔」，
+    /// 真要挡得先跑一段时间看过误报再定阈值（契约「配置」一节的说明）。
+    pub security_scan: Option<RiskLevel>,
     /// 对外 id（hashids）的盐。**换了盐，已发出去的短串全部作废**（前端收藏的链接、
     /// 缓存里的列表都会对不上）；每个部署该是不同的随机串，老配置缺省为空串也能跑。
     pub hashids_salt: String,
@@ -50,6 +57,15 @@ pub struct AppConfig {
     /// 32 字节字面量）。**必填**：缺了直接拒绝启动，不让进程带着「以为加密了其实
     /// 没加密」跑起来。**换了密钥，库里已加密的数据就解不开了**（不可逆，没有救援）。
     pub encrypt_key: String,
+    /// 接口文档站（`[apidoc] enabled`），**默认 false**：文档页会把整个后台的接口面
+    /// 暴露出来（含请求/响应结构），它是开发/交付工具，不该跟着生产实例一起对外。
+    pub apidoc_enabled: bool,
+    /// 文档站口令（`[apidoc] password`）。**`enabled = true` 时必填**，缺了拒绝启动
+    /// （不允许「以为有口令其实没有」地对外）。
+    ///
+    /// ⚠️ 插件那套口令的凭据是 `md5(口令)` 放在 query 上 —— 等价于一个**可重放的
+    /// 通行证**（抓到一次就能一直用）。所以只在可信网络里开，见 README。
+    pub apidoc_password: String,
 }
 
 impl AppConfig {
@@ -124,6 +140,31 @@ impl AppConfig {
             return Err(ConfigError::Invalid("[app] hashids_min_len 必须 >= 1".into()));
         }
 
+        // 文档站开关 + 口令：**enabled = true 却没配口令 = 拒绝启动**。默认 false：
+        // 文档站把整个接口面（含请求/响应结构）摊开，是开发/交付工具，不该跟着
+        // 生产实例一起对外；真要开，就必须带口令 —— 不允许「以为有口令其实没有」。
+        let apidoc_enabled = flag("apidoc", "enabled", false)?;
+        let apidoc_password = opt("apidoc", "password", "");
+        if apidoc_enabled && apidoc_password.trim().is_empty() {
+            return Err(ConfigError::Invalid(
+                "[apidoc] password 不能为空（[apidoc] enabled = true 时必填）".into(),
+            ));
+        }
+
+        // 安全扫描的拦截阈值。取值拼错的后果很实际：「以为在拦其实只报告」（或反过来把
+        // 正常用户拦掉）都比启动时报错难查，所以非 off/high/critical 一律拒绝启动
+        // —— 与 `[job] enabled` / `[auth] captcha` 一个态度。
+        let security_scan = match opt("security", "scan", "off").trim().to_ascii_lowercase().as_str() {
+            "off" => None,
+            "high" => Some(RiskLevel::High),
+            "critical" => Some(RiskLevel::Critical),
+            other => {
+                return Err(ConfigError::Invalid(format!(
+                    "[security] scan 只能是 off/high/critical，得到 {other}"
+                )));
+            }
+        };
+
         Ok(Self {
             app_name: get("app", "name")?,
             http_addr: std::env::var("BEE_ADMIN_HTTP_ADDR").unwrap_or(get("app", "http_addr")?),
@@ -140,11 +181,14 @@ impl AppConfig {
             captcha: flag("auth", "captcha", true)?,
             retain_days: num("log", "retain_days", 90)?,
             job_enabled: flag("job", "enabled", true)?,
+            security_scan,
             hashids_salt: opt("app", "hashids_salt", ""),
             hashids_min_len: hashids_min_len as usize,
             snowflake_worker: num("app", "snowflake_worker", 0)?,
             snowflake_dc: num("app", "snowflake_dc", 0)?,
             encrypt_key,
+            apidoc_enabled,
+            apidoc_password,
         })
     }
 }
@@ -255,6 +299,74 @@ initial_admin_password = admin123
         map.get_mut("auth").unwrap().insert("captcha".into(), "off".into());
         let err = AppConfig::from_ini(&map).unwrap_err();
         assert!(format!("{err}").contains("[auth] captcha"), "应报出具体键: {err}");
+    }
+
+    /// 安全扫描阈值：老配置没有 [security] = 默认 off（只报告不拦截）；
+    /// high / critical 认大小写与空白；**拼错的取值拒绝启动** —— 「以为在拦其实只报告」
+    /// 或「以为只报告其实在拦」都是事故，不如起不来。
+    #[test]
+    fn security_scan_defaults_off_and_rejects_garbage() {
+        assert_eq!(AppConfig::from_ini(&parse()).unwrap().security_scan, None, "缺键 = off");
+
+        let mut map = parse();
+        map.insert("security".into(), [("scan".to_string(), "high".to_string())].into_iter().collect());
+        assert_eq!(AppConfig::from_ini(&map).unwrap().security_scan, Some(RiskLevel::High));
+        map.get_mut("security").unwrap().insert("scan".into(), " CRITICAL ".into());
+        assert_eq!(AppConfig::from_ini(&map).unwrap().security_scan, Some(RiskLevel::Critical));
+        map.get_mut("security").unwrap().insert("scan".into(), "off".into());
+        assert_eq!(AppConfig::from_ini(&map).unwrap().security_scan, None);
+
+        map.get_mut("security").unwrap().insert("scan".into(), "on".into());
+        let err = AppConfig::from_ini(&map).unwrap_err();
+        assert!(format!("{err}").contains("[security] scan"), "应报出具体键: {err}");
+    }
+
+    /// 文档站开关：老配置没有 [apidoc] = 默认关（不能凭空开出一个暴露接口面的站点）；
+    /// **开了却没口令 = 拒绝启动**（「以为有口令其实没有」）；拼错的开关同样拒绝。
+    #[test]
+    fn apidoc_defaults_off_and_requires_password_when_on() {
+        let cfg = AppConfig::from_ini(&parse()).unwrap();
+        assert!(!cfg.apidoc_enabled, "缺 [apidoc] 节 = 默认关");
+        assert_eq!(cfg.apidoc_password, "");
+
+        // enabled = true + 口令：认
+        let mut map = parse();
+        map.insert(
+            "apidoc".into(),
+            [("enabled".to_string(), "true".to_string()), ("password".to_string(), "s3cret".to_string())]
+                .into_iter()
+                .collect(),
+        );
+        let cfg = AppConfig::from_ini(&map).unwrap();
+        assert!(cfg.apidoc_enabled);
+        assert_eq!(cfg.apidoc_password, "s3cret");
+
+        // enabled = true 但口令缺键 / 空 / 全空白：一律拒绝启动（点名 apidoc password）
+        for password in [None, Some(""), Some("   ")] {
+            let mut map = parse();
+            let mut sec: HashMap<String, String> =
+                [("enabled".to_string(), "true".to_string())].into_iter().collect();
+            if let Some(p) = password {
+                sec.insert("password".into(), p.into());
+            }
+            map.insert("apidoc".into(), sec);
+            let err = AppConfig::from_ini(&map).unwrap_err();
+            let msg = format!("{err}");
+            assert!(
+                msg.contains("apidoc") && msg.contains("password"),
+                "应点名 [apidoc] password: {msg}"
+            );
+        }
+
+        // 关着的时候口令空着无所谓（默认部署就是这样）
+        let mut map = parse();
+        map.insert("apidoc".into(), [("enabled".to_string(), "false".to_string())].into_iter().collect());
+        assert!(!AppConfig::from_ini(&map).unwrap().apidoc_enabled);
+
+        // 拼错的开关不能默默当 false（文档站照旧关着没人查）——直接报错
+        map.get_mut("apidoc").unwrap().insert("enabled".into(), "yes".into());
+        let err = AppConfig::from_ini(&map).unwrap_err();
+        assert!(format!("{err}").contains("[apidoc] enabled"), "应报出具体键: {err}");
     }
 
     #[test]

@@ -41,6 +41,13 @@ fn check_cron(cron: &str) -> Result<String, ApiError> {
     }
 }
 
+#[apidoc::title("定时任务列表")]
+#[apidoc::desc("含上次执行结果与下次执行时间")]
+#[apidoc::url("/api/v1/jobs")]
+#[apidoc::method("GET")]
+#[apidoc::tag("任务")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::response_status("200")]
 pub async fn list(
     State(state): State<AppState>,
     auth: Auth,
@@ -64,6 +71,18 @@ pub async fn list(
     Ok(ok(json!({ "list": rows, "total": total })))
 }
 
+#[apidoc::title("编辑定时任务")]
+#[apidoc::desc("间隔秒数非数字 / 0 / 负数一律 400（0 会让任务每个 tick 都跑；要停就置 status = 0）")]
+#[apidoc::url("/api/v1/jobs/{id}")]
+#[apidoc::method("PUT")]
+#[apidoc::tag("任务")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "任务对外 id（hashids 短串）")]
+#[apidoc::param(name = "cron", ty = "string", desc = "cron 表达式（与 interval_secs 二选一）")]
+#[apidoc::param(name = "interval_secs", ty = "int", desc = "间隔秒数，必须 > 0")]
+#[apidoc::param(name = "status", ty = "int", desc = "状态：1 启用 / 0 停用")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("400")]
 pub async fn update(
     State(state): State<AppState>,
     auth: Auth,
@@ -91,6 +110,15 @@ pub async fn update(
 
 /// 手动触发一次：**同步执行**，结果写 `job_log` 并回写 job 行。
 /// 任务自己失败（返回 Err）不算接口失败：回 200 + `status: 0`，前端看 `msg` 提示。
+#[apidoc::title("手动触发一次任务")]
+#[apidoc::desc("**同步执行**：结果写 job_log 并回写任务行；任务自己失败不算接口失败（回 200 + status: 0，看 msg）")]
+#[apidoc::url("/api/v1/jobs/{id}/run")]
+#[apidoc::method("POST")]
+#[apidoc::tag("任务")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "任务对外 id（hashids 短串）")]
+#[apidoc::response_status("200")]
+#[apidoc::not_debug]
 pub async fn run(
     State(state): State<AppState>,
     auth: Auth,
@@ -125,6 +153,17 @@ pub struct JobLogQuery {
     pub end: Option<String>,
 }
 
+#[apidoc::title("任务执行日志")]
+#[apidoc::desc("按任务 / 状态筛选 + 分页")]
+#[apidoc::url("/api/v1/job-logs")]
+#[apidoc::method("GET")]
+#[apidoc::tag("任务")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::query(name = "page", ty = "int", desc = "页码，从 1 开始，默认 1")]
+#[apidoc::query(name = "size", ty = "int", desc = "每页条数，默认 10，上限 100")]
+#[apidoc::query(name = "job_id", ty = "string", desc = "任务短串（只看某个任务的记录）")]
+#[apidoc::query(name = "status", ty = "int", desc = "执行结果：1 成功 / 0 失败")]
+#[apidoc::response_status("200")]
 pub async fn log_list(
     State(state): State<AppState>,
     auth: Auth,

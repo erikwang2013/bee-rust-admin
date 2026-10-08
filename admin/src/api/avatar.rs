@@ -127,6 +127,19 @@ fn legacy_avatar_path(cfg: &AppConfig, id: i64, ext: &str) -> PathBuf {
 ///
 /// **秒传命中时（`savedPath` 非空）这里就把头像落库**：拿到非空 `savedPath` 的前端会
 /// 直接结束流程、不再发 chunk（协议如此），不在这里处理的话换头像会静默失效。
+#[apidoc::title("头像上传 · 预检")]
+#[apidoc::desc("校验参数、判秒传、建临时文件；**秒传命中时本次就落库**并回可用的 avatar 地址（前端拿到非空 savedPath 即可结束流程）。需要登录")]
+#[apidoc::url("/api/v1/avatar/upload/preprocess")]
+#[apidoc::method("POST")]
+#[apidoc::tag("头像")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::param(name = "resource_name", ty = "string", required, desc = "原始文件名（按扩展名校验，png/jpg/jpeg/gif/webp）", mock = "avatar.png")]
+#[apidoc::param(name = "resource_size", ty = "int", required, desc = "文件字节数，上限 512 KB", mock = "102400")]
+#[apidoc::param(name = "resource_hash", ty = "string", required, desc = "整文件 MD5（秒传索引键）", mock = "d41d8cd98f00b204e9800998ecf8427e")]
+#[apidoc::not_debug]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("400")]
+#[apidoc::returned(name = "data", ty = "object", desc = "插件响应：savedPath 非空 = 秒传命中（同时带 avatar 地址）；否则带分片信息（chunkSize 等）")]
 pub async fn preprocess(
     State(state): State<AppState>,
     auth: Auth,
@@ -155,6 +168,20 @@ pub async fn preprocess(
 }
 
 /// `POST /api/v1/avatar/upload/chunk` —— 逐片追加；末片组装完成后头像落库。
+#[apidoc::title("头像上传 · 上传分片")]
+#[apidoc::desc("multipart 逐片追加（128 KB/片）；末片组装完成后头像落库并回 avatar 地址。需要登录")]
+#[apidoc::url("/api/v1/avatar/upload/chunk")]
+#[apidoc::method("POST")]
+#[apidoc::tag("头像")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::param(name = "resource_chunk", ty = "file", required, desc = "分片内容（单个分片 ≤ 512 KB）")]
+#[apidoc::param(name = "chunk_index", ty = "int", required, desc = "分片序号，从 1 开始", mock = "1")]
+#[apidoc::param(name = "chunk_total", ty = "int", required, desc = "分片总数", mock = "3")]
+#[apidoc::param(name = "resource_hash", ty = "string", required, desc = "整文件 MD5（与预检同一个值）")]
+#[apidoc::not_debug]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("400")]
+#[apidoc::returned(name = "data", ty = "object", desc = "插件响应；末片（savedPath 非空）额外带 avatar 地址")]
 pub async fn chunk(
     State(state): State<AppState>,
     auth: Auth,
@@ -301,6 +328,14 @@ fn form_error(e: axum::extract::multipart::MultipartError) -> ApiError {
 ///
 /// 路径参数是 hashids 短串，解出数字 id 才查库；`savedPath` 的三段合法性与分组
 /// 由插件校验（`Runtime::resource`），不存在路径穿越。读不到一律 404。
+#[apidoc::title("读取头像")]
+#[apidoc::desc("**公开接口**（<img> 标签带不了 Authorization 头）。id 是 hashids 短串；读不到一律 404")]
+#[apidoc::url("/api/v1/avatar/{id}")]
+#[apidoc::method("GET")]
+#[apidoc::tag("头像")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "管理员对外 id（hashids 短串）")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("404")]
 pub async fn get_avatar(
     State(state): State<AppState>,
     AppPath(id): AppPath<String>,

@@ -44,6 +44,20 @@ fn filtered(q: &LogListQuery, scope: &datascope::DataScope) -> Result<bee_orm::Q
     Ok(qs)
 }
 
+#[apidoc::title("登录日志列表")]
+#[apidoc::desc("用户名 / IP / 状态 / 时间区间筛选 + 分页，受数据权限约束")]
+#[apidoc::url("/api/v1/login-logs")]
+#[apidoc::method("GET")]
+#[apidoc::tag("日志")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::query(name = "page", ty = "int", desc = "页码，从 1 开始，默认 1")]
+#[apidoc::query(name = "size", ty = "int", desc = "每页条数，默认 10，上限 100")]
+#[apidoc::query(name = "username", ty = "string", desc = "用户名模糊匹配")]
+#[apidoc::query(name = "ip", ty = "string", desc = "登录 IP 模糊匹配")]
+#[apidoc::query(name = "status", ty = "int", desc = "结果：1 成功 / 0 失败")]
+#[apidoc::query(name = "start", ty = "string", desc = "开始时间（闭区间，格式 YYYY-MM-DD HH:MM:SS）")]
+#[apidoc::query(name = "end", ty = "string", desc = "结束时间（闭区间）")]
+#[apidoc::response_status("200")]
 pub async fn list(
     State(state): State<AppState>,
     auth: Auth,
@@ -62,6 +76,19 @@ pub async fn list(
 
 /// 按当前筛选条件清空。
 /// ponytail: 先全量取 id 再分批删（ORM 无按条件批量删）；日志量极大时改为 ORM 批量删。
+#[apidoc::title("清空登录日志")]
+#[apidoc::desc("按当前筛选条件清空（不带筛选 = 全清），受数据权限约束")]
+#[apidoc::url("/api/v1/login-logs")]
+#[apidoc::method("DELETE")]
+#[apidoc::tag("日志")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::query(name = "username", ty = "string", desc = "用户名模糊匹配")]
+#[apidoc::query(name = "ip", ty = "string", desc = "登录 IP 模糊匹配")]
+#[apidoc::query(name = "status", ty = "int", desc = "结果：1 成功 / 0 失败")]
+#[apidoc::query(name = "start", ty = "string", desc = "开始时间")]
+#[apidoc::query(name = "end", ty = "string", desc = "结束时间")]
+#[apidoc::response_status("200")]
+#[apidoc::returned(name = "data", ty = "null", desc = "被删除的条数")]
 pub async fn clear(
     State(state): State<AppState>,
     auth: Auth,
@@ -115,6 +142,19 @@ async fn export_batch(
 /// 导出当前筛选结果（不含分页）；鉴权复用 list 权限码。
 /// 流式：筛选条件与 list 共用 `filtered()`（导出范围不会和列表漂移），
 /// 按 keyset 分批取（B6），内存只与一批成正比。
+#[apidoc::title("导出登录日志 CSV")]
+#[apidoc::desc("导出当前筛选结果（不含分页，流式），鉴权复用列表权限码")]
+#[apidoc::url("/api/v1/login-logs/export")]
+#[apidoc::method("GET")]
+#[apidoc::tag("日志")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::query(name = "username", ty = "string", desc = "用户名模糊匹配")]
+#[apidoc::query(name = "ip", ty = "string", desc = "登录 IP 模糊匹配")]
+#[apidoc::query(name = "status", ty = "int", desc = "结果：1 成功 / 0 失败")]
+#[apidoc::query(name = "start", ty = "string", desc = "开始时间")]
+#[apidoc::query(name = "end", ty = "string", desc = "结束时间")]
+#[apidoc::response_status("200")]
+#[apidoc::not_debug]
 pub async fn export(
     State(state): State<AppState>,
     auth: Auth,

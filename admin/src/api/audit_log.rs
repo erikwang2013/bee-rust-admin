@@ -51,6 +51,20 @@ fn filtered(
     Ok(qs)
 }
 
+#[apidoc::title("操作日志列表")]
+#[apidoc::desc("管理员 / 模块 / 动作 / 时间区间筛选 + 分页，受数据权限约束")]
+#[apidoc::url("/api/v1/audit-logs")]
+#[apidoc::method("GET")]
+#[apidoc::tag("日志")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::query(name = "page", ty = "int", desc = "页码，从 1 开始，默认 1")]
+#[apidoc::query(name = "size", ty = "int", desc = "每页条数，默认 10，上限 100")]
+#[apidoc::query(name = "username", ty = "string", desc = "操作人用户名模糊匹配")]
+#[apidoc::query(name = "module", ty = "string", desc = "模块名")]
+#[apidoc::query(name = "action", ty = "string", desc = "动作名")]
+#[apidoc::query(name = "start", ty = "string", desc = "开始时间（闭区间，格式 YYYY-MM-DD HH:MM:SS）")]
+#[apidoc::query(name = "end", ty = "string", desc = "结束时间（闭区间）")]
+#[apidoc::response_status("200")]
 pub async fn list(
     State(state): State<AppState>,
     auth: Auth,
@@ -68,6 +82,19 @@ pub async fn list(
 }
 
 /// 按当前筛选条件清空。自带审计：这次删除本身也会被中间件记一条。
+#[apidoc::title("清空操作日志")]
+#[apidoc::desc("按当前筛选条件清空。**自带审计**：这次删除本身也会被中间件记一条")]
+#[apidoc::url("/api/v1/audit-logs")]
+#[apidoc::method("DELETE")]
+#[apidoc::tag("日志")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::query(name = "username", ty = "string", desc = "操作人用户名模糊匹配")]
+#[apidoc::query(name = "module", ty = "string", desc = "模块名")]
+#[apidoc::query(name = "action", ty = "string", desc = "动作名")]
+#[apidoc::query(name = "start", ty = "string", desc = "开始时间")]
+#[apidoc::query(name = "end", ty = "string", desc = "结束时间")]
+#[apidoc::response_status("200")]
+#[apidoc::returned(name = "data", ty = "null", desc = "被删除的条数")]
 pub async fn clear(
     State(state): State<AppState>,
     auth: Auth,
@@ -169,6 +196,19 @@ async fn export_batch(
 
 /// 导出当前筛选结果（不含分页）；鉴权复用 list 权限码。
 /// 流式：筛选条件与 list 共用 `filtered()`，按 keyset 分批取（B6），内存只与一批成正比。
+#[apidoc::title("导出操作日志 CSV")]
+#[apidoc::desc("导出当前筛选结果（不含分页，流式），鉴权复用列表权限码")]
+#[apidoc::url("/api/v1/audit-logs/export")]
+#[apidoc::method("GET")]
+#[apidoc::tag("日志")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::query(name = "username", ty = "string", desc = "操作人用户名模糊匹配")]
+#[apidoc::query(name = "module", ty = "string", desc = "模块名")]
+#[apidoc::query(name = "action", ty = "string", desc = "动作名")]
+#[apidoc::query(name = "start", ty = "string", desc = "开始时间")]
+#[apidoc::query(name = "end", ty = "string", desc = "结束时间")]
+#[apidoc::response_status("200")]
+#[apidoc::not_debug]
 pub async fn export(
     State(state): State<AppState>,
     auth: Auth,

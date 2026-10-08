@@ -12,6 +12,7 @@ mod models;
 mod relations;
 mod retention;
 mod seed;
+mod security_scan;
 mod state;
 mod util;
 
@@ -21,6 +22,11 @@ use snowflake::{Shared, Snowflake};
 use state::AppState;
 use tracing::Level;
 
+#[apidoc::title("健康检查")]
+#[apidoc::desc("服务存活探针：进程在跑就回 200 纯文本 OK（不查库）")]
+#[apidoc::url("/api/v1/health")]
+#[apidoc::method("GET")]
+#[apidoc::tag("系统")]
 async fn health() -> &'static str {
     "OK"
 }
@@ -75,6 +81,27 @@ fn build_snowflake(cfg: &AppConfig) -> Result<Shared, Box<dyn std::error::Error>
     Ok(Shared::new(sk))
 }
 
+/// 文档站配置（只在 `[apidoc] enabled = true` 时构建，见 `main` 里的 merge）。
+///
+/// 口令鉴权走插件自带的 `AuthConfig`：`/apidoc/api.json` 等**数据路由**要带 token
+/// （`/apidoc/auth?password=<md5>` 换 token），UI 页本身不设守卫。
+///
+/// ⚠️ token 由 md5(口令) 派生、放在 query 上，等价于可重放的通行证 —— 只开在可信网络。
+fn apidoc_config(cfg: &AppConfig) -> apidoc::ApidocConfig {
+    apidoc::ApidocConfig {
+        title: format!("{} 接口文档", cfg.app_name),
+        description: Some(
+            "bee-rust-admin 后台接口（/api/v1）。数据路由需带 token：先 GET /apidoc/auth?password=<md5(口令)> 换 token，再以 ?token=… 访问。".into(),
+        ),
+        auth: Some(apidoc::auth::AuthConfig {
+            enable: true,
+            password: cfg.apidoc_password.clone(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let conf_path = std::env::var("BEE_ADMIN_CONF").unwrap_or_else(|_| "conf/app.conf".into());
@@ -124,7 +151,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 构造失败在这里就炸：与 encrypt_key 一个态度，不让进程带着半吊子状态跑。
     let aether = api::avatar::build_runtime(&cfg)?;
 
-    let state = AppState { db, cfg: std::sync::Arc::new(cfg), throttle, snowflake, jwt, crypto, captcha, captcha_throttle, aether };
+    // 请求安全扫描器（阶段 5a，security-rust 的 32 个检测器）。构造要编译 32 组正则，
+    // 进程内建一次共享；拦截阈值在 `[security] scan`（默认 off = 只报告不拦截）。
+    let scanner = std::sync::Arc::new(security_rust::Scanner::default());
+
+    let state = AppState { db, cfg: std::sync::Arc::new(cfg), throttle, snowflake, jwt, crypto, captcha, captcha_throttle, scanner, aether };
     let addr = state.cfg.http_addr.clone();
 
     // 内存限流的条目只在写路径顺手清窗口内的失败，桶本身（每个用户名/IP 一个）不会
@@ -174,6 +205,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         tracing::info!("[job] enabled=false，定时任务调度循环未启动（手动触发仍可用）");
     }
+
+    // 文档站的路由先建好（`state` 随后会被审计层 / 扫描层的 `from_fn_with_state` 吃掉，
+    // 拿不到第二次）：只有 `[apidoc] enabled = true` 时才建。
+    let apidoc = state.cfg.apidoc_enabled.then(|| {
+        tracing::info!("[apidoc] enabled=true，文档站挂在 /apidoc（口令鉴权；仅限可信网络）");
+        apidoc::axum::apidoc_routes(apidoc_config(&state.cfg))
+    });
 
     let router = bee_rust::bee_router::Router::new()
         .ns("/api/v1", |ns| ns.get("/health", health))
@@ -278,7 +316,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .fallback(api_not_found)
         .method_not_allowed_fallback(api_method_not_allowed)
         // 操作日志中间件（B5）：只记写操作，审计失败不影响业务
-        .layer(axum::middleware::from_fn_with_state(state, audit::audit_mw));
+        .layer(axum::middleware::from_fn_with_state(state.clone(), audit::audit_mw))
+        // 请求安全扫描（阶段 5a）挂**最外层**：后加的 layer 在更外层，于是请求先被扫、
+        // 再进审计、再进业务 —— 未通过鉴权的请求也要被扫到（契约「顺序」一节）
+        .layer(axum::middleware::from_fn_with_state(state, security_scan::scan_mw));
+
+    // 接口文档站（阶段 5b）：**必须 merge 在业务 router 的全部 layer 之后**。
+    // axum 的 `layer` 只作用于「注册在它之前」的路由，这里后挂 —— 文档请求就不会被
+    // 审计层（以及安全扫描层，若开启）包住：读文档不是业务操作，写进审计日志是噪音。
+    // ⚠️ 以后再加全局 layer，也要加在这段 merge **之前**，别让它把 /apidoc 圈进去。
+    // `enabled = false` 时 apidoc 为 None，不 merge：/apidoc 落在业务树外，走 axum 默认 404。
+    let router = match apidoc {
+        Some(apidoc) => router.merge(apidoc),
+        None => router,
+    };
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!("listening on http://{addr}");

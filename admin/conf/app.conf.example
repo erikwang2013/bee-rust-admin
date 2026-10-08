@@ -48,5 +48,25 @@ retain_days = 90
 # 定时任务总开关：false = 不启动调度循环（任务不会自动跑），但「手动触发一次」仍然可用
 enabled = true
 
+[security]
+# 请求安全扫描（security-rust 32 个检测器：SQLi / XSS / 命令注入 / Log4Shell …）。
+# 扫 URL、几个请求头、以及 ≤64KB 的 JSON 请求体（multipart 上传不读）。
+#   off      = 只报告（默认）：命中写 audit_log + 日志，请求照常走
+#   high     = 扫描等级到 HIGH 就 403 + err = "security.blocked"
+#   critical = 只拦 CRITICAL
+# 默认 off 是刻意的：扫描是「有攻击迹象就记一笔」，不是 WAF —— 密码里带 ' or 1=1--、
+# 公告里贴代码片段这类误报会把人拦在门外。要开拦截，先跑一段 off 看过命中与误报再定。
+scan = off
+
+[apidoc]
+# 接口文档站（apidoc-rust）。**默认 false**：文档页会把整个后台的接口面暴露出来
+# （含请求/响应结构），它是开发/交付工具，不该跟着生产实例一起对外。
+# 挂载点是 /apidoc（UI）与 /apidoc/api.json（数据）。
+enabled = false
+# enabled = true 时**必填**：文档站口令（缺了/空着直接拒绝启动，理由同 encrypt_key）。
+# ⚠️ 插件那套口令的凭据是 md5(口令) 放在 query 上 —— 等价于一个**可重放的通行证**
+#    （抓到一次就能一直用）。所以只在可信网络（内网 / 跳板机）里开，别对着公网。
+password =
+
 [seed]
 initial_admin_password = admin123

@@ -82,6 +82,13 @@ fn build(all: &[Dept], parent: i64) -> Vec<Value> {
         .collect()
 }
 
+#[apidoc::title("部门树")]
+#[apidoc::desc("全量部门树（管理页用）。需要登录")]
+#[apidoc::url("/api/v1/depts/tree")]
+#[apidoc::method("GET")]
+#[apidoc::tag("部门")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::response_status("200")]
 pub async fn tree(State(state): State<AppState>, auth: Auth) -> Result<Json<Value>, ApiError> {
     auth.require("system:dept:list")?;
     let all = Dept::query()
@@ -92,6 +99,14 @@ pub async fn tree(State(state): State<AppState>, auth: Auth) -> Result<Json<Valu
     Ok(ok(build(&all, 0)))
 }
 
+#[apidoc::title("新建部门")]
+#[apidoc::desc("父部门必须存在；名称超长 / 非法回 400")]
+#[apidoc::url("/api/v1/depts")]
+#[apidoc::method("POST")]
+#[apidoc::tag("部门")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("400")]
 pub async fn create(
     State(state): State<AppState>,
     auth: Auth,
@@ -119,6 +134,15 @@ pub async fn create(
     Ok(ok(json!({ "id": hid::enc(d.id) })))
 }
 
+#[apidoc::title("编辑部门")]
+#[apidoc::desc("父部门必须存在，且不能挂到自己的后代下（防环）")]
+#[apidoc::url("/api/v1/depts/{id}")]
+#[apidoc::method("PUT")]
+#[apidoc::tag("部门")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "部门对外 id（hashids 短串）")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("400")]
 pub async fn update(
     State(state): State<AppState>,
     auth: Auth,
@@ -154,6 +178,15 @@ pub async fn update(
     Ok(ok(Value::Null))
 }
 
+#[apidoc::title("删除部门")]
+#[apidoc::desc("有子部门或挂着管理员时拒绝（400）")]
+#[apidoc::url("/api/v1/depts/{id}")]
+#[apidoc::method("DELETE")]
+#[apidoc::tag("部门")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "部门对外 id（hashids 短串）")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("400")]
 pub async fn remove(
     State(state): State<AppState>,
     auth: Auth,
