@@ -25,6 +25,11 @@ expire_hours = 1
 # 需要「解封」的用例换个进程即可（见 api_v12_test 的 B9 段）
 max_fail = 5
 lock_minutes = 10
+# 集成测试关掉验证码：答案只存在服务端（要解题才能拿到），
+# 脚手架里的 common::login 交不出凭据，开着会让所有登录用例 400。
+# 验证码自身的行为（一次性消费、400、按身份限流、不计入失败计数）由
+# admin/src/api/auth.rs 里的单测覆盖 —— 那些用例直接往存储塞已知答案。
+captcha = false
 
 [seed]
 initial_admin_password = admin123

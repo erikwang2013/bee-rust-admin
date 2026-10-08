@@ -108,21 +108,46 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     seed::encrypt_legacy(&db, &crypto).await?;
     seed::seed(&db, &cfg, &snowflake, &crypto).await?;
     let throttle = api::auth::login_throttle(&cfg);
-    let state = AppState { db, cfg: std::sync::Arc::new(cfg), throttle, snowflake, jwt, crypto };
+
+    // 登录验证码（poster-rust）。存储走插件默认的进程内 MemoryStorage；`from_manager`
+    // 会在接线期做一次存储探针，后端不可用现在就炸，而不是等第一个请求。
+    // `[auth] captcha = false` 时照样建（内存哈希表，零成本），由配置在请求期关掉。
+    let captcha = poster::Guard::from_manager(std::sync::Arc::new(
+        poster::captcha::CaptchaManager::new()
+            .map_err(|e| format!("初始化验证码管理器失败: {e}"))?,
+    ))
+    .map_err(|e| format!("初始化验证码存储失败: {e}"))?;
+
+    let captcha_throttle = api::auth::captcha_create_throttle();
+
+    let state = AppState { db, cfg: std::sync::Arc::new(cfg), throttle, snowflake, jwt, crypto, captcha, captcha_throttle };
     let addr = state.cfg.http_addr.clone();
 
     // 内存限流的条目只在写路径顺手清窗口内的失败，桶本身（每个用户名/IP 一个）不会
     // 自己消失 —— 库要求按窗口量级定时 purge，否则 key 基数会一直吃内存。
-    if let Some(throttle) = state.throttle.clone() {
-        let period = std::time::Duration::from_secs((state.cfg.lock_minutes * 60) as u64);
+    // 验证码生成闸门（key = `captcha:{ip}`）同理，一起清。
+    {
+        let throttle = state.throttle.clone();
+        let captcha_throttle = state.captcha_throttle.clone();
+        let period = std::time::Duration::from_secs(((state.cfg.lock_minutes * 60) as u64).max(60));
         tokio::spawn(async move {
             let mut tick = tokio::time::interval(period);
             loop {
                 tick.tick().await;
-                match throttle.purge_expired(util::now_unix()) {
-                    Ok(n) if n > 0 => tracing::debug!("清理过期限流条目 {n} 条"),
-                    Ok(_) => {}
-                    Err(e) => tracing::warn!("清理限流条目失败: {e}"),
+                let now = util::now_unix();
+                let mut purged = 0usize;
+                if let Some(t) = &throttle {
+                    match t.purge_expired(now) {
+                        Ok(n) => purged += n,
+                        Err(e) => tracing::warn!("清理限流条目失败: {e}"),
+                    }
+                }
+                match captcha_throttle.purge_expired(now) {
+                    Ok(n) => purged += n,
+                    Err(e) => tracing::warn!("清理验证码限流条目失败: {e}"),
+                }
+                if purged > 0 {
+                    tracing::debug!("清理过期限流条目 {purged} 条");
                 }
             }
         });
@@ -160,6 +185,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         // 头像读取公开：<img> 标签带不了 Authorization 头
         .ns("/api/v1/avatar", |ns| ns.get("/{id}", api::auth::get_avatar))
+        // 登录页验证码（公开）。路径与 poster-rust 的 `captcha_routes_at("/captcha")`
+        // 给出的 `/captcha/new` 一致；校验不在插件端点里做，而是随登录体一起提交、
+        // 由登录接口校验（见 `api::auth::login`）——多一个「先自己验一次」的端点
+        // 等于让验证码能在没登录时被消费掉。
+        .ns("/api/v1/captcha", |ns| ns.get("/new", api::auth::captcha_new))
         .ns("/api/v1/admins", |ns| {
             ns.get("", api::admin::list)
                 .post("", api::admin::create)

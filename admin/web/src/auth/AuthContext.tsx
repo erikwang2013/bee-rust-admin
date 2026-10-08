@@ -10,7 +10,6 @@ interface AuthState {
   ready: boolean;
   /** 每次 reload 自增，给头像等固定 URL 的资源做缓存失效 */
   version: number;
-  login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   reload: () => Promise<void>;
   has: (code: string) => boolean;
@@ -52,17 +51,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { void reload(); }, [reload]);
 
-  const login = useCallback(async (username: string, password: string) => {
-    const res = await authApi.login(username, password);
-    localStorage.setItem(TOKEN_KEY, res.token);
-    const profile = await authApi.profile();
-    const tree = await authApi.menus();
-    setUser(profile.user);
-    setPerms(profile.perms);
-    setMenus(tree);
-    setVersion((v) => v + 1);
-    setReady(true);
-  }, []);
+  // 登录不在这里：登录页要带验证码凭据（`api/captcha.ts` 的 loginWithCaptcha），
+  // 拿到 token 后落 localStorage 再调 reload() 把用户/权限/菜单拉起来。
+  // 这里曾有一个 `login()`，验证码上线后没人调了，删掉以免留下「两条登录路径」。
 
   const logout = useCallback(async () => {
     try { await authApi.logout(); } catch { /* token 已失效也要能退出 */ }
@@ -76,8 +67,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ user, perms, menus, ready, version, login, logout, reload, has }),
-    [user, perms, menus, ready, version, login, logout, reload, has],
+    () => ({ user, perms, menus, ready, version, logout, reload, has }),
+    [user, perms, menus, ready, version, logout, reload, has],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

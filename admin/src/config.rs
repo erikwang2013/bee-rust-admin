@@ -27,6 +27,13 @@ pub struct AppConfig {
     pub max_fail: i64,
     /// 登录失败锁定时长（分钟）；0 = 关闭锁定
     pub lock_minutes: i64,
+    /// 登录图形验证码开关（`[auth] captcha`，poster-rust：点击/旋转/滑块随机切）。
+    ///
+    /// **默认 true**：登录是唯一没有鉴权的写入口，验证码是加在限流之前的另一道
+    /// ——默认关着 = 新建的库裸奔。代价只是每次登录多一次点选/拖动（前端已接线，
+    /// 不是「建库即用」的断点）。**关掉（false）时登录接口按老样子工作**：
+    /// 不校验凭据、前端也不渲染验证码区。老部署升级时若暂时不重建前端，先设 false。
+    pub captcha: bool,
     /// 日志保留天数（login_log / audit_log / job_log）；0 = 永久保留
     pub retain_days: i64,
     /// 定时任务总开关（`[job] enabled`）：false = 不启动调度循环（手动触发仍可用）
@@ -130,6 +137,7 @@ impl AppConfig {
             upload_dir: opt("app", "upload_dir", "uploads"),
             max_fail: num("auth", "max_fail", 5)?,
             lock_minutes: num("auth", "lock_minutes", 10)?,
+            captcha: flag("auth", "captcha", true)?,
             retain_days: num("log", "retain_days", 90)?,
             job_enabled: flag("job", "enabled", true)?,
             hashids_salt: opt("app", "hashids_salt", ""),
@@ -228,6 +236,25 @@ initial_admin_password = admin123
         map.get_mut("job").unwrap().insert("enabled".into(), "yes".into());
         let err = AppConfig::from_ini(&map).unwrap_err();
         assert!(format!("{err}").contains("[job] enabled"), "应报出具体键: {err}");
+    }
+
+    /// 验证码开关：老配置没这个键 = 默认开（登录是唯一无鉴权写入口）；
+    /// 显式 false / 0 要认；拼错的开关不能默默当 true（那是「以为有验证码其实没有」）。
+    #[test]
+    fn captcha_switch_defaults_on_and_rejects_garbage() {
+        assert!(AppConfig::from_ini(&parse()).unwrap().captcha, "缺键默认开");
+
+        let mut map = parse();
+        map.insert("auth".into(), [("captcha".to_string(), "false".to_string())].into_iter().collect());
+        assert!(!AppConfig::from_ini(&map).unwrap().captcha, "显式 false 要认");
+        map.get_mut("auth").unwrap().insert("captcha".into(), "0".into());
+        assert!(!AppConfig::from_ini(&map).unwrap().captcha, "0 也算 false");
+        map.get_mut("auth").unwrap().insert("captcha".into(), " TRUE ".into());
+        assert!(AppConfig::from_ini(&map).unwrap().captcha, "大小写/空白要容错");
+
+        map.get_mut("auth").unwrap().insert("captcha".into(), "off".into());
+        let err = AppConfig::from_ini(&map).unwrap_err();
+        assert!(format!("{err}").contains("[auth] captcha"), "应报出具体键: {err}");
     }
 
     #[test]

@@ -24,6 +24,17 @@ pub struct AppState {
     pub jwt: Arc<Jwt>,
     /// admin.email / phone 的加解密守卫（[`crate::crypto`]）。内部是 Arc，克隆廉价。
     pub crypto: Guard,
+    /// 登录验证码（poster-rust）。内部是 `Arc<CaptchaManager>`，克隆廉价。
+    ///
+    /// 存储是插件默认的**进程内** MemoryStorage（TTL 300s）：单实例部署够用，
+    /// **多实例要么改插件的 Redis 存储，要么给登录路上的验证码请求做粘性会话**
+    /// —— 验证码在 A 实例生成、B 实例校验必然查不到。开关在 `[auth] captcha`
+    /// （`false` 时这个守卫还在，只是登录接口不看它）。
+    pub captcha: poster::Guard,
+    /// 验证码**生成**接口（`/captcha/new`）的限流闸门，恒存在（不像 `throttle` 可配 `None`）：
+    /// 插件默认存储不会自动清扫过期 key，不设闸门就是一个公开的内存增长口，
+    /// 见 `api::auth::captcha_create_throttle`。
+    pub captcha_throttle: Arc<Throttle<MemoryThrottleStore>>,
 }
 
 impl AppState {

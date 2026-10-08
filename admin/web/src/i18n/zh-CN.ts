@@ -113,6 +113,13 @@ export const zhCN = {
   // ---- 登录页 ----
   'login.title': 'BRA · 管理后台',
   'login.submit': '登录',
+  // 验证码区（poster-rust 三种类型随机切，提示文案跟着类型走）
+  'login.captcha_click_hint': '按顺序点击图中出现的文字/图案',
+  'login.captcha_rotate_hint': '拖动图片，把它转正',
+  'login.captcha_slider_hint': '拖动拼图块，补上图中的缺口',
+  'login.captcha_refresh': '换一张',
+  'login.captcha_undo': '撤销',
+  'login.captcha_required': '请先完成验证码',
 
   // ---- 布局 / 顶栏 ----
   'layout.app_name': 'BRA 管理后台',
@@ -290,6 +297,7 @@ export const zhCN = {
   'err.auth.throttled': '尝试过于频繁，请 {minutes} 分钟后再试',
   'err.auth.bad_old_password': '原密码错误',
   'err.auth.weak_new_password': '新密码至少 6 位',
+  'err.auth.captcha_failed': '验证码错误',
   'err.auth.unauthorized': '登录已失效，请重新登录',
   'err.auth.forbidden': '没有权限',
   'err.avatar.too_large': '头像不能超过 512 KB',

@@ -3,7 +3,7 @@ use crate::auth::{Auth, expire_secs, sign_token};
 use crate::config::AppConfig;
 use crate::crypto;
 use crate::hid;
-use crate::error::{ApiError, AppJson, AppPath, ok};
+use crate::error::{ApiError, AppJson, AppPath, CAPTCHA_FAILED, ok};
 use crate::models::{Admin, LoginLog, Menu};
 use crate::state::AppState;
 use crate::util::{hash_password, now, now_unix, verify_password};
@@ -13,17 +13,23 @@ use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
 use base64::Engine;
 use bee_orm::Model;
+use poster::captcha::Answer;
 use security_rust::throttle::{MemoryThrottleStore, Throttle, ThrottleConfig, ThrottleDecision};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use crate::relations::RelationsExt;
 
 #[derive(Deserialize)]
 pub struct LoginBody {
     pub username: String,
     pub password: String,
+    /// 验证码 key（`[auth] captcha = true` 时必填）。字段形状与 poster-rust 校验端点一致。
+    pub captcha_key: Option<String>,
+    /// 验证码答案：poster-rust `Answer` 的 serde 表示（外部标签）：
+    /// `{"Slider": 173.0}` / `{"Rotate": 37.2}` / `{"Click": [[x, y], …]}`。
+    pub captcha_answer: Option<Answer>,
 }
 
 #[derive(Deserialize)]
@@ -155,6 +161,109 @@ fn record_login_failure(state: &AppState, username: &str, ip: &str) {
     }
 }
 
+/// 验证码**生成**接口（`/captcha/new`，公开、每次要渲一张 PNG）的限流闸门。
+///
+/// 单独一个实例、单独一套阈值，不复用登录那套：登录闸门是「N 次失败即封 M 分钟」，
+/// 拿它来限「刷新验证码」语义不对，还会把正常用户刷进封禁。
+/// 这里 `ban_secs = 0` —— 只数数、不封人：窗口内额度耗尽由调用方按
+/// `Allow { remaining: 0 }` 拒绝（与登录闸门同一套判定），窗口滑过去自动恢复。
+///
+/// 为什么必须有：插件默认的进程内存储**只在读到某个 key 时才顺手清它的过期条目**
+/// （`storage/memory.rs` 里没有清扫任务），而每次生成都是一个新随机 key —— 没人去读
+/// 的 key 会永久占着内存。没有这道闸门，任何人都能靠刷 `/captcha/new` 让进程内存
+/// 线性上涨（PNG + base64，每条几十 KB）。
+///
+/// ponytail: 60 次/分钟是拍的：正常用户一分钟开不了 60 次登录页，而刷子被压到
+/// 60 条/分钟（按 TTL 300s 算单 IP 稳态 ≤ 300 条）。要调就调这两个数。
+pub fn captcha_create_throttle() -> Arc<Throttle<MemoryThrottleStore>> {
+    Arc::new(Throttle::new(
+        MemoryThrottleStore::new(),
+        ThrottleConfig {
+            threshold: 60,
+            window_secs: 60,
+            ban_secs: 0,
+        },
+    ))
+}
+
+/// 验证码「校验 + 消费」的进程内互斥锁。
+///
+/// 插件的 `verify_as` 是「读载荷 → 原子自增计数 → 通过后删 key」：并发下同一个 key 的
+/// 多发请求都能读到载荷，各自自增（不超过 max_attempts 的都放行），等于一次解出能挤进
+/// 最多 3 次密码猜测。锁把这一段串起来，让「用过即废」在并发下也成立。
+/// 锁内只有同步代码（内存存储，无 await），代价是一次哈希表查询。
+///
+/// ponytail: 只在单进程内有效。多实例部署要换插件的 Redis 存储，那才是真正跨进程的消费。
+static CAPTCHA_CONSUME: Mutex<()> = Mutex::new(());
+
+/// 校验验证码凭据；通过即消费（同一 key 不能再过第二次）。
+///
+/// 失败一律 400 + `auth.captcha_failed`（不是 401/403）：「没带」「答错」「过期」
+/// 「key 不存在」不给不同信号 —— 它们对客户端是同一件事（重来一次），区分开只会
+/// 给爆破方提供反馈。
+///
+/// **不计入登录失败计数**（这里不调 `record_login_failure`）：验证码没过等于密码压根
+/// 没提交，计进去只会让手抖的用户把自己锁死，或者攻击者拿别人的用户名刷垃圾验证码
+/// 就把别人锁死（不需要任何密码猜测）。限流挡的是密码爆破，验证码是它前面另加的一道。
+fn verify_captcha(
+    guard: &poster::Guard,
+    key: Option<&str>,
+    answer: Option<Answer>,
+    identity: &str,
+) -> Result<(), ApiError> {
+    let (Some(key), Some(answer)) = (key, answer) else {
+        return Err(ApiError::BadRequest(CAPTCHA_FAILED.into()));
+    };
+    let _consume = CAPTCHA_CONSUME.lock().unwrap_or_else(|e| e.into_inner());
+    match guard.verify_as(key, answer, identity) {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(ApiError::BadRequest(CAPTCHA_FAILED.into())),
+        // 存储坏掉时失败关闭（拿不准就不放行），与插件自身的口径一致。
+        // 500 而不是 400：这是服务端故障而非「你答错了」，运维要能从状态码上看见。
+        Err(e) => Err(ApiError::internal(format!("验证码存储故障: {e}"))),
+    }
+}
+
+/// 登录页验证码（`GET /api/v1/captcha/new`，公开）。
+///
+/// 响应 `data` 的形状 = poster-rust 的 `CaptchaResult`：`{key, image, type, extra}`；
+/// `image` 是 PNG 的 data URI，`type` ∈ click|rotate|slider（默认 `random` → 三选一），
+/// `extra` 随类型变（click: `texts[{text,order}]`、slider: `puzzle,puzzle_w,puzzle_h`、
+/// rotate: `{}`）。**答案只在服务端的存储里**，前端拿不到 —— 这正是它挡机器人的地方。
+///
+/// `[auth] captcha = false` 时 `data` 为 `null`：开关只在这一处判断，前端不需要另开
+/// 一个「查配置」接口，也不会出现「前端显示了验证码而后端根本不校验」的错位。
+pub async fn captcha_new(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    if !state.cfg.captcha {
+        return Ok(ok(Value::Null));
+    }
+    // 生成口的限流（见 `captcha_create_throttle` 里「刷它能让内存涨」的说明）。
+    // `unknown`（无 X-Real-IP 也无 XFF，多为直连）**也照限**：这里与 `ip_key()` 的取舍
+    // 相反 —— 那边不限 unknown 只是少一维防护，这边不限就是内存随便涨。代价是 NAT
+    // 后面的一群人共用一个桶，而这个桶最多让人「这一分钟内换不了验证码」，不封人。
+    let key = format!("captcha:{}", client_ip(&headers));
+    let now = now_unix();
+    let throttle = &state.captcha_throttle;
+    if matches!(
+        throttle.check(&key, now),
+        ThrottleDecision::Banned { .. } | ThrottleDecision::Allow { remaining: 0 }
+    ) {
+        return Err(ApiError::throttled(1)); // 窗口 60s，所以报 1 分钟
+    }
+    // 计数写失败不影响响应 —— 限流是纵深防御，不是主认证闸门
+    if let Err(e) = throttle.record_failure(&key, now) {
+        tracing::error!("验证码生成限流计数失败 ({key}): {e}");
+    }
+    let value = state
+        .captcha
+        .create_json(None)
+        .map_err(|e| ApiError::internal(format!("生成验证码失败: {e}")))?;
+    Ok(ok(value))
+}
+
 pub async fn login(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -185,6 +294,22 @@ pub async fn login(
         // 存储故障不 fail-closed（库有意如此）：限流是纵深防御，主认证闸门在后面
         if decision == ThrottleDecision::Unavailable {
             tracing::warn!("登录限流存储不可用，本次放行");
+        }
+    }
+
+    // 验证码闸门（[auth] captcha）放在限流之后、查库之前：
+    // - 限流之后：封禁中的请求仍是 429（既有行为不变），验证码不能变成绕过封禁的路子；
+    // - 查库之前：没过验证码就不碰库、不烧 argon2，也就没有用户名侧信道可用。
+    if state.cfg.captcha {
+        let identity = client_ip(&headers);
+        if let Err(e) = verify_captcha(
+            &state.captcha,
+            body.captcha_key.as_deref(),
+            body.captcha_answer.clone(),
+            &identity,
+        ) {
+            write_login_log(&state, 0, username, &headers, 0, CAPTCHA_FAILED).await;
+            return Err(e);
         }
     }
 
@@ -516,6 +641,7 @@ pub async fn change_password(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::http::StatusCode;
 
     /// 1x1 PNG（真实文件字节）。
     const PNG_B64: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
@@ -540,6 +666,86 @@ mod tests {
         // 700 KB base64 ≈ 525 KB 解码后 > 512 KB，长度闸在解码前就拦下
         let huge = format!("data:image/png;base64,{}", "A".repeat(700 * 1024));
         assert!(decode_avatar(&huge).is_err());
+    }
+
+    /// 造一个用内存存储的守卫，并**直接塞一份已知答案的载荷**：验证码的答案只存在
+    /// 服务端（生成时要画图），测试里没有「解题」一说，只能这样拿到可校验的凭据。
+    /// 载荷字段与插件 `finish()` 写的一致（`type` + 各类型专属字段）。
+    fn test_guard(payload: &str) -> (poster::Guard, Arc<poster::storage::MemoryStorage>) {
+        use poster::captcha::CaptchaManager;
+        use poster::storage::MemoryStorage;
+        let mem = Arc::new(MemoryStorage::new());
+        put_key(&mem, "test-key", payload);
+        // 限流窗口拉长到 1 小时：默认 60s 的固定窗口在「连着打 31 发」时可能正好跨窗，
+        // 计数清零会让「额度耗尽」的断言偶发失败。这里要测的是我们这层的消费与分桶，
+        // 不是插件限流器本身的窗口滚动。
+        let mut config = poster::PosterConfig::default();
+        config.captcha.rate_limit.window_secs = 3600;
+        let manager =
+            CaptchaManager::with_config_and_storage(Arc::new(config), mem.clone());
+        (poster::Guard::new(Arc::new(manager)), mem)
+    }
+
+    fn put_key(mem: &poster::storage::MemoryStorage, key: &str, payload: &str) {
+        use poster::storage::Storage;
+        mem.set(key, payload.as_bytes(), std::time::Duration::from_secs(300))
+            .expect("内存存储写入不会失败");
+    }
+
+    /// 通过 → 该 key 立刻作废（一次性，不可重放）；答错 → 400 而不是 401；
+    /// 缺 key / 缺答案 / key 不存在 → 同样 400（不区分原因）。
+    #[test]
+    fn captcha_verify_is_one_shot_and_400_on_failure() {
+        let (guard, _mem) = test_guard(r#"{"type":"slider","x":100.0}"#);
+
+        // 容差内（±4px）判过
+        verify_captcha(&guard, Some("test-key"), Some(Answer::Slider(103.0)), "1.2.3.4")
+            .expect("容差内应通过");
+        // 一次性：同一 key 再来一次必失败（校验通过时载荷已被删掉）
+        let err = verify_captcha(&guard, Some("test-key"), Some(Answer::Slider(100.0)), "1.2.3.4")
+            .unwrap_err();
+        assert_eq!(err.into_response().status(), StatusCode::BAD_REQUEST, "重放要 400");
+
+        // 答错
+        let (guard, _mem) = test_guard(r#"{"type":"slider","x":100.0}"#);
+        let err = verify_captcha(&guard, Some("test-key"), Some(Answer::Slider(200.0)), "1.2.3.4")
+            .unwrap_err();
+        assert_eq!(err.into_response().status(), StatusCode::BAD_REQUEST);
+
+        // 没带凭据 / key 不存在：与本项目「登录失败」的 401 分开，统一 400
+        for (key, answer) in [
+            (None, Some(Answer::Slider(100.0))),
+            (Some("test-key"), None),
+            (Some("no-such-key"), Some(Answer::Slider(100.0))),
+        ] {
+            let err = verify_captcha(&guard, key, answer, "1.2.3.4").unwrap_err();
+            assert_eq!(err.into_response().status(), StatusCode::BAD_REQUEST, "{key:?}");
+        }
+
+        // 类型不符（载荷是 slider，答案按 click 交）也只是一次普通失败
+        let (guard, _mem) = test_guard(r#"{"type":"slider","x":100.0}"#);
+        assert!(verify_captcha(&guard, Some("test-key"), Some(Answer::Click(vec![(1.0, 1.0)])), "1.2.3.4").is_err());
+    }
+
+    /// 限流按身份分桶（身份由登录接口传的 `client_ip()` 派生）：一个 IP 打满额度后
+    /// 连正确答案也拦（限流在判定之前），但**不影响别的 IP** —— 若身份是常量，
+    /// 所有人会挤在一个桶里互相误杀，这个断言就是那道闸。
+    #[test]
+    fn captcha_rate_limit_is_per_identity() {
+        const PAYLOAD: &str = r#"{"type":"slider","x":100.0}"#;
+        let (guard, mem) = test_guard(PAYLOAD);
+        for _ in 0..30 {
+            let _ = verify_captcha(&guard, Some("test-key"), Some(Answer::Slider(0.0)), "9.9.9.9");
+        }
+        // 9.9.9.9 的额度已耗尽：换个新 key 交正确答案也不放行
+        put_key(&mem, "k2", PAYLOAD);
+        assert!(
+            verify_captcha(&guard, Some("k2"), Some(Answer::Slider(100.0)), "9.9.9.9").is_err(),
+            "同一身份超窗口上限后必须关闭"
+        );
+        // 同一个存储、同一个窗口，另一个身份照常通过
+        put_key(&mem, "k3", PAYLOAD);
+        assert!(verify_captcha(&guard, Some("k3"), Some(Answer::Slider(100.0)), "1.1.1.1").is_ok());
     }
 
     /// 假哈希必须是**可解析**的 argon2 串：解析失败时 `verify_password` 会立刻返回

@@ -69,6 +69,10 @@ impl ApiError {
     }
 }
 
+/// 验证码校验失败的文案。`ERR_TABLE` 的键与 `api::auth` 的构造点共用这一份，
+/// 免得两边各写一遍字符串、改一处漏一处（`err` 会静默消失，前端回落中文）。
+pub const CAPTCHA_FAILED: &str = "验证码错误";
+
 /// 稳定业务错误码表：`(中文原文 msg, err)`。
 /// **这张表是前后端唯一耦合点**，行与 `err` 逐字照抄
 /// `docs/superpowers/plans/2026-10-06-bra-v1.5-c-modules.md` 的「C3 契约 · 错误码表」。
@@ -83,6 +87,7 @@ const ERR_TABLE: &[(&str, &str)] = &[
     ("账号已被禁用", "auth.disabled"),
     ("原密码错误", "auth.bad_old_password"),
     ("新密码至少 6 位", "auth.weak_new_password"),
+    (CAPTCHA_FAILED, "auth.captcha_failed"),
     // avatar
     ("头像不能超过 512 KB", "avatar.too_large"),
     ("头像仅支持 PNG/JPEG", "avatar.bad_type"),

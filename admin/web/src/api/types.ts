@@ -19,6 +19,30 @@ export interface UserInfo {
 export interface Profile { user: UserInfo; roles: string[]; perms: string[] }
 export interface MenuNode { id: string; parent_id: string; name: string; path: string; icon: string; children?: MenuNode[] }
 
+/** 点击验证码的提示项：`order` 是要点击的顺序，`text` 是目标文字（icon 模式下另带缩略图）。 */
+export interface CaptchaTarget { text: string; order: number; thumb?: string }
+export interface CaptchaExtra {
+  /** click 有 */
+  texts?: CaptchaTarget[];
+  /** slider 有：拼图块 PNG 的 data URI（本体尺寸是 puzzle_w × puzzle_h，jigsaw 下外扩后更大） */
+  puzzle?: string;
+  puzzle_w?: number;
+  puzzle_h?: number;
+}
+/**
+ * 图形验证码（poster-rust `CaptchaResult`）。`type` 决定 `extra` 的形状与交互方式；
+ * **答案不在响应里**（只在服务端存储中），前端提交的是用户操作的结果。
+ */
+export interface CaptchaData {
+  key: string;
+  /** PNG 的 data URI，直接塞 `<img src>` */
+  image: string;
+  type: 'click' | 'rotate' | 'slider';
+  extra: CaptchaExtra;
+}
+/** 提交给后端的答案：poster-rust `Answer` 的 serde 表示（外部标签，见 `captcha.rs`）。 */
+export type CaptchaAnswer = { Click: [number, number][] } | { Rotate: number } | { Slider: number };
+
 export interface Admin {
   id: string; username: string; nickname: string; email: string; phone: string; sex: number;
   dept_id: string; dept_name?: string; status: number; is_super: boolean; remark: string;

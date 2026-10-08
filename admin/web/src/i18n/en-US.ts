@@ -106,6 +106,13 @@ export const enUS: Record<I18nKey, string> = {
   // ---- Login ----
   'login.title': 'BRA · Admin',
   'login.submit': 'Sign in',
+  // Captcha area (poster-rust picks one of click / rotate / slider at random)
+  'login.captcha_click_hint': 'Click the characters or shapes in the order shown',
+  'login.captcha_rotate_hint': 'Drag the image to straighten it',
+  'login.captcha_slider_hint': 'Drag the puzzle piece into the gap',
+  'login.captcha_refresh': 'New challenge',
+  'login.captcha_undo': 'Undo',
+  'login.captcha_required': 'Please complete the captcha first',
 
   // ---- Layout / top bar ----
   'layout.app_name': 'BRA Admin',
@@ -283,6 +290,7 @@ export const enUS: Record<I18nKey, string> = {
   'err.auth.throttled': 'Too many attempts, please try again in {minutes} minutes',
   'err.auth.bad_old_password': 'Current password is incorrect',
   'err.auth.weak_new_password': 'The new password must be at least 6 characters',
+  'err.auth.captcha_failed': 'Incorrect captcha',
   'err.auth.unauthorized': 'Your session has expired, please sign in again',
   'err.auth.forbidden': 'Permission denied',
   'err.avatar.too_large': 'Avatar must not exceed 512 KB',

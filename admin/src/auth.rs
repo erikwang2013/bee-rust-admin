@@ -196,6 +196,7 @@ mod tests {
             upload_dir: "uploads".into(),
             max_fail: 5,
             lock_minutes: 10,
+            captcha: true,
             retain_days: 90,
             job_enabled: true,
             hashids_salt: "test-salt".into(),

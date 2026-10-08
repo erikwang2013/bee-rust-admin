@@ -50,6 +50,13 @@ encryptable-rust = "1.2.1"
 # 那个特性会从 crates.io 拉一份 bee_router，与 workspace 的 path 版重复。
 snowflake-id-rust = "1.1.1"
 hashids-rust = { version = "1.0.10", features = ["axum"] }
+# 登录图形验证码（点击 / 旋转 / 滑块，随机切）。**按版本依赖，不要用 path**：
+# 本机 path 在 CI 与其他机器上不存在。
+# 不开 `axum` 特性：那个特性给的是插件自带的 axum 路由，返回**裸 JSON**，
+# 与本项目 `{code,msg,data}` 信封不一致（前端拦截器按信封解包）；
+# 这里只用不依赖框架的核心 `Guard`（core 不挂 feature 门控），路由自己挂。
+# 更不要 `bee-rust` 特性 —— 它会从 crates.io 再拉一份 bee_router，与 workspace 的 path 版打架。
+poster-rust = "1.1.2"
 
 [dev-dependencies]
 # 集成测试直连 MySQL 建库/清表/断言用（src 已不再依赖 sqlx —— 迁移后连裸 SQL
