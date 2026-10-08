@@ -16,7 +16,8 @@ bee_rust = { version = "1.2.3", path = "../crates/bee_rust", default-features = 
 # mysql：本项目只连 MySQL（上游按后端分特性，默认一个都没开）；
 # chrono：模型里大量 chrono::NaiveDateTime 字段，不开这个特性读取路径编不过。
 bee_orm = { version = "1.2.3", path = "../crates/bee_orm", features = ["mysql", "chrono"] }
-axum = { version = "0.8" }
+# multipart：头像分片上传的表单提取器（axum 0.8 默认不带，得显式开）
+axum = { version = "0.8", features = ["multipart"] }
 tokio = { version = "1", features = ["full"] }
 # CSV 流式导出：Body::from_stream 要一个 Stream，而 tokio 1.5x 的 mpsc::Receiver
 # 不再自带 Stream 实现（tokio 的 stream 特性已移除），用 tokio-stream 的适配器
@@ -37,8 +38,13 @@ tracing = "0.1"
 # 登录限流用它的 throttle 模块。**不走 workspace = true**：workspace 表里那条
 # `security-rust = "1"` 是给 bee_router 的可选 security 特性的，1.x 没有 throttle。
 security-rust = "3"
-# 头像上传：解 data URL 里的 base64
-base64 = "0.22"
+# 头像分片上传走 aetherupload-rust 的内核（分块追加落盘 / 秒传 / 完整性校验）。
+# **按版本依赖，不要用 path**：本机 path 在 CI 与其他机器上不存在，会让构建直接失败。
+# 不开默认以外的任何 feature（默认 = 零第三方依赖的纯内核）：`axum` feature 会从
+# crates.io 拉一份 bee_router，与 workspace 的 path 版冲突，而且它给的是**公开**路由
+# ——我们要的是登录后才可用的上传口，路由自己挂（见 src/api/avatar.rs）。
+# lib 名与包名不同：aetherupload-rust → `aetherupload`。
+aetherupload-rust = { version = "1.0.3", default-features = false }
 # admin.email / phone 的落库加密（AES-256-GCM，随机 nonce）。**按版本依赖，不要用
 # path**：本机 path 在 CI 与其他机器上不存在，会让构建直接失败。
 # lib 名与包名不同：encryptable-rust → `encryptable`。
@@ -65,6 +71,9 @@ poster-rust = "1.1.2"
 # 换成 mysql_async 之后这层特性合并就没了，测试里读 DATETIME 列会报
 # `NaiveDateTime: sqlx::Type/Decode` 未实现。
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "mysql", "tls-none", "chrono"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# multipart：头像分片上传的集成测试要真的发 multipart 表单（字段名与前端逐字一致）
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "multipart"] }
+# 只被测试用：解内嵌的 PNG 夹具（src 里最后用 base64 的地方是已删掉的 base64 头像路径）
+base64 = "0.22"
 # tests/ 用的 hashids-rust 走上面 [dependencies] 那条（集成测试能直接用普通依赖，
-# 和 base64/serde_json 一样），不在这里再声明一份，免得两个来源打架。
+# 和 aetherupload/serde_json 一样），不在这里再声明一份，免得两个来源打架。

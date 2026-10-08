@@ -1,5 +1,8 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 //! 集成测试脚手架：随机端口起真实进程 + 真库（bee_admin_test）。
+// 每个 `tests/*.rs` 都各自 `mod common;` 编译一份，用不到的辅助函数在那个二进制里
+// 必然触发 dead_code —— 这是共享测试模块的常态，不是真死代码。
+#![allow(dead_code)]
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;

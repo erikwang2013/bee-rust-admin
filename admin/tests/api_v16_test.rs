@@ -258,39 +258,69 @@ async fn v16_job_notice_features() {
     assert_eq!(st, 200, "{v}");
     assert_eq!(v["data"]["total"], 0, "时间范围筛选: {v}");
 
-    // ── 头像孤儿清理的行为 ─────────────────────────────────────
+    // ── 头像孤儿清理的行为（4b：判定从「文件名是不是纯数字」改成「有没有被引用」）──
     let dir = std::path::Path::new("target/test-uploads/avatar");
-    std::fs::create_dir_all(dir).unwrap();
+    std::fs::create_dir_all(dir.join("202610")).unwrap();
     let admin_id = sqlx::query_scalar::<_, i64>("SELECT id FROM admin WHERE username = 'admin'")
         .fetch_one(&pool)
         .await
         .unwrap();
-    let admin_avatar = format!("{admin_id}.png");
+
+    // 老形态：列里是 4b 之前的 URL，落盘是老路径 `{id}.{ext}` → 必须留着（存量头像在用）
+    let legacy_name = format!("{admin_id}.png");
+    std::fs::write(dir.join(&legacy_name), b"x").unwrap();
+    sqlx::query("UPDATE admin SET avatar = ? WHERE id = ?")
+        .bind("/api/v1/avatar/legacy-short-id")
+        .bind(admin_id)
+        .execute(&pool)
+        .await
+        .unwrap();
     for name in [
-        "999999.png".to_string(),  // 纯数字但 admin 不存在 → 删
-        admin_avatar.clone(),      // 纯数字且 admin 在 → 留
-        "notes.txt".to_string(),   // 非数字名 → 留
-        "12.png.bak".to_string(),  // stem 带扩展，不是纯数字 → 留
-        "头像.png".to_string(),    // 非数字名 → 留
+        "999999.png",   // 没人引用（且是 png）→ 删
+        "notes.txt",    // 白名单外 → 不碰
+        "12.png.bak",   // 扩展名是 bak → 不碰
+        "half.png.part", // 插件写到一半的临时文件 → 不碰（白名单守卫的真正理由）
+        "头像.png",     // 名字里带中文不再豁免：只看扩展名（png 且没人引用 → 删）
     ] {
-        std::fs::write(dir.join(&name), b"x").unwrap();
+        std::fs::write(dir.join(name), b"x").unwrap();
     }
     let (st, v) = call(&c, Method::POST, api(&format!("/jobs/{avatar_id}/run")), Some(&admin), None).await;
     assert_eq!(st, 200, "跑头像清理: {v}");
     assert!(
-        v["data"]["msg"].as_str().unwrap_or("").contains("删除孤儿 1 个"),
-        "只删那一个孤儿: {v}"
+        v["data"]["msg"].as_str().unwrap_or("").contains("删除孤儿 2 个"),
+        "只删那两个没人引用的 png: {v}"
     );
+    assert!(dir.join(&legacy_name).exists(), "被老 URL 引用的存量头像不能删: {v}");
     assert!(!dir.join("999999.png").exists(), "孤儿文件必须删掉");
-    for kept in [
-        admin_avatar.clone(),
-        "notes.txt".to_string(),
-        "12.png.bak".to_string(),
-        "头像.png".to_string(),
-    ] {
-        assert!(dir.join(&kept).exists(), "{kept} 不能碰");
+    assert!(!dir.join("头像.png").exists(), "白名单内的孤儿（只看扩展名）同样删");
+    for kept in ["notes.txt", "12.png.bak", "half.png.part"] {
+        assert!(dir.join(kept).exists(), "{kept} 不在白名单里，一律不碰");
     }
-    std::fs::remove_file(dir.join(&admin_avatar)).ok();
+
+    // 新形态：列里是插件的 savedPath → 它指向的成品留着；老路径那个文件随之失去引用 → 删
+    let saved_hash = "d41d8cd98f00b204e9800998ecf8427e";
+    std::fs::write(dir.join("202610").join(format!("{saved_hash}.png")), b"x").unwrap();
+    sqlx::query("UPDATE admin SET avatar = ? WHERE id = ?")
+        .bind(format!("avatar_202610_{saved_hash}.png"))
+        .bind(admin_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (st, v) = call(&c, Method::POST, api(&format!("/jobs/{avatar_id}/run")), Some(&admin), None).await;
+    assert_eq!(st, 200, "再跑一次头像清理: {v}");
+    assert!(
+        v["data"]["msg"].as_str().unwrap_or("").contains("删除孤儿 1 个"),
+        "换值之后老文件就是孤儿: {v}"
+    );
+    assert!(!dir.join(&legacy_name).exists(), "没人引用的老文件该删");
+    assert!(
+        dir.join("202610").join(format!("{saved_hash}.png")).exists(),
+        "savedPath 指向的成品必须留着"
+    );
+    for kept in ["notes.txt", "12.png.bak", "half.png.part"] {
+        assert!(dir.join(kept).exists(), "{kept} 仍然不能碰");
+    }
+    std::fs::remove_file(dir.join("202610").join(format!("{saved_hash}.png"))).ok();
 
     // ── 公告：管理侧 CRUD + 发布语义 ───────────────────────────
     let (st, v) = call(&c, Method::GET, api("/notices"), Some(&admin), None).await;
@@ -518,8 +548,9 @@ async fn v16_job_notice_features() {
     .fetch_one(&pool)
     .await
     .unwrap();
-    // 5 = 删不存在的任务 404 + 幽灵任务 409 + 超管手动跑成功 + 普通用户 403 + 头像清理那次成功
-    assert_eq!(n, 5, "手动触发全部留痕: {n}");
+    // 6 = 超管手动跑成功 ×3（上面那次 + 孤儿清理行为用例里再跑的两次）
+    //     + 幽灵任务 409 + 删不存在的任务 404 + 普通用户被 403 拒
+    assert_eq!(n, 6, "手动触发全部留痕: {n}");
 
     // 重开进程：菜单与任务补齐都是幂等的
     drop(_server);

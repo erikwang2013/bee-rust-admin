@@ -5,7 +5,6 @@
 //! 起真实进程 + 真库（bee_admin_test），需要 BEE_ADMIN_DB_DSN。
 mod common;
 
-use base64::Engine;
 use reqwest::Method;
 use serde_json::{Value, json};
 
@@ -74,9 +73,6 @@ fn collect_perms(menus: &Value, out: &mut Vec<String>) {
     }
 }
 
-/// 1x1 PNG 的 data URL（真实文件字节，非伪造魔数）。
-const PNG_B64: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
-
 #[tokio::test]
 async fn v12_backend_features() {
     let Some(dsn) = common::dsn() else { return };
@@ -88,7 +84,6 @@ async fn v12_backend_features() {
     let c = reqwest::Client::new();
     let api = |p: &str| format!("{base}/api/v1{p}");
     let admin = common::login(&base, "admin", "admin123").await.expect("超管登录失败");
-    let super_id = common::my_id(&base, &admin).await; // 头像路径里是自己的 hashid
     let pool = sqlx::MySqlPool::connect(&dsn).await.unwrap();
 
     // ── B7 个人资料 ─────────────────────────────────────────
@@ -123,25 +118,13 @@ async fn v12_backend_features() {
     assert_eq!(st, 400, "超长昵称应 400: {v}");
     assert_eq!(v["code"], 400, "错误响应必须是 JSON 信封: {v}");
 
-    // ── B8 头像上传 / 读取 ──────────────────────────────────
-    let png = base64::engine::general_purpose::STANDARD.decode(PNG_B64).unwrap();
+    // ── B8 头像读取（上传改成分片，行为归 tests/api_avatar_test.rs）────────
+    // base64 那条上传路由已删：挂在这个路径上的 POST 必须 404（而不是留给旧前端一条活路）
     let (st, v) = call(&c, Method::POST, api("/auth/avatar"), Some(&admin),
-        Some(json!({ "data_url": format!("data:image/png;base64,{PNG_B64}") }))).await;
-    assert_eq!(st, 200, "上传头像: {v}");
-    assert_eq!(v["data"]["avatar"], format!("/api/v1/avatar/{super_id}"), "头像契约路径: {v}");
+        Some(json!({ "data_url": "data:image/png;base64,QUJD" }))).await;
+    assert_eq!(st, 404, "base64 上传路由已下线: {v}");
+    assert_eq!(v["code"], 404, "路由级 404 也走信封: {v}");
 
-    let r = c.get(api(&format!("/avatar/{super_id}"))).send().await.unwrap();
-    assert_eq!(r.status(), 200, "头像读取公开（<img> 带不了 token）");
-    assert_eq!(r.headers()["content-type"], "image/png", "Content-Type 由扩展名决定");
-    assert_eq!(r.bytes().await.unwrap().as_ref(), png.as_slice(), "读回字节与上传一致");
-
-    let (st, v) = call(&c, Method::POST, api("/auth/avatar"), Some(&admin),
-        Some(json!({"data_url": "data:image/png;base64,QUJD"}))).await; // "ABC"
-    assert_eq!(st, 400, "非图片（魔数不符）应 400: {v}");
-    assert!(v["msg"].as_str().unwrap().contains("图片"), "错误说明: {v}");
-    let (st, v) = call(&c, Method::POST, api("/auth/avatar"), Some(&admin),
-        Some(json!({"data_url": "data:image/gif;base64,R0lGODlhAQABAAAAAA=="}))).await;
-    assert_eq!(st, 400, "不支持的类型应 400: {v}");
     // 合法 hashid 但库里没有这个管理员 → 404（不能拿裸数字 999 试，那不是合法 hashid）
     let r = c.get(api(&format!("/avatar/{}", common::enc_id(999)))).send().await.unwrap();
     assert_eq!(r.status(), 404, "没有头像的管理员 → 404");
@@ -211,7 +194,9 @@ async fn v12_backend_features() {
     // 清空：动作本身也被记一条（写操作）
     let (st, v) = call(&c, Method::DELETE, api("/audit-logs?module=auth"), Some(&admin), None).await;
     assert_eq!(st, 200, "清空审计: {v}");
-    assert!(v["data"]["deleted"].as_i64().unwrap() >= 3, "改资料×2 + 上传头像×2: {v}");
+    // 改资料 2 次（一次 200、一次 400；失败也留档）都记在 auth 模块下。
+    // 4b 之后上传头像改走 /avatar/upload/*（属 avatar 模块），这里不再有它的份。
+    assert!(v["data"]["deleted"].as_i64().unwrap() >= 2, "改资料×2: {v}");
     let (st, v) = call(&c, Method::GET, api("/audit-logs?module=auth"), Some(&admin), None).await;
     assert_eq!(st, 200);
     assert_eq!(v["data"]["total"], 0, "auth 模块已清空: {v}");

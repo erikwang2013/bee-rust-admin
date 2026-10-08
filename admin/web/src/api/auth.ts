@@ -13,5 +13,4 @@ export const authApi = {
     http.put<null>('/auth/password', { old_password, new_password }),
   updateProfile: (data: { nickname: string; email: string; phone: string }) =>
     http.put<null>('/auth/profile', data),
-  uploadAvatar: (data_url: string) => http.post<{ avatar: string }>('/auth/avatar', { data_url }),
 };

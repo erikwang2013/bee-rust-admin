@@ -3,15 +3,13 @@ use crate::auth::{Auth, expire_secs, sign_token};
 use crate::config::AppConfig;
 use crate::crypto;
 use crate::hid;
-use crate::error::{ApiError, AppJson, AppPath, CAPTCHA_FAILED, ok};
+use crate::error::{ApiError, AppJson, CAPTCHA_FAILED, ok};
 use crate::models::{Admin, LoginLog, Menu};
 use crate::state::AppState;
 use crate::util::{hash_password, now, now_unix, verify_password};
 use axum::Json;
 use axum::extract::State;
 use axum::http::HeaderMap;
-use axum::response::{IntoResponse, Response};
-use base64::Engine;
 use bee_orm::Model;
 use poster::captcha::Answer;
 use security_rust::throttle::{MemoryThrottleStore, Throttle, ThrottleConfig, ThrottleDecision};
@@ -424,7 +422,8 @@ pub async fn profile(State(state): State<AppState>, auth: Auth) -> Result<Json<V
             "id": hid::enc(auth.admin.id),
             "username": auth.admin.username,
             "nickname": auth.admin.nickname,
-            "avatar": auth.admin.avatar,
+            // 列里存的是插件的 savedPath（内部地址），对外一律换成可用的 URL
+            "avatar": super::avatar::public_avatar(&auth.admin.avatar, auth.admin.id),
             "email": email,
             "phone": phone,
             "sex": auth.admin.sex,
@@ -507,12 +506,6 @@ pub struct ProfileBody {
     pub phone: String,
 }
 
-#[derive(Deserialize)]
-pub struct AvatarBody {
-    /// `data:image/png;base64,…`
-    pub data_url: String,
-}
-
 /// 改自己的资料。不碰密码/状态/角色，也不换 token（否则改个昵称就被踢下线）。
 pub async fn update_profile(
     State(state): State<AppState>,
@@ -531,92 +524,6 @@ pub async fn update_profile(
     admin.updated_at = now();
     admin.update(&state.db).await.map_err(ApiError::from)?;
     Ok(ok(Value::Null))
-}
-
-/// 头像解码后的大小上限（前端会先压缩；这是服务端的硬闸）。
-const AVATAR_MAX_BYTES: usize = 512 * 1024;
-
-/// 解 data URL →（扩展名, 字节）。只认 PNG/JPEG，并用魔数复核，不信客户端的声明。
-fn decode_avatar(data_url: &str) -> Result<(&'static str, Vec<u8>), ApiError> {
-    let (mime, b64) = data_url
-        .split_once(',')
-        .ok_or_else(|| ApiError::BadRequest("头像数据格式错误".into()))?;
-    let (ext, magic): (&str, &[u8]) = match mime {
-        "data:image/png;base64" => ("png", &[0x89, b'P', b'N', b'G']),
-        "data:image/jpeg;base64" => ("jpg", &[0xFF, 0xD8, 0xFF]),
-        _ => return Err(ApiError::BadRequest("头像仅支持 PNG/JPEG".into())),
-    };
-    // base64 先按长度卡一道，别为超限数据白解码（4/3 膨胀 + padding）
-    if b64.len() > AVATAR_MAX_BYTES / 3 * 4 + 4 {
-        return Err(ApiError::BadRequest("头像不能超过 512 KB".into()));
-    }
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(b64)
-        .map_err(|_| ApiError::BadRequest("头像 base64 解码失败".into()))?;
-    if bytes.len() > AVATAR_MAX_BYTES {
-        return Err(ApiError::BadRequest("头像不能超过 512 KB".into()));
-    }
-    if !bytes.starts_with(magic) {
-        return Err(ApiError::BadRequest("文件内容不是有效的图片".into()));
-    }
-    Ok((ext, bytes))
-}
-
-fn avatar_path(cfg: &crate::config::AppConfig, id: i64, ext: &str) -> std::path::PathBuf {
-    std::path::Path::new(&cfg.upload_dir).join("avatar").join(format!("{id}.{ext}"))
-}
-
-pub async fn upload_avatar(
-    State(state): State<AppState>,
-    auth: Auth,
-    AppJson(body): AppJson<AvatarBody>,
-) -> Result<Json<Value>, ApiError> {
-    let (ext, bytes) = decode_avatar(&body.data_url)?;
-    let dir = avatar_path(&state.cfg, auth.admin.id, ext);
-    if let Some(parent) = dir.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| ApiError::internal(format!("创建头像目录失败: {e}")))?;
-    }
-    // 换格式时清掉旧文件，同一个 id 只留一份
-    for other in ["png", "jpg"] {
-        if other != ext {
-            let _ = std::fs::remove_file(avatar_path(&state.cfg, auth.admin.id, other));
-        }
-    }
-    std::fs::write(&dir, &bytes).map_err(|e| ApiError::internal(format!("写头像文件失败: {e}")))?;
-
-    let mut admin = auth.admin.clone();
-    admin.avatar = avatar_url(admin.id);
-    admin.updated_at = now();
-    admin.update(&state.db).await.map_err(ApiError::from)?;
-    Ok(ok(json!({ "avatar": admin.avatar })))
-}
-
-/// 对外是短串（与其它 id 一致）；落盘文件名仍是数字 id，路径段解出来才拼。
-fn avatar_url(id: i64) -> String {
-    format!("/api/v1/avatar/{}", hid::enc(id))
-}
-
-/// 读头像：公开接口（`<img>` 带不了 Authorization 头），按 id + 扩展名定位文件。
-/// 路径参数是 hashids 短串，解出数字 id 后才拼文件名，不存在路径穿越。
-pub async fn get_avatar(
-    State(state): State<AppState>,
-    AppPath(id): AppPath<String>,
-) -> Result<Response, ApiError> {
-    let id = hid::dec(&id)?;
-    for (ext, ct) in [("png", "image/png"), ("jpg", "image/jpeg")] {
-        if let Ok(bytes) = std::fs::read(avatar_path(&state.cfg, id, ext)) {
-            let mut headers = axum::http::HeaderMap::new();
-            headers.insert(axum::http::header::CONTENT_TYPE, ct.parse().expect("静态 MIME"));
-            // no-cache：仍可缓存但每次回源校验，换头像后立刻生效
-            headers.insert(
-                axum::http::header::CACHE_CONTROL,
-                axum::http::HeaderValue::from_static("no-cache"),
-            );
-            return Ok((headers, bytes).into_response());
-        }
-    }
-    Err(ApiError::NotFound)
 }
 
 pub async fn change_password(
@@ -642,31 +549,8 @@ pub async fn change_password(
 mod tests {
     use super::*;
     use axum::http::StatusCode;
-
-    /// 1x1 PNG（真实文件字节）。
-    const PNG_B64: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
-
-    #[test]
-    fn avatar_decoding_rules() {
-        let (ext, bytes) = decode_avatar(&format!("data:image/png;base64,{PNG_B64}")).unwrap();
-        assert_eq!(ext, "png");
-        assert!(bytes.starts_with(&[0x89, b'P', b'N', b'G']));
-
-        // 声明 JPEG 实为 PNG：魔数复核不通过（不信客户端的 MIME）
-        assert!(decode_avatar(&format!("data:image/jpeg;base64,{PNG_B64}")).is_err());
-        // 不支持的 MIME / 没有逗号 / 坏 base64 / 空数据
-        assert!(decode_avatar("data:image/gif;base64,R0lGOD").is_err());
-        assert!(decode_avatar("nonsense").is_err());
-        assert!(decode_avatar("data:image/png;base64,!!!!").is_err());
-        assert!(decode_avatar("data:image/png;base64,").is_err());
-    }
-
-    #[test]
-    fn avatar_rejects_oversize() {
-        // 700 KB base64 ≈ 525 KB 解码后 > 512 KB，长度闸在解码前就拦下
-        let huge = format!("data:image/png;base64,{}", "A".repeat(700 * 1024));
-        assert!(decode_avatar(&huge).is_err());
-    }
+    // 顶层 import 里没有它了（`IntoResponse` 只被这里的断言用）
+    use axum::response::IntoResponse;
 
     /// 造一个用内存存储的守卫，并**直接塞一份已知答案的载荷**：验证码的答案只存在
     /// 服务端（生成时要画图），测试里没有「解题」一说，只能这样拿到可校验的凭据。

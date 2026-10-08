@@ -165,7 +165,10 @@ fn module_action(method: &Method, path: &str) -> (String, String) {
         ("POST", ["auth", "logout-others"]) => ("auth", "退出其他设备"),
         ("PUT", ["auth", "password"]) => ("auth", "修改密码"),
         ("PUT", ["auth", "profile"]) => ("auth", "修改个人资料"),
-        ("POST", ["auth", "avatar"]) => ("auth", "上传头像"),
+        // 头像分片上传（4b）：preprocess 与每一片 chunk 各留一条 —— 传超时/中断时
+        // 「传到第几片」在日志里看得见（base64 那条老路由是一次性的，已删）
+        ("POST", ["avatar", "upload", "preprocess"]) => ("auth", "上传头像"),
+        ("POST", ["avatar", "upload", "chunk"]) => ("auth", "上传头像"),
 
         _ => return ("other".into(), format!("{} {}", method, path)),
     };
@@ -188,7 +191,11 @@ mod tests {
             ("loginlog".into(), "清空登录记录".into())
         );
         assert_eq!(
-            module_action(&Method::POST, "/api/v1/auth/avatar"),
+            module_action(&Method::POST, "/api/v1/avatar/upload/preprocess"),
+            ("auth".into(), "上传头像".into())
+        );
+        assert_eq!(
+            module_action(&Method::POST, "/api/v1/avatar/upload/chunk"),
             ("auth".into(), "上传头像".into())
         );
         assert_eq!(

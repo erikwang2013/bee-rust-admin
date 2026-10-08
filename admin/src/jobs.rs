@@ -160,50 +160,129 @@ async fn log_retention(state: AppState) -> Result<String, String> {
     Ok(format!("清理过期日志 {n} 条（保留 {days} 天）"))
 }
 
-/// 头像孤儿清理：删 `{upload_dir}/avatar/` 下不属于任何 admin 的头像文件。
-/// **只删文件名是纯数字**（admin id）的；其他名字（用户手放的、临时文件）一律不碰，
-/// 否则误删。留着的代价只是占点磁盘，删错的代价是丢数据。
+/// 头像孤儿清理：删头像组目录（`{upload_dir}/avatar/`）下**不再被任何 admin 引用**的
+/// 头像文件。引用形态两种都认（4b 前后各一种）：
+/// - 列里是插件的 `savedPath`（`avatar_202610_<md5>.png`）→ 按上传根解析成相对路径；
+/// - 列里是老 URL（`/api/v1/avatar/xxx`）→ 老落盘路径是 `{id}.png` / `{id}.jpg`，
+///   两种扩展名都算引用 —— 存量头像没迁移前仍在用，误删就是把别人的头像删没了。
+///
+/// **护栏：只删扩展名在 png/jpg 白名单里的文件，其他一律不碰。**
+/// 看起来像可以删掉的啰嗦，其实是在防误删 —— 目录里除了成品头像还有：
+/// 插件写到一半的临时文件（`<临时名>.png.part`，扩展名是 `part`）、运维/用户手放的
+/// 文件（备份、说明、别人家的上传）。这些没有引用关系可依赖，只能靠白名单划界。
+/// 反过来说：白名单内、又没人引用的 png/jpg 就是孤儿（包括用户手放的），该删。
+/// 留着的代价只是占点磁盘，删错的代价是丢数据 —— 划界就按这条。
 async fn avatar_orphan_clean(state: AppState) -> Result<String, String> {
     let dir = std::path::Path::new(&state.cfg.upload_dir).join("avatar");
-    let entries = match std::fs::read_dir(&dir) {
-        Ok(e) => e,
+    let files = match collect_files(&dir) {
+        Ok(files) => files,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return Ok("头像目录不存在，无需清理".into());
         }
         Err(e) => return Err(format!("读头像目录 {} 失败: {e}", dir.display())),
     };
 
+    // 引用集合：相对头像组目录的路径（与下面 walk 出来的相对路径同一坐标系）
+    let admins = Admin::query()
+        .all(&state.db)
+        .await
+        .map_err(|e| format!("查管理员失败: {e}"))?;
+    let mut kept: std::collections::HashSet<std::path::PathBuf> = std::collections::HashSet::new();
+    for admin in &admins {
+        let stored = admin.avatar.trim();
+        if stored.is_empty() {
+            continue;
+        }
+        if stored.starts_with('/') {
+            // 老 URL：落盘在老路径上，两种扩展名都算引用（不确定哪个存在，两个都留着）
+            for ext in crate::api::avatar::AVATAR_EXTS {
+                kept.insert(std::path::PathBuf::from(format!("{}.{ext}", admin.id)));
+            }
+        } else if let Some(resource) = state.aether.resource(stored) {
+            // savedPath → 插件的成品路径；只保留在本目录下的（配置换了 upload_dir 的
+            // 陈旧值解析到别处，那不是本目录的孤儿，这里不碰）
+            if let Ok(rel) = resource.path.strip_prefix(&dir) {
+                kept.insert(rel.to_path_buf());
+            }
+        }
+    }
+
     let (mut seen, mut removed) = (0u64, 0u64);
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
+    for path in files {
         seen += 1;
-        // 文件名（去掉扩展名后）必须是纯数字：`12.png` 认，`12.png.bak` / `notes.txt` 不认
-        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
-            continue;
-        };
-        if stem.is_empty() || !stem.bytes().all(|b| b.is_ascii_digit()) {
+        if !is_avatar_file(&path) {
             continue;
         }
-        let Ok(id) = stem.parse::<i64>() else { continue };
-        let exists = Admin::query()
-            .filter_eq("id", id)
-            .map_err(|e| format!("构造管理员查询失败: {e}"))?
-            .one(&state.db)
-            .await
-            .map_err(|e| format!("查管理员 {id} 失败: {e}"))?
-            .is_some();
-        if exists {
+        let Ok(rel) = path.strip_prefix(&dir) else { continue };
+        if kept.contains(rel) {
             continue;
         }
         match std::fs::remove_file(&path) {
-            Ok(_) => removed += 1,
+            Ok(_) => {
+                removed += 1;
+                purge_instant(&state, rel);
+            }
             Err(e) => tracing::warn!("删孤儿头像 {} 失败: {e}", path.display()),
         }
     }
     Ok(format!("头像 {seen} 个，删除孤儿 {removed} 个"))
+}
+
+/// 递归收集目录下的所有文件（用显式栈：用户手放的深层目录不该让清理任务爆栈）。
+/// 子目录读失败只告警跳过 —— 清理任务是卫生工作，不能因为一个权限问题整轮失败。
+fn collect_files(root: &std::path::Path) -> std::io::Result<Vec<std::path::PathBuf>> {
+    let mut out = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(entries) => entries,
+            Err(e) if dir == root => return Err(e),
+            Err(e) => {
+                tracing::warn!("读头像子目录 {} 失败: {e}", dir.display());
+                continue;
+            }
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else {
+                out.push(path);
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// 删掉成品文件后，把它的秒传索引一起清掉。
+///
+/// 索引里可能还留着 `group_hash → savedPath` 指向这个已删文件（管理员行被删、值被直接
+/// 改库 —— 文件成了孤儿但索引没过期），不清的话下次有人传同样的内容会「秒传命中」到一个
+/// 死链（头像 404）。`rel` 是相对头像组目录的路径，只有「一层子目录 + 文件名」这种插件
+/// 成品的位置才构造得出 savedPath；直接躺在 `avatar/` 下的老文件/手工文件跳过。
+fn purge_instant(state: &AppState, rel: &std::path::Path) {
+    let (Some(subdir), Some(name)) = (
+        rel.parent().and_then(|p| p.to_str()),
+        rel.file_name().and_then(|n| n.to_str()),
+    ) else {
+        return;
+    };
+    if subdir.is_empty() || subdir.contains('/') {
+        return;
+    }
+    let saved = aetherupload::SavedPath::encode(crate::api::avatar::AVATAR_GROUP, subdir, name);
+    if !state.aether.delete_instant_path(&saved) {
+        tracing::debug!("清孤儿 {saved} 的秒传索引未成功（不阻断清理）");
+    }
+}
+
+/// 扩展名白名单守卫（理由见 `avatar_orphan_clean` 的注释）：只有 png/jpg 才可能是
+/// 成品头像；`.part`、`.bak`、无扩展名的一律留给人工处理。
+fn is_avatar_file(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase)
+        .is_some_and(|ext| crate::api::avatar::AVATAR_EXTS.contains(&ext.as_str()))
 }
 
 #[cfg(test)]

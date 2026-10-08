@@ -120,7 +120,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let captcha_throttle = api::auth::captcha_create_throttle();
 
-    let state = AppState { db, cfg: std::sync::Arc::new(cfg), throttle, snowflake, jwt, crypto, captcha, captcha_throttle };
+    // 头像分片上传的运行时（上传根 = `[app] upload_dir`，秒传用进程内内存表）。
+    // 构造失败在这里就炸：与 encrypt_key 一个态度，不让进程带着半吊子状态跑。
+    let aether = api::avatar::build_runtime(&cfg)?;
+
+    let state = AppState { db, cfg: std::sync::Arc::new(cfg), throttle, snowflake, jwt, crypto, captcha, captcha_throttle, aether };
     let addr = state.cfg.http_addr.clone();
 
     // 内存限流的条目只在写路径顺手清窗口内的失败，桶本身（每个用户名/IP 一个）不会
@@ -179,12 +183,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .post("/logout-others", api::auth::logout_others)
                 .get("/profile", api::auth::profile)
                 .put("/profile", api::auth::update_profile)
-                .post("/avatar", api::auth::upload_avatar)
                 .get("/menus", api::auth::menus)
                 .put("/password", api::auth::change_password)
         })
-        // 头像读取公开：<img> 标签带不了 Authorization 头
-        .ns("/api/v1/avatar", |ns| ns.get("/{id}", api::auth::get_avatar))
+        // 头像：读取公开（<img> 标签带不了 Authorization 头）；上传两条分片路由都要求
+        // 登录（不挂插件的公开路由，理由见 `api::avatar`）。`/{id}` 只吃单段路径，
+        // 与 `/upload/…` 不冲突。
+        .ns("/api/v1/avatar", |ns| {
+            ns.get("/{id}", api::avatar::get_avatar)
+                .post("/upload/preprocess", api::avatar::preprocess)
+                .post("/upload/chunk", api::avatar::chunk)
+        })
         // 登录页验证码（公开）。路径与 poster-rust 的 `captcha_routes_at("/captcha")`
         // 给出的 `/captcha/new` 一致；校验不在插件端点里做，而是随登录体一起提交、
         // 由登录接口校验（见 `api::auth::login`）——多一个「先自己验一次」的端点

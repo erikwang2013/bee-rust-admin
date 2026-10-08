@@ -35,6 +35,12 @@ pub struct AppState {
     /// 插件默认存储不会自动清扫过期 key，不设闸门就是一个公开的内存增长口，
     /// 见 `api::auth::captcha_create_throttle`。
     pub captcha_throttle: Arc<Throttle<MemoryThrottleStore>>,
+    /// 头像分片上传的运行时（aetherupload-rust 内核 + 进程内秒传表）。
+    ///
+    /// 构造后不可变、按 `[app] upload_dir` 装配（见 `api::avatar::build_runtime`），
+    /// 构造失败**拒绝启动**——别带着半个上传口跑。秒传索引是进程内的：多实例部署下
+    /// 各进程各命中各的，只是省流量；重启后第一次上传走完整流程，不影响正确性。
+    pub aether: Arc<aetherupload::Runtime>,
 }
 
 impl AppState {

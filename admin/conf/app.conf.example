@@ -2,7 +2,8 @@
 name = bee-rust-admin
 http_addr = 127.0.0.1:8080
 log_level = info
-# 上传文件根目录（头像落在这里的 avatar/ 下），可用绝对路径
+# 上传文件根目录（头像分片上传落在 uploads/avatar/<月份>/ 下），可用绝对路径。
+# 进程需要对它可写；老版本的头像（uploads/avatar/<id>.png）继续从这个目录读，不用迁移。
 upload_dir = uploads
 # 对外 id（hashids 短串）的盐：**生产必须换成随机串**，改盐 = 所有已发出的短串作废
 hashids_salt = change-me-to-a-random-salt

@@ -141,6 +141,8 @@ export const zhCN = {
   'profile.avatar_hint': 'PNG / JPEG，超过 512KB 会自动压缩',
   'profile.avatar_failed': '图片读取失败，请换一张 PNG/JPEG',
   'profile.avatar_too_large': '压缩后仍超过 512KB，请换一张小一些的图片',
+  'profile.avatar_uploading': '头像上传中',
+  'profile.avatar_upload_failed': '头像上传失败',
   'profile.avatar_updated': '头像已更新',
   'profile.save_info': '保存资料',
   'profile.info_saved': '资料已保存',

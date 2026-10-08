@@ -181,6 +181,8 @@ async fn decorate(state: &AppState, rows: Vec<Admin>) -> Result<Vec<Value>, ApiE
             .map_err(|e| ApiError::internal(format!("序列化失败: {e}")))?;
         // email / phone 落库是密文，对外一律明文（列表 / 导出共用这条路径）
         crate::crypto::plain_json(&state.crypto, &mut v)?;
+        // avatar 列存的是插件的 savedPath（内部地址），对外换成可用的 URL（无头像仍是空串）
+        v["avatar"] = json!(crate::api::avatar::public_avatar(&a.avatar, a.id));
         v["dept_name"] = json!(dept_names.get(&a.dept_id).cloned().unwrap_or_default());
         v["role_names"] = json!(names);
         v["role_ids"] = json!(hid::enc_vec(&ids));
@@ -296,6 +298,8 @@ pub async fn detail(
     let mut v = serde_json::to_value(&a).map_err(|e| ApiError::internal(format!("序列化失败: {e}")))?;
     // email / phone 落库是密文，详情/编辑回显要明文（前端无感）
     crate::crypto::plain_json(&state.crypto, &mut v)?;
+    // 同列表：avatar 列存的是 savedPath，回给前端的是 URL
+    v["avatar"] = json!(crate::api::avatar::public_avatar(&a.avatar, a.id));
     v["role_ids"] = json!(hid::enc_vec(&role_ids));
     v["is_super"] = json!(a.is_super == 1); // 前端契约：bool
     Ok(ok(v))

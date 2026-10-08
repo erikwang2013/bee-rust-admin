@@ -317,6 +317,31 @@ where
     }
 }
 
+/// `Multipart` 版统一提取器：表单解析失败（缺 boundary、body 超限、分片不完整）也回
+/// JSON 信封。**必须是 handler 的最后一个参数** —— 它消费请求体（与 `AppJson` 同理）。
+/// 字段读取阶段的错误（`next_field` 的 `Err`）由各 handler 自己映射成 `BadRequest`。
+pub struct AppMultipart(pub axum::extract::Multipart);
+
+impl<S> axum::extract::FromRequest<S> for AppMultipart
+where
+    S: Send + Sync,
+{
+    type Rejection = ApiError;
+
+    async fn from_request(
+        req: axum::extract::Request,
+        state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        match axum::extract::Multipart::from_request(req, state).await {
+            Ok(m) => Ok(AppMultipart(m)),
+            Err(rej) => Err(ApiError::BadRequest(format!(
+                "上传表单解析失败: {}",
+                rej.body_text()
+            ))),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

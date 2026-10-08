@@ -7,6 +7,7 @@ use bee_orm::{Model, OrmError, QuerySet, Value};
 pub mod admin;
 pub mod audit_log;
 pub mod auth;
+pub mod avatar;
 pub mod csv;
 pub mod dept;
 pub mod dict;

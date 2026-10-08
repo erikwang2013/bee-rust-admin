@@ -1,18 +1,25 @@
 import { useRef, useState, type ChangeEvent } from 'react';
-import { App, Avatar, Button, Card, Divider, Form, Input, Popconfirm, Space } from 'antd';
+import { App, Avatar, Button, Card, Divider, Form, Input, Popconfirm, Progress, Space } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
 import { authApi } from '../../api/auth';
+import { AvatarUploadError, uploadAvatar } from '../../api/avatarUpload';
 import { TOKEN_KEY } from '../../api/client';
 import { avatarUrl, useAuth } from '../../auth/AuthContext';
 import { useI18n } from '../../i18n';
 
-const MAX_DATA_URL = 512 * 1024; // 后端对 data_url 与解码后字节双重卡 512KB
+const MAX_AVATAR = 512 * 1024; // 服务端对头像体积的硬闸
 
 /** 压到极限仍超 512KB：调用方要单独提示，别和「读不出来」混成一句。 */
 class AvatarTooLarge extends Error {}
 
-/** 缩到最长边 512px，再降 JPEG 质量，直到 data_url 不超过 512KB。 */
-async function compressToDataUrl(file: File): Promise<string> {
+function toBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob 失败'))), 'image/jpeg', quality);
+  });
+}
+
+/** 缩到最长边 512px，再降 JPEG 质量，直到字节数不超过 512KB 的服务端硬闸。 */
+async function compressToJpeg(file: File): Promise<File> {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, 512 / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement('canvas');
@@ -29,44 +36,53 @@ async function compressToDataUrl(file: File): Promise<string> {
   bitmap.close();
 
   let quality = 0.85;
-  let url = canvas.toDataURL('image/jpeg', quality);
-  while (url.length > MAX_DATA_URL && quality > 0.3) {
+  let blob = await toBlob(canvas, quality);
+  while (blob.size > MAX_AVATAR && quality > 0.3) {
     quality = Math.max(0.3, quality - 0.15);
-    url = canvas.toDataURL('image/jpeg', quality);
+    blob = await toBlob(canvas, quality);
   }
-  if (url.length > MAX_DATA_URL) throw new AvatarTooLarge();
-  return url;
+  if (blob.size > MAX_AVATAR) throw new AvatarTooLarge();
+  // 统一转成 JPEG 后再上传，扩展名固定（分片上传按 resource_name 取扩展名）
+  return new File([blob], 'avatar.jpg', { type: 'image/jpeg' });
 }
 
 export default function ProfilePage() {
   const { user, logout, reload, version } = useAuth();
   const { message } = App.useApp();
-  const { t } = useI18n();
+  const { lang, t } = useI18n();
   const [pwdForm] = Form.useForm();
   const [infoForm] = Form.useForm();
   const fileRef = useRef<HTMLInputElement>(null);
   const [savingInfo, setSavingInfo] = useState(false);
   const [savingPwd, setSavingPwd] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [percent, setPercent] = useState(0);
   const [kicking, setKicking] = useState(false);
 
   const onPickAvatar = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = ''; // 允许重复选同一个文件
     if (!file) return;
-    let data_url: string;
+    let jpeg: File;
     try {
-      data_url = await compressToDataUrl(file);
+      jpeg = await compressToJpeg(file);
     } catch (e) {
       // canvas 不可用等环境问题也走这里，统一按「读不出来」提示
       message.error(t(e instanceof AvatarTooLarge ? 'profile.avatar_too_large' : 'profile.avatar_failed'));
       return;
     }
     setUploading(true);
+    setPercent(0);
     try {
-      await authApi.uploadAvatar(data_url);
+      await uploadAvatar(jpeg, {
+        locale: lang === 'zh-CN' ? 'zh' : 'en',
+        onProgress: (sent, total) => setPercent(Math.round((sent / total) * 100)),
+      });
       await reload();
       message.success(t('profile.avatar_updated'));
+    } catch (e) {
+      // HTTP 层的失败拦截器已经提示过；这里只管插件信封里的失败（文案按 locale 由插件出）
+      if (e instanceof AvatarUploadError) message.error(e.message);
     } finally {
       setUploading(false);
     }
@@ -135,9 +151,16 @@ export default function ProfilePage() {
           <Button icon={<UploadOutlined />} loading={uploading} onClick={() => fileRef.current?.click()}>
             {t('profile.change_avatar')}
           </Button>
-          <div style={{ marginTop: 4, color: 'rgba(128,128,128,1)', fontSize: 12 }}>
-            {t('profile.avatar_hint')}
-          </div>
+          {uploading ? (
+            <div style={{ marginTop: 8, maxWidth: 220 }}>
+              <Progress percent={percent} size="small" />
+              <div style={{ color: 'rgba(128,128,128,1)', fontSize: 12 }}>{t('profile.avatar_uploading')}</div>
+            </div>
+          ) : (
+            <div style={{ marginTop: 4, color: 'rgba(128,128,128,1)', fontSize: 12 }}>
+              {t('profile.avatar_hint')}
+            </div>
+          )}
         </div>
       </Space>
 

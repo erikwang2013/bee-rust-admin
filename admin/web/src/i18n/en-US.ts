@@ -134,6 +134,8 @@ export const enUS: Record<I18nKey, string> = {
   'profile.avatar_hint': 'PNG / JPEG, auto-compressed above 512 KB',
   'profile.avatar_failed': 'Could not read the image, please pick a PNG/JPEG',
   'profile.avatar_too_large': 'Still over 512 KB after compression, please pick a smaller image',
+  'profile.avatar_uploading': 'Uploading avatar',
+  'profile.avatar_upload_failed': 'Avatar upload failed',
   'profile.avatar_updated': 'Avatar updated',
   'profile.save_info': 'Save profile',
   'profile.info_saved': 'Profile saved',
