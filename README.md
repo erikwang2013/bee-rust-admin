@@ -230,6 +230,34 @@ cd admin/web && pnpm build && pnpm preview   # http://localhost:8081
 > 提示：`BEE_ADMIN_CONF` 可指定配置文件路径；`BEE_ADMIN_DB_DSN` 覆盖数据库连接串；
 > `BEE_ADMIN_HTTP_ADDR` 覆盖监听地址（容器里绑 `0.0.0.0:8080` 时必须用）。
 
+### 请求安全扫描（security-rust）
+
+内置 32 个攻击特征检测器（SQLi / 命令注入 / SSRF / XXE / Log4Shell / 路径穿越 …），
+默认**只报告不拦截**：
+
+```ini
+[security]
+# off（默认）：命中只留痕（WARN 日志 + 一条审计，记等级与检测器名，不记原始 payload）
+# high / critical：达到该等级直接 403（err = security.blocked）
+scan = off
+```
+
+误报是真实存在的（密码里带 `' or 1=1--` 的用户、公告里贴的代码片段），所以默认不拦。
+**要开 `high` 之前先知道两件事：**
+
+- **XSS 拦不住**：XSS 在插件的评分里只有 Low，而阈值只有 off/high/critical ——
+  能检出、能留痕，但不会被 403
+- 扫描**扫的是原始串 + 解码后**两份（攻击载荷基本都是百分号编码的，
+  只扫原文等于漏掉绝大多数注入）
+
+扫 URL、指定请求头（`host` / `user-agent` / `referer` / `origin` / `x-forwarded-host`）
+与 ≤64KB 的 JSON 体（**读完原样放回**）。**multipart 一律不碰**（碰了会把整个上传
+缓冲进内存，毁掉头像的分片上传）。
+
+> `referer` / `origin` 只扫 `scheme://authority` **之后**的部分 —— 浏览器自动带的同源
+> Referer 若是环回/内网 IP，插件的 SSRF 检测器判 **Critical**，照字面扫会让
+> `scan = high` 在按 IP 访问的部署上把**每个**正常请求都 403。
+
 ### 接口文档站（apidoc-rust）
 
 后台内置 apidoc-rust 的接口文档站，**默认关闭**（文档页会把整个后台的接口面、请求/响应
