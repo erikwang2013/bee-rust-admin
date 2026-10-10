@@ -60,7 +60,7 @@ INI 配置），前端是 Vite + React 18 + Ant Design 5 单页应用，两者�
 |---|---|---|
 | 客户端 | 浏览器 SPA | React 18 + TypeScript + Ant Design 5（Vite 构建） |
 | 接入层 | nginx :8081 | 提供前端静态资源，`/api/` 反向代理到后端并透传 `X-Real-IP` |
-| 应用层 | `bee_admin` | bee_router（axum）· Auth 提取器 · 62 个 API handler · datascope 数据权限 · 统一响应信封 |
+| 应用层 | `bee_admin` | bee_router（axum）· Auth 提取器 · 64 个 API handler · datascope 数据权限 · 统一响应信封 |
 | 框架层 | bee_orm / bee_config / bee_logs | 多后端连接池、QuerySet、CRUD、M2M、migrate 迁移；INI 配置；tracing 日志 |
 | 数据层 | MySQL 8.4 | 15 张表（11 张业务表 + 4 张关系表） |
 
@@ -107,7 +107,7 @@ INI 配置），前端是 Vite + React 18 + Ant Design 5 单页应用，两者�
 | **通知公告** | 草稿 / 已发布两态（发布写 `published_at`，回退草稿不清空——留痕）、增删改、删公告同事务级联删已读记录；顶栏铃铛显示未读数 |
 | **中英双语** | 界面文案中/英两套（顶栏切换，跟随浏览器语言，存 localStorage），antd 组件文案与日期格式跟着切；**后端不做多语言消息**——错误响应带稳定业务错误码 `err` + 参数 `args`，前端查表出文案，查不到回落后端中文 `msg`（任何情况都有话可说） |
 
-接口共 62 个（61 个业务接口 + `/api/v1/health` 探活），路径与字段的完整定义见
+接口共 64 个（63 个业务接口 + `/api/v1/health` 探活），路径与字段的完整定义见
 [设计文档 §5.3](docs/superpowers/specs/2026-10-05-bee-rust-admin-design.md)，
 字典 / 定时任务 / 通知公告 / i18n 的契约另见 [C 组设计](docs/superpowers/plans/2026-10-06-bra-v1.5-c-modules.md)。
 
@@ -145,16 +145,33 @@ admin/                  管理后台服务端（crate bee_admin）
     src/pages/          登录 / 首页 / 管理员 / 角色 / 菜单 / 部门 / 字典 / 定时任务 / 通知公告 /
                         登录记录 / 个人中心
 docs/
-  diagrams/             ★ 本 README 引用的 4 张 SVG 图
+  install.html          ★ 安装引导页（自包含单文件，双击即可打开；含配置生成器）
+  usage.md              ★ 使用手册（权限体系怎么落地、各模块怎么用）
+  diagrams/             本 README 引用的 4 张 SVG 图
   pet/                  项目宠物「阿守」的五态 SVG + 渲染器（node render.mjs）
   social/               社交预览图 1280×640（仓库 Settings → Social preview 上传那份 PNG）
   superpowers/specs/    设计文档（数据模型、接口清单、数据权限规则）
   superpowers/plans/    实施计划（ORM 执行层、后端、前端）
+install.sh              ★ 一键安装脚本（拉发布产物 / 源码构建 → 生成配置 → 装 systemd + nginx → 自检）
 Dockerfile              后端镜像（多阶段构建）
 docker-compose.yml      MySQL + 后端 + 前端一键起栈
 ```
 
+> `install.sql` 在仓库根目录，但**与本项目无关** —— 那是另一个工具的记忆库 schema，
+> 安装 BRA 不需要也不使用它，别被名字骗到。
+
 ## 使用说明
+
+> **想快点装起来？** 打开 [`docs/install.html`](docs/install.html)（自包含单文件，双击即可，
+> 不用起服务）—— 里面有配置生成器（填数据库信息就吐出一份完整 `app.conf`）与三种装法的
+> 完整命令。命令行党直接：
+>
+> ```bash
+> curl -fsSLO https://raw.githubusercontent.com/erikwang2013/bee-rust-admin/main/install.sh
+> less install.sh && bash install.sh      # 交互式；--help 看全部参数
+> ```
+>
+> **用起来**之后的手册在 [`docs/usage.md`](docs/usage.md)（权限体系怎么落地、各模块怎么操作）。
 
 ### 环境要求
 
@@ -164,6 +181,10 @@ docker-compose.yml      MySQL + 后端 + 前端一键起栈
 | MySQL | 8.0+（开发于 8.4，utf8mb4） |
 | Node / pnpm | Node 20+ / pnpm 9+ |
 | nginx | 任意近期版本（仅生产部署需要） |
+
+> ⚠️ **用预编译产物（`install.sh` 的默认模式）需要 glibc ≥ 2.38**（Debian 13 / Ubuntu 24.04+）。
+> Ubuntu 22.04 / Debian 12 及更老的发行版请用 `install.sh --mode build` 或 Docker ——
+> 脚本会自己检测，跑不起来会在**写盘之前**退出并给出这两条替代命令。
 
 ### 快速开始
 
@@ -355,6 +376,12 @@ sudo nginx -t && sudo systemctl reload nginx
 ```
 
 文件内的注释写了各自的安装位置与前置条件；设计文档 §7 有部署方案的完整说明。
+
+> 这两份文件是**手工路径的示例**，里面的路径与用户名写死成本机的
+> （`/home/wwwroot/bee-rust-admin`、`erik`），照着用要自己改。
+> **想省掉抄改就用 [`install.sh`](install.sh)**：它按实际的 `--prefix` / 用户 / 端口
+> 渲染这两份文件，顺带生成配置、建库、跑自检。支持的机器走 [`docs/install.html`](docs/install.html)
+> 里的「一键脚本」一节。
 
 ## 版权
 
