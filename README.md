@@ -145,7 +145,7 @@ admin/                  管理后台服务端（crate bee_admin）
     src/pages/          登录 / 首页 / 管理员 / 角色 / 菜单 / 部门 / 字典 / 定时任务 / 通知公告 /
                         登录记录 / 个人中心
 docs/
-  install.html          ★ 安装引导页（自包含单文件，双击即可打开；含配置生成器）
+  install.md            ★ 安装说明（三种装法、配置生成步骤、常见坑）
   usage.md              ★ 使用手册（权限体系怎么落地、各模块怎么用）
   diagrams/             本 README 引用的 4 张 SVG 图
   pet/                  项目宠物「阿守」的五态 SVG + 渲染器（node render.mjs）
@@ -162,9 +162,8 @@ docker-compose.yml      MySQL + 后端 + 前端一键起栈
 
 ## 使用说明
 
-> **想快点装起来？** 打开 [`docs/install.html`](docs/install.html)（自包含单文件，双击即可，
-> 不用起服务）—— 里面有配置生成器（填数据库信息就吐出一份完整 `app.conf`）与三种装法的
-> 完整命令。命令行党直接：
+> **想快点装起来？** 看 [`docs/install.md`](docs/install.md) —— 三种装法的完整命令、
+> 生成密钥的命令、一份可直接改的 `app.conf`，以及常见坑。命令行党直接：
 >
 > ```bash
 > curl -fsSLO https://raw.githubusercontent.com/erikwang2013/bee-rust-admin/main/install.sh
@@ -380,7 +379,7 @@ sudo nginx -t && sudo systemctl reload nginx
 > 这两份文件是**手工路径的示例**，里面的路径与用户名写死成本机的
 > （`/home/wwwroot/bee-rust-admin`、`erik`），照着用要自己改。
 > **想省掉抄改就用 [`install.sh`](install.sh)**：它按实际的 `--prefix` / 用户 / 端口
-> 渲染这两份文件，顺带生成配置、建库、跑自检。支持的机器走 [`docs/install.html`](docs/install.html)
+> 渲染这两份文件，顺带生成配置、建库、跑自检。完整说明见 [`docs/install.md`](docs/install.md)
 > 里的「一键脚本」一节。
 
 ## 版权
