@@ -214,7 +214,9 @@ pub async fn update(
 #[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
 #[apidoc::route_param(name = "id", ty = "string", required, desc = "菜单对外 id（hashids 短串）")]
 #[apidoc::response_status("200")]
-#[apidoc::response_status("404")]
+// 400 是真实会返回的那两个（有子菜单 / 被角色引用）；**没有 404** ——
+// 删一个不存在的 id 也回 200（delete 影响 0 行不报错）。这里原本写的是 404。
+#[apidoc::response_status("400")]
 pub async fn remove(
     State(state): State<AppState>,
     auth: Auth,

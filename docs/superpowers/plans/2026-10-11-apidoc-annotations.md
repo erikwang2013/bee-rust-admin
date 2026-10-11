@@ -1,5 +1,18 @@
 # apidoc 注解补齐 · menu 与 dept（请求体 + 响应结构）实现计划
 
+> **补记（计划写完后）**：调研期间在本批次范围外又发现 **3 处「注解与实现不符」，
+> 都已当场修掉**，执行本计划时**不要重做**：
+> 1. `api/menu.rs` 的 `remove`：`response_status("404")` → `("400")`（实现从不 404）
+>    —— 就是下面 Task 2 Step 4 那条「可选纠错」，已完成
+> 2. `api/login_log.rs` 的 `clear`：`returned(ty="null", desc="被删除的条数")` →
+>    `ty="object"` + `children {deleted: int}`（实现返回 `{"deleted": N}`）
+> 3. `api/admin.rs` 的列表 `dept_id` 查询参数：原写「含子部门」→ 实际是
+>    `filter_eq` **精确匹配**（`admin.rs:139`），已改成如实描述
+>
+> 另做了一次同类错的范围扫描：全仓库 12 个声称会返回 404 的端点里，
+> **只有 `menu::remove` 那条是错的**（其余都有真实的 NotFound 路径）——
+> 所以这类错是零星漏网，不是普遍问题。
+
 > 上位文档：[v2.6 之后的路线图](2026-10-11-post-v2.6-roadmap.md)（本文对应其中 **D1**，建议排期见该文 §3）。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

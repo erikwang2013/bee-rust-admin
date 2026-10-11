@@ -88,7 +88,9 @@ pub async fn list(
 #[apidoc::query(name = "start", ty = "string", desc = "开始时间")]
 #[apidoc::query(name = "end", ty = "string", desc = "结束时间")]
 #[apidoc::response_status("200")]
-#[apidoc::returned(name = "data", ty = "null", desc = "被删除的条数")]
+#[apidoc::returned(name = "data", ty = "object", desc = "删除结果", children = [
+    {name = "deleted", ty = "int", required, desc = "被删除的条数"},
+])]
 pub async fn clear(
     State(state): State<AppState>,
     auth: Auth,

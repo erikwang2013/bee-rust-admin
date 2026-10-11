@@ -203,7 +203,7 @@ async fn decorate(state: &AppState, rows: Vec<Admin>) -> Result<Vec<Value>, ApiE
 #[apidoc::query(name = "size", ty = "int", desc = "每页条数，默认 10，上限 100", mock = "10")]
 #[apidoc::query(name = "username", ty = "string", desc = "用户名模糊匹配")]
 #[apidoc::query(name = "status", ty = "int", desc = "状态：1 启用 / 0 禁用")]
-#[apidoc::query(name = "dept_id", ty = "string", desc = "部门短串（含子部门，受数据权限约束）")]
+#[apidoc::query(name = "dept_id", ty = "string", desc = "部门短串：**精确匹配该部门**（不展开子部门）")]
 #[apidoc::response_status("200")]
 #[apidoc::returned(name = "data", ty = "object", desc = "分页结果", children = [
             {name = "list", ty = "array", required, desc = "管理员列表", children = [
