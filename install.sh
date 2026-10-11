@@ -212,16 +212,16 @@ GITHUB_REPO=erikwang2013/bee-rust-admin
 # sed 替换串里 & | \ 都是元字符，必须转义（路径里出现 & 是合法的）
 esc_repl() { printf '%s' "$1" | sed -e 's/[\\&|]/\\&/g'; }
 
-# DSN 走 Url::parse，口令里的 / # ? % 会破解析 → 百分号编码
+# DSN 走 Url::parse，口令里的 / # ? % & + 会破解析 → 百分号编码
 urlenc() {
   printf '%s' "$1" | sed -e 's/%/%25/g' -e 's/@/%40/g' -e 's/:/%3A/g' \
-    -e 's|/|%2F|g' -e 's/#/%23/g' -e 's/?/%3F/g'
+    -e 's|/|%2F|g' -e 's/#/%23/g' -e 's/?/%3F/g' -e 's/&/%26/g' -e 's/+/%2B/g'
 }
 # urlenc 的逆（--keep-conf 时把已有 conf 里的 DSN 读回来）。%25 必须**最后**换：
 # 换早了，字面量 "%3A"（编码后是 %253A）会被误解成冒号。
 urldec() {
   printf '%s' "$1" | sed -e 's/%3A/:/g' -e 's|%2F|/|g' -e 's/%23/#/g' \
-    -e 's/%3F/?/g' -e 's/%40/@/g' -e 's/%25/%/g'
+    -e 's/%3F/?/g' -e 's/%40/@/g' -e 's/%26/\&/g' -e 's/%2B/+/g' -e 's/%25/%/g'
 }
 
 # 随机口令。**不要写成 `tr < /dev/urandom | head -c N`**：head 提前退出会让 tr 吃
@@ -568,7 +568,8 @@ if [ "$ask_db_pass" = 1 ]; then
 fi
 
 if [ "$KEEP_CONF" = 0 ]; then
-  case $DB_PASS in *[/#?%]*) warn "数据库口令里含 / # ? % —— 已做 URL 编码写进 DSN，但别的工具里也可能咬人" ;; esac
+  # 注意：`&` 不能放进 [ ] 里（bash 5.2 解析 case 模式时会报语法错误），用 | 分支
+  case $DB_PASS in *[/#?%]*|*"&"*|*"+"*) warn "数据库口令里含 / # ? % & + —— 已做 URL 编码写进 DSN，但别的工具里也可能咬人" ;; esac
 fi
 
 # ══════════════════════════════════════════════════════════════════════════
