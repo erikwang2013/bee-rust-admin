@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **复选框状态不维护**：本文件的 `- [ ]` 写于计划当时，勾选状态不可信；进度以代码与 git 历史为准。
+
 **Goal:** 交付管理员/角色/菜单/部门/登录记录五个模块的 CRUD 接口与数据权限，并用真库集成测试跑通全链路。
 
 **Architecture:** 每个模块一个 `api/*.rs`，handler 内 `auth.require("权限码")` 鉴权；列表接口统一经 `datascope` 注入数据权限条件（`QuerySet::filter_raw` 参数化）；删除类接口先做引用校验再删。

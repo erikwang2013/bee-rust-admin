@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **复选框状态不维护**：本文件的 `- [ ]` 写于计划当时，勾选状态不可信；进度以代码与 git 历史为准。
+
 **Goal:** 在 `admin/` 交付管理后台服务端骨架并跑通鉴权链路：INI 配置、8 张表模型、syncdb+种子、JWT 登录/登出、个人资料、动态菜单、登录记录。
 
 **Architecture:** `bee_router`（axum 封装）提供路由；`bee_orm`（M1/M2 交付）提供数据访问；`Auth` 提取器做 JWT 校验 + 权限码加载，handler 内 `auth.require("…")` 逐接口鉴权；数据权限由 `datascope` 模块注入查询条件。

@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **复选框状态不维护**：本文件的 `- [ ]` 写于计划当时，勾选状态不可信；进度以代码与 git 历史为准。
+
 **Goal:** 把 `crates/bee_orm` 从"只有 SQL 拼接器"补成可用的异步 ORM：连接池、CRUD、QuerySet 执行、M2M 关联、syncdb 迁移，执行引擎用 sqlx(MySQL)。
 
 **Architecture:** 现有 `QuerySet` 参数化 SQL 构造保留，新增执行方法（`fetch_all/fetch_one/count/fetch_page`）；`Db` 是唯一入口（连接池 + CRUD + 关联 + syncdb + 事务）；`#[derive(Model)]` 生成 `ModelMeta` 元数据、`sqlx` 行映射、各语句的绑定代码。SQL 语句由元数据拼装，值一律走绑定。

@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **复选框状态不维护**：本文件的 `- [ ]` 写于计划当时，勾选状态不可信；进度以代码与 git 历史为准。
+
 **Goal:** 在 `admin/web/` 交付管理后台 SPA：登录、动态菜单布局、管理员/角色/菜单/部门/登录记录五个管理页、按钮级权限、个人中心。
 
 **Architecture:** Vite + React 18 + TS + antd 5 单页应用。后端契约见设计文档 §5.3（本计划 F2 把 JSON 形状钉死）。鉴权用 JWT：token 存 localStorage，axios 拦截器注入 `Authorization: Bearer`，401 回登录页。菜单/权限由后端 `/auth/menus`、`/auth/profile` 驱动，前端只做显示控制（后端仍逐接口鉴权）。
