@@ -115,7 +115,9 @@ bash install.sh          # 交互式：会问数据库口令
 默认装到 `/opt/bee-admin`，对外 `8081`。
 
 - **建库是可选的**：给 `--db-admin-user U --db-admin-pass P` 它才自动建库建号；
-  不给就只打印 SQL 让你手工执行（它不猜 root 口令、不 `DROP`、不装 MySQL）
+  不给就只打印 SQL 让你手工执行（它不猜 root 口令、不 `DROP`、不装 MySQL）。
+  **升级（`--keep-conf`）时不建库建号**：连库凭据以已有 `app.conf` 里的 dsn 为准，`--db-*` 不参与；
+  连不上会退出并让你自己修 dsn（它绝不 ALTER 库里已有的账号）
 - 表结构与超管账号由服务**首次启动时自动创建**，不需要手工导 SQL
 
 常用变体（参数名照 `install.sh --help`）：
@@ -131,7 +133,7 @@ bash install.sh --service-name bee-admin-2 --prefix /opt/bee-admin-2 \
 # 先看会做什么（不落盘、不下载、不连库）
 bash install.sh --dry-run --yes
 
-# 升级：只换二进制与服务文件，配置一个字节都不动（... = 照旧带上你原来的参数）
+# 升级：只换二进制与服务文件，配置一个字节都不动（--db-* 不参与，DSN 以已有 conf 为准）
 bash install.sh --keep-conf ...
 ```
 

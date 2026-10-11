@@ -10,7 +10,7 @@ mod common;
 use reqwest::Method;
 use serde_json::{Value, json};
 
-/// 所有测试账号共用的密码（≥6 位）。
+/// 所有测试账号共用的密码（≥8 位、字母+数字，满足复杂度下限）。
 const PASS: &str = "t2pass123";
 
 /// 统一请求：返回 (状态码, JSON body)；断言消息带上 body，失败好定位。
