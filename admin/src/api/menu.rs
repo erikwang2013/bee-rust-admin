@@ -109,6 +109,22 @@ fn build(all: &[Menu], parent: i64) -> Vec<Value> {
 #[apidoc::tag("菜单")]
 #[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
 #[apidoc::response_status("200")]
+#[apidoc::returned(name = "data", ty = "array", desc = "菜单树（顶层节点数组；含按钮节点）", children = [
+            {name = "id", ty = "string", required, desc = "对外 id（hashids 短串）"},
+            {name = "parent_id", ty = "string", required, desc = "父节点短串（0 = 顶层）"},
+            {name = "name", ty = "string", required, desc = "菜单名"},
+            {name = "type", ty = "string", required, desc = "类型：M 目录 / C 菜单 / F 按钮"},
+            {name = "perm", ty = "string", desc = "权限码（M 目录为空串）"},
+            {name = "path", ty = "string", desc = "前端路由路径（F 按钮为空串）"},
+            {name = "component", ty = "string", desc = "前端组件路径（F 按钮为空串）"},
+            {name = "icon", ty = "string", desc = "图标名（F 按钮为空串）"},
+            {name = "sort", ty = "int", desc = "排序（升序）"},
+            {name = "visible", ty = "int", desc = "是否显示：1 显示 / 0 隐藏"},
+            {name = "status", ty = "int", desc = "状态：1 启用 / 0 禁用"},
+            {name = "created_at", ty = "string", desc = "创建时间"},
+            {name = "updated_at", ty = "string", desc = "更新时间"},
+            {name = "children", ty = "array", desc = "子节点（同结构，递归；叶子为空数组 []）"},
+        ])]
 pub async fn tree(State(state): State<AppState>, auth: Auth) -> Result<Json<Value>, ApiError> {
     auth.require("system:menu:list")?;
     let all = Menu::query()
@@ -125,8 +141,21 @@ pub async fn tree(State(state): State<AppState>, auth: Auth) -> Result<Json<Valu
 #[apidoc::method("POST")]
 #[apidoc::tag("菜单")]
 #[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::param(name = "parent_id", ty = "string", desc = "上级菜单短串（也认裸数字）；空串 / null / 缺省 = 顶层（0）")]
+#[apidoc::param(name = "name", ty = "string", required, desc = "菜单名，最长 64 字符（落库前 trim）")]
+#[apidoc::param(name = "type", ty = "string", required, desc = "类型：M 目录 / C 菜单 / F 按钮（其它值回 400）")]
+#[apidoc::param(name = "perm", ty = "string", desc = "权限码，最长 128 字符（M 目录留空）")]
+#[apidoc::param(name = "path", ty = "string", desc = "前端路由路径，最长 128 字符（M / C 用）")]
+#[apidoc::param(name = "component", ty = "string", desc = "前端组件路径，最长 128 字符（C 用）")]
+#[apidoc::param(name = "icon", ty = "string", desc = "图标名，最长 64 字符（M / C 用）")]
+#[apidoc::param(name = "sort", ty = "int", desc = "排序（升序），默认 0")]
+#[apidoc::param(name = "visible", ty = "int", desc = "是否显示：1 显示 / 0 隐藏，默认 1")]
+#[apidoc::param(name = "status", ty = "int", desc = "状态：1 启用 / 0 禁用，默认 1")]
 #[apidoc::response_status("200")]
 #[apidoc::response_status("400")]
+#[apidoc::returned(name = "data", ty = "object", desc = "新建结果", children = [
+            {name = "id", ty = "string", required, desc = "新菜单对外 id（hashids 短串）"},
+        ])]
 pub async fn create(
     State(state): State<AppState>,
     auth: Auth,
@@ -165,8 +194,19 @@ pub async fn create(
 #[apidoc::tag("菜单")]
 #[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
 #[apidoc::route_param(name = "id", ty = "string", required, desc = "菜单对外 id（hashids 短串）")]
+#[apidoc::param(name = "parent_id", ty = "string", desc = "上级菜单短串（也认裸数字）；空串 / null / 缺省 = 顶层（0）")]
+#[apidoc::param(name = "name", ty = "string", required, desc = "菜单名，最长 64 字符（落库前 trim）")]
+#[apidoc::param(name = "type", ty = "string", required, desc = "类型：M 目录 / C 菜单 / F 按钮（其它值回 400）")]
+#[apidoc::param(name = "perm", ty = "string", desc = "权限码，最长 128 字符（M 目录留空）")]
+#[apidoc::param(name = "path", ty = "string", desc = "前端路由路径，最长 128 字符（M / C 用）")]
+#[apidoc::param(name = "component", ty = "string", desc = "前端组件路径，最长 128 字符（C 用）")]
+#[apidoc::param(name = "icon", ty = "string", desc = "图标名，最长 64 字符（M / C 用）")]
+#[apidoc::param(name = "sort", ty = "int", desc = "排序（升序），默认 0")]
+#[apidoc::param(name = "visible", ty = "int", desc = "是否显示：1 显示 / 0 隐藏，默认 1")]
+#[apidoc::param(name = "status", ty = "int", desc = "状态：1 启用 / 0 禁用，默认 1")]
 #[apidoc::response_status("200")]
 #[apidoc::response_status("400")]
+#[apidoc::returned(name = "data", ty = "null", desc = "无数据（成功时固定为 null）")]
 pub async fn update(
     State(state): State<AppState>,
     auth: Auth,
@@ -217,6 +257,7 @@ pub async fn update(
 // 400 是真实会返回的那两个（有子菜单 / 被角色引用）；**没有 404** ——
 // 删一个不存在的 id 也回 200（delete 影响 0 行不报错）。这里原本写的是 404。
 #[apidoc::response_status("400")]
+#[apidoc::returned(name = "data", ty = "null", desc = "无数据（成功时固定为 null）")]
 pub async fn remove(
     State(state): State<AppState>,
     auth: Auth,

@@ -89,6 +89,18 @@ fn build(all: &[Dept], parent: i64) -> Vec<Value> {
 #[apidoc::tag("部门")]
 #[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
 #[apidoc::response_status("200")]
+#[apidoc::returned(name = "data", ty = "array", desc = "部门树（顶层节点数组）", children = [
+            {name = "id", ty = "string", required, desc = "对外 id（hashids 短串）"},
+            {name = "parent_id", ty = "string", required, desc = "父节点短串（0 = 根）"},
+            {name = "name", ty = "string", required, desc = "部门名"},
+            {name = "sort", ty = "int", desc = "排序（升序）"},
+            {name = "leader", ty = "string", desc = "负责人（可为空串）"},
+            {name = "phone", ty = "string", desc = "联系电话（可为空串）"},
+            {name = "status", ty = "int", desc = "状态：1 启用 / 0 禁用"},
+            {name = "created_at", ty = "string", desc = "创建时间"},
+            {name = "updated_at", ty = "string", desc = "更新时间"},
+            {name = "children", ty = "array", desc = "子部门（同结构，递归；叶子为空数组 []）"},
+        ])]
 pub async fn tree(State(state): State<AppState>, auth: Auth) -> Result<Json<Value>, ApiError> {
     auth.require("system:dept:list")?;
     let all = Dept::query()
@@ -105,8 +117,17 @@ pub async fn tree(State(state): State<AppState>, auth: Auth) -> Result<Json<Valu
 #[apidoc::method("POST")]
 #[apidoc::tag("部门")]
 #[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::param(name = "parent_id", ty = "string", desc = "上级部门短串（也认裸数字）；空串 / null / 缺省 = 根（0）")]
+#[apidoc::param(name = "name", ty = "string", required, desc = "部门名，最长 64 字符（落库前 trim）")]
+#[apidoc::param(name = "sort", ty = "int", desc = "排序（升序），默认 0")]
+#[apidoc::param(name = "leader", ty = "string", desc = "负责人，最长 64 字符")]
+#[apidoc::param(name = "phone", ty = "string", desc = "联系电话，最长 20 字符")]
+#[apidoc::param(name = "status", ty = "int", desc = "状态：1 启用 / 0 禁用，默认 1")]
 #[apidoc::response_status("200")]
 #[apidoc::response_status("400")]
+#[apidoc::returned(name = "data", ty = "object", desc = "新建结果", children = [
+            {name = "id", ty = "string", required, desc = "新部门对外 id（hashids 短串）"},
+        ])]
 pub async fn create(
     State(state): State<AppState>,
     auth: Auth,
@@ -141,8 +162,15 @@ pub async fn create(
 #[apidoc::tag("部门")]
 #[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
 #[apidoc::route_param(name = "id", ty = "string", required, desc = "部门对外 id（hashids 短串）")]
+#[apidoc::param(name = "parent_id", ty = "string", desc = "上级部门短串（也认裸数字）；空串 / null / 缺省 = 根（0）")]
+#[apidoc::param(name = "name", ty = "string", required, desc = "部门名，最长 64 字符（落库前 trim）")]
+#[apidoc::param(name = "sort", ty = "int", desc = "排序（升序），默认 0")]
+#[apidoc::param(name = "leader", ty = "string", desc = "负责人，最长 64 字符")]
+#[apidoc::param(name = "phone", ty = "string", desc = "联系电话，最长 20 字符")]
+#[apidoc::param(name = "status", ty = "int", desc = "状态：1 启用 / 0 禁用，默认 1")]
 #[apidoc::response_status("200")]
 #[apidoc::response_status("400")]
+#[apidoc::returned(name = "data", ty = "null", desc = "无数据（成功时固定为 null）")]
 pub async fn update(
     State(state): State<AppState>,
     auth: Auth,
@@ -187,6 +215,7 @@ pub async fn update(
 #[apidoc::route_param(name = "id", ty = "string", required, desc = "部门对外 id（hashids 短串）")]
 #[apidoc::response_status("200")]
 #[apidoc::response_status("400")]
+#[apidoc::returned(name = "data", ty = "null", desc = "无数据（成功时固定为 null）")]
 pub async fn remove(
     State(state): State<AppState>,
     auth: Auth,
