@@ -99,9 +99,28 @@ fn validate_username(u: &str) -> Result<(), ApiError> {
     Ok(())
 }
 
-fn validate_password(p: &str) -> Result<(), ApiError> {
-    if p.chars().count() < 6 {
-        return Err(ApiError::BadRequest("密码至少 6 位".into()));
+/// 密码复杂度（P6 最小加固）：**字符数** ≥ 8，且四类里至少两类。
+///
+/// 类别按 **ASCII** 划：小写 / 大写 / 数字，其余一律算「其它」（符号、汉字、emoji）。
+/// 前端 `admin/web/src/password.ts` 必须同口径（`/[a-z]/`、`/[A-Z]/`、`/[0-9]/`、`/[^a-zA-Z0-9]/`）。
+/// 只作用于**新设 / 新改**密码，登录路径不校验（存量密码照常能登）。
+///
+/// `label` 是消息里对密码的称呼（`"密码"` / `"新密码"`）。拼出来的 msg 必须与
+/// `error.rs` 的 `ERR_TABLE` 逐字对上，否则 `err` 静默消失、前端译不了。
+pub(crate) fn validate_password(p: &str, label: &str) -> Result<(), ApiError> {
+    let classes = [
+        p.chars().any(|c| c.is_ascii_lowercase()),
+        p.chars().any(|c| c.is_ascii_uppercase()),
+        p.chars().any(|c| c.is_ascii_digit()),
+        p.chars().any(|c| !c.is_ascii_alphanumeric()),
+    ]
+    .into_iter()
+    .filter(|hit| *hit)
+    .count();
+    if p.chars().count() < 8 || classes < 2 {
+        return Err(ApiError::BadRequest(format!(
+            "{label}至少 8 位，且需包含字母、数字、符号中的至少两类"
+        )));
     }
     Ok(())
 }
@@ -397,7 +416,7 @@ fn username_taken(e: OrmError) -> ApiError {
 #[apidoc::tag("管理员")]
 #[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
 #[apidoc::param(name = "username", ty = "string", required, desc = "用户名，3-64 个字符（字母 / 数字 / 下划线，唯一）")]
-#[apidoc::param(name = "password", ty = "string", required, desc = "登录密码，至少 6 位")]
+#[apidoc::param(name = "password", ty = "string", required, desc = "登录密码，至少 8 位且含字母/数字/符号中至少两类")]
 #[apidoc::param(name = "nickname", ty = "string", desc = "昵称，最长 64 字符")]
 #[apidoc::param(name = "email", ty = "string", desc = "邮箱（落库加密），最长 128 字符")]
 #[apidoc::param(name = "phone", ty = "string", desc = "手机号（落库加密），最长 20 字符")]
@@ -418,7 +437,7 @@ pub async fn create(
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:admin:add")?;
     validate_username(&body.username)?;
-    validate_password(&body.password)?;
+    validate_password(&body.password, "密码")?;
     validate_profile(&body.nickname, &body.email, &body.phone, &body.remark)?;
     // 建人也要在范围内：部门与角色都不能超出操作者自己（B5）
     datascope::ensure_dept_in_scope(&auth, &state.db, body.dept_id).await?;
@@ -611,13 +630,13 @@ pub async fn set_status(
 }
 
 #[apidoc::title("重置管理员密码")]
-#[apidoc::desc("新密码至少 6 位；旧 token 立即失效（token_version 自增）。不能重置其他超管的密码")]
+#[apidoc::desc("新密码至少 8 位且含字母/数字/符号中至少两类；旧 token 立即失效（token_version 自增）。不能重置其他超管的密码")]
 #[apidoc::url("/api/v1/admins/{id}/password")]
 #[apidoc::method("PUT")]
 #[apidoc::tag("管理员")]
 #[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
 #[apidoc::route_param(name = "id", ty = "string", required, desc = "管理员对外 id（hashids 短串）")]
-#[apidoc::param(name = "password", ty = "string", required, desc = "新密码，至少 6 位")]
+#[apidoc::param(name = "password", ty = "string", required, desc = "新密码，至少 8 位且含字母/数字/符号中至少两类")]
 #[apidoc::response_status("200")]
 #[apidoc::response_status("400")]
 #[apidoc::returned(name = "data", ty = "null", desc = "无数据（成功时固定为 null）")]
@@ -629,7 +648,7 @@ pub async fn reset_password(
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:admin:resetPwd")?;
     let id = hid::dec(&id)?;
-    validate_password(&body.password)?;
+    validate_password(&body.password, "密码")?;
     let mut a = Admin::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?

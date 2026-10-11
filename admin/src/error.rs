@@ -90,12 +90,12 @@ const ERR_TABLE: &[(&str, &str)] = &[
     ("用户名或密码错误", "auth.bad_credentials"),
     ("账号已被禁用", "auth.disabled"),
     ("原密码错误", "auth.bad_old_password"),
-    ("新密码至少 6 位", "auth.weak_new_password"),
+    ("新密码至少 8 位，且需包含字母、数字、符号中的至少两类", "auth.weak_new_password"),
     (CAPTCHA_FAILED, "auth.captcha_failed"),
     // avatar
     ("头像不能超过 512 KB", "avatar.too_large"),
     // admin
-    ("密码至少 6 位", "admin.weak_password"),
+    ("密码至少 8 位，且需包含字母、数字、符号中的至少两类", "admin.weak_password"),
     ("用户名长度需 3-64 个字符", "admin.username_length"),
     ("用户名只能包含字母、数字、下划线", "admin.username_charset"),
     ("用户名已存在", "admin.username_taken"),

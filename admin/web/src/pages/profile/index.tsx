@@ -6,6 +6,7 @@ import { AvatarUploadError, uploadAvatar } from '../../api/avatarUpload';
 import { TOKEN_KEY } from '../../api/client';
 import { avatarUrl, useAuth } from '../../auth/AuthContext';
 import { useI18n } from '../../i18n';
+import { isStrongPassword } from '../../password';
 
 const MAX_AVATAR = 512 * 1024; // 服务端对头像体积的硬闸
 
@@ -205,7 +206,17 @@ export default function ProfilePage() {
         <Form.Item
           name="new_password"
           label={t('field.new_password')}
-          rules={[{ required: true, min: 6, message: t('validate.min_len', { field: t('field.new_password'), n: 6 }) }]}
+          rules={[
+            { required: true, message: t('validate.required', { field: t('field.new_password') }) },
+            {
+              // 空值交给上面的 required 报，别叠两条错
+              validator: (_, v) => (
+                !v || isStrongPassword(v)
+                  ? Promise.resolve()
+                  : Promise.reject(new Error(t('validate.weak_password')))
+              ),
+            },
+          ]}
         >
           <Input.Password autoComplete="new-password" />
         </Form.Item>

@@ -13,6 +13,7 @@ import type { Dept } from '../../../api/types';
 import Auth from '../../../auth/Auth';
 import { useAuth } from '../../../auth/AuthContext';
 import { useI18n } from '../../../i18n';
+import { isStrongPassword } from '../../../password';
 
 /** 部门树 → 扁平选项（带父级路径，子部门也能选到）。 */
 function toDeptOptions(nodes: Dept[], prefix = ''): { value: string; label: string }[] {
@@ -138,9 +139,9 @@ export default function AdminPage() {
                     <Input.Password placeholder={t('admin.reset_pwd_placeholder')} onChange={(e) => { pwd = e.target.value; }} />
                   ),
                   onOk: async () => {
-                    if (pwd.length < 6) {
-                      message.error(t('validate.min_len', { field: t('field.password'), n: 6 }));
-                      return Promise.reject(new Error('too short'));
+                    if (!isStrongPassword(pwd)) {
+                      message.error(t('validate.weak_password'));
+                      return Promise.reject(new Error('weak password'));
                     }
                     await adminApi.resetPassword(row.id, pwd);
                     message.success(t('admin.reset_done'));
@@ -225,7 +226,17 @@ export default function AdminPage() {
               </Form.Item>
               <Form.Item
                 name="password" label={t('field.initial_password')}
-                rules={[{ required: true, min: 6, message: t('validate.min_len', { field: t('field.password'), n: 6 }) }]}
+                rules={[
+                  { required: true, message: t('validate.required', { field: t('field.password') }) },
+                  {
+                    // 空值交给上面的 required 报，别叠两条错
+                    validator: (_, v) => (
+                      !v || isStrongPassword(v)
+                        ? Promise.resolve()
+                        : Promise.reject(new Error(t('validate.weak_password')))
+                    ),
+                  },
+                ]}
               >
                 <Input.Password autoComplete="new-password" />
               </Form.Item>

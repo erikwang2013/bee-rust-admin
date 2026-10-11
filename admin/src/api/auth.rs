@@ -637,7 +637,7 @@ pub async fn update_profile(
 #[apidoc::tag("认证")]
 #[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
 #[apidoc::param(name = "old_password", ty = "string", required, desc = "原密码")]
-#[apidoc::param(name = "new_password", ty = "string", required, desc = "新密码，至少 6 位")]
+#[apidoc::param(name = "new_password", ty = "string", required, desc = "新密码，至少 8 位且含字母/数字/符号中至少两类")]
 #[apidoc::response_status("200")]
 #[apidoc::response_status("400")]
 #[apidoc::returned(name = "data", ty = "null", desc = "无数据（成功时固定为 null）")]
@@ -646,9 +646,7 @@ pub async fn change_password(
     auth: Auth,
     AppJson(body): AppJson<ChangePasswordBody>,
 ) -> Result<Json<Value>, ApiError> {
-    if body.new_password.len() < 6 {
-        return Err(ApiError::BadRequest("新密码至少 6 位".into()));
-    }
+    crate::api::admin::validate_password(&body.new_password, "新密码")?;
     if !verify_password(&body.old_password, &auth.admin.password) {
         return Err(ApiError::BadRequest("原密码错误".into()));
     }
