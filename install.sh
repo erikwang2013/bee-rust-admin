@@ -217,6 +217,12 @@ urlenc() {
   printf '%s' "$1" | sed -e 's/%/%25/g' -e 's/@/%40/g' -e 's/:/%3A/g' \
     -e 's|/|%2F|g' -e 's/#/%23/g' -e 's/?/%3F/g'
 }
+# urlenc 的逆（--keep-conf 时把已有 conf 里的 DSN 读回来）。%25 必须**最后**换：
+# 换早了，字面量 "%3A"（编码后是 %253A）会被误解成冒号。
+urldec() {
+  printf '%s' "$1" | sed -e 's/%3A/:/g' -e 's|%2F|/|g' -e 's/%23/#/g' \
+    -e 's/%3F/?/g' -e 's/%40/@/g' -e 's/%25/%/g'
+}
 
 # 随机口令。**不要写成 `tr < /dev/urandom | head -c N`**：head 提前退出会让 tr 吃
 # SIGPIPE，配合 `set -o pipefail` 就是随机中止整个脚本。这里让 tr 读**有限**输入
@@ -437,6 +443,11 @@ if [ "$MODE" = build ]; then
     "--repo 指的目录里没有 Cargo.toml：$REPO_DIR"
 fi
 
+# --keep-conf 是升级路径：下面第 2 步要靠已有 conf 里的 dsn 决定连哪个库，
+# 没有 conf 就没得「保留」——在写盘之前拦住。
+[ "$KEEP_CONF" = 0 ] || [ -f "$CONF" ] || step_fail "$EXIT_PREFLIGHT" \
+  "--keep-conf 但 $CONF 不存在。它是升级用的（先正常装一次，再用它换二进制）；全新安装去掉这个参数"
+
 if [ -e "$PREFIX" ] && [ ! -w "$PREFIX" ] && ! can_root; then
   step_fail "$EXIT_PREFLIGHT" "$PREFIX 不可写，且没有免密 sudo。
   换个地方：--prefix ~/bee-admin    或用 root 跑：sudo bash $PROG"
@@ -484,6 +495,26 @@ if [ -f "$CONF" ]; then
     esac
     conf_jwt=$(ini_get "$CONF" jwt secret)
     [ ${#conf_jwt} -ge 32 ] || warn "已有配置的 [jwt] secret 不足 32 字符 —— 服务起不来"
+    # 库/账号也得按已有 DSN 走：保留的 conf 就是这个服务的连接参数，命令行上现生成的
+    # 随机口令在这里毫无意义。**曾经没这么干**：拿新随机 DB_PASS 去连 → 连不上 →
+    # 走建库建号 → ALTER USER 把库里的账号口令改掉，而 conf 里还是旧口令 ——
+    # 所谓「升级」一次就把自己装坏，自检必然 Access denied。
+    conf_dsn=$(ini_get "$CONF" db dsn)
+    if [ -z "$conf_dsn" ]; then
+      warn "已有配置里没有 [db] dsn —— 数据库检查退回命令行参数"
+    elif [ "${conf_dsn#mysql://}" = "$conf_dsn" ]; then
+      warn "已有配置里的 [db] dsn 不是 mysql:// 形式 —— 数据库检查退回命令行参数"
+    else
+      rest=${conf_dsn#mysql://}; userpass=${rest%@*}; hostpart=${rest#*@}
+      DB_USER=$(urldec "${userpass%%:*}"); DB_PASS=$(urldec "${userpass#*:}")
+      # 先切掉 /db 再切 host:port：`${hostpart##*:}` 会一路吃到路径里的冒号位置，
+      # 把端口读成 "3306/bee_admin_install_test"（自检时逮到的）
+      DB_NAME=${hostpart#*/}; DB_NAME=${DB_NAME%%\?*}
+      hostport=${hostpart%%/*}
+      DB_HOST=${hostport%%:*}; DB_PORT=${hostport##*:}
+      case $hostport in *:*) ;; *) DB_PORT=3306 ;; esac
+      info "数据库按已有配置：$DB_USER@$DB_HOST:$DB_PORT/$DB_NAME（--keep-conf 下 --db-* 不参与）"
+    fi
   elif [ "$FORCE" = 1 ]; then
     backup="$CONF.bak.$(date -u '+%Y%m%d%H%M%S')"
     say "覆盖已有配置（--force）"
@@ -688,6 +719,9 @@ if have mysql; then
        -e 'SELECT 1' >/dev/null 2>&1; then
     info "应用账号可连（$DB_USER@$DB_HOST:$DB_PORT/$DB_NAME）"
     db_ready=1
+  elif [ -n "$DB_ADMIN_USER" ] && [ "$KEEP_CONF" = 1 ]; then
+    # 保留的配置里是旧口令，ALTER USER 只会把库和配置改成对不上
+    warn "--keep-conf：不建库建号（配置里的 DSN 是事实来源）。先按上面的提示修好 dsn 再重跑"
   elif [ -n "$DB_ADMIN_USER" ]; then
     say "用管理账号建库建号"
     grant_host=$DB_HOST
