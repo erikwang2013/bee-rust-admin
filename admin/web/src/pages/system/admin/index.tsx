@@ -32,6 +32,7 @@ export default function AdminPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [roles, setRoles] = useState<Role[]>([]);
+  const [roleTotal, setRoleTotal] = useState(0);
   const [depts, setDepts] = useState<Dept[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Admin | null>(null);
@@ -49,7 +50,8 @@ export default function AdminPage() {
 
   useEffect(() => { void load(query); }, [query, load]);
   useEffect(() => {
-    void roleApi.list({ page: 1, size: 200 }).then((r) => setRoles(r.list));
+    // size 与后端单页上限一致（`page_size` clamp 到 1..=100）；total 记下来判断是否被截断
+    void roleApi.list({ page: 1, size: 100 }).then((r) => { setRoles(r.list); setRoleTotal(r.total); });
     void deptApi.tree().then(setDepts);
   }, []);
 
@@ -247,10 +249,18 @@ export default function AdminPage() {
           >
             <Select
               mode="multiple" allowClear placeholder={t('admin.pick_roles')}
+              // mode="multiple" 自带搜索框，但默认按 value（hashid 短串）过滤 → 搜角色名搜不到，改成按 label。
+              optionFilterProp="label"
               // 授不出去的角色不隐藏、只禁用：让人看见它存在，也知道为什么点不动。
               // 实测：已选中的禁用项仍显示为已选（编辑别人授过宽角色的人不会丢），
               // 但标签上没有 ×，要清掉只能走选择框的 allowClear。
-              options={roles.map((r) => ({ value: r.id, label: r.name, disabled: r.grantable === false }))}
+              options={[
+                ...roles.map((r) => ({ value: r.id, label: r.name, disabled: r.grantable === false })),
+                // 后端单页上限 100：截断时不静默，提示用搜索（禁用项不可选，不会进表单值）
+                ...(roleTotal > roles.length
+                  ? [{ value: '__roles_truncated__', label: t('admin.roles_truncated_hint'), disabled: true }]
+                  : []),
+              ]}
             />
           </Form.Item>
           <Form.Item name="email" label={t('field.email')}><Input /></Form.Item>

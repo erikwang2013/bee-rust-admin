@@ -188,6 +188,7 @@ export const zhCN = {
   'admin.grant_hint': '灰掉的角色超出你的数据权限，无法授予',
   'admin.pick_dept': '选择部门',
   'admin.pick_roles': '选择角色',
+  'admin.roles_truncated_hint': '仅显示前 100 条，请在上方输入搜索',
 
   // ---- 角色 ----
   'role.create_title': '新增角色',

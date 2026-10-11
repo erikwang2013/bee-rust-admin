@@ -181,6 +181,7 @@ export const enUS: Record<I18nKey, string> = {
   'admin.grant_hint': 'Greyed-out roles exceed your data scope and cannot be granted',
   'admin.pick_dept': 'Select department',
   'admin.pick_roles': 'Select roles',
+  'admin.roles_truncated_hint': 'Only the first 100 roles are shown — type above to search',
 
   // ---- Roles ----
   'role.create_title': 'New role',
