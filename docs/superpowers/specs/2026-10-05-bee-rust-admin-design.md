@@ -169,7 +169,7 @@ db.exec_sql("SET NAMES utf8mb4").await?;
 
 ## 5. 子项目 B：管理后台
 
-### 5.1 表结构（8 张，utf8mb4）
+### 5.1 表结构（16 张，utf8mb4）
 
 ```sql
 -- 管理员
@@ -222,6 +222,14 @@ login_log(id, admin_id BIGINT DEFAULT 0, username VARCHAR(64), ip VARCHAR(45),
           KEY idx_username_time(username, created_at))
 ```
 
+> 以上是 v1.0 首发的 8 张。此后又加了 8 张，共 16 张：`audit_log`（v1.2 审计）、
+> `dict_type` / `dict_item`（v1.5 字典）、`job` / `job_log`（v1.6 定时任务）、
+> `notice` / `notice_read`（v1.6 通知公告）、`admin_email_phone_backup`（存量 email/phone
+> 加密前的明文备份）。列的全貌**以代码为准**：模型表由 `admin/src/models/*.rs` 经
+> `migrate::sync` 建（`admin/src/seed.rs::migrate` 里逐个调用），复合主键/复合唯一键/手写索引的表
+> （`admin_role` / `role_menu` / `role_dept` / `notice_read` / `dict_item` / `job_log`）
+> 与备份表在 `admin/src/seed.rs` 里走裸 DDL。
+
 ### 5.2 鉴权与权限
 
 - 登录：`username` 查 `admin` → 状态检查 → `argon2` 校验 → 签发 HS256 JWT
@@ -246,28 +254,27 @@ system                   目录
 
 ### 5.3 API（/api/v1，统一信封 `{code, msg, data}`，code 0=成功，非 0 同 HTTP 状态码）
 
-> v1.2 起新增的接口（操作日志与审计、CSV 导出、个人资料、头像）见
-> [`plans/2026-10-06-bra-v1.2-improvements.md`](../plans/2026-10-06-bra-v1.2-improvements.md) 的「新接口契约」。
+路由在 `admin/src/main.rs` 里以 `.ns()` 命名空间注册，共 **64 条**；**不在这里逐条抄录** ——
+完整契约（路径、请求体、响应字段、示例）**以 `/apidoc/api.json` 为准**：该文件由 apidoc 在
+启动时物化，开启方式见 README「接口文档站（apidoc-rust）」（`[apidoc] enabled = true` +
+`password`）。本节只给模块清单与权限码前缀，历史各版新增接口的契约同样以 api.json 为准。
 
-| 模块 | 接口 | 权限码 |
+| 模块 | 文件 | 权限码前缀 |
 |---|---|---|
-| auth | `POST /auth/login` `{username,password}` → `{token, expires_in, user}` | 公开 |
-| | `POST /auth/logout`（ver+1，写日志） | 登录即可 |
-| | `GET /auth/profile` → 用户+角色+权限码[] | 登录即可 |
-| | `GET /auth/menus` → 按权限过滤的菜单树（M/C 两级，按钮不返） | 登录即可 |
-| admins | `GET /admins?page&size&username&status&dept_id`（数据权限过滤） | system:admin:list |
-| | `GET /admins/{id}` / `POST /admins` / `PUT /admins/{id}` / `DELETE /admins/{id}` | :list/:add/:edit/:remove |
-| | `PUT /admins/{id}/status` `{status}` | :edit |
-| | `PUT /admins/{id}/password` `{password}`（重置他人，ver+1） | :resetPwd |
-| | `PUT /admins/{id}/roles` `{role_ids}` | :edit |
-| | `PUT /auth/password` `{old,new}`（个人改密，ver+1） | 登录即可 |
-| roles | `GET /roles?page&size&name&status` / `GET /roles/{id}` / `POST` / `PUT /roles/{id}` / `DELETE /roles/{id}` | system:role:list/add/edit/remove |
-| | `GET /roles/{id}/menus` → menu_id[] ；`PUT /roles/{id}/menus` `{menu_ids}` | :list / :edit |
-| | `PUT /roles/{id}/depts` `{dept_ids}`（data_scope=5 时） | :edit |
-| menus | `GET /menus/tree` / `POST /menus` / `PUT /menus/{id}` / `DELETE /menus/{id}` | system:menu:list/add/edit/remove |
-| depts | `GET /depts/tree` / `POST /depts` / `PUT /depts/{id}` / `DELETE /depts/{id}` | system:dept:list/add/edit/remove |
-| login-logs | `GET /login-logs?page&size&username&status&start&end`（数据权限过滤） | system:loginlog:list |
-| | `DELETE /login-logs`（清空，可带筛选） | system:loginlog:remove |
+| 登录/登出/资料/菜单/改密、验证码 | `admin/src/api/auth.rs` | 公开或登录即可（无权限码） |
+| 头像读取（公开）与分片上传（登录即可） | `admin/src/api/avatar.rs` | 同上 |
+| 管理员（含导出） | `admin/src/api/admin.rs` | `system:admin:` list/add/edit/remove/resetPwd |
+| 角色（含菜单/部门授权） | `admin/src/api/role.rs` | `system:role:` list/add/edit/remove |
+| 菜单 | `admin/src/api/menu.rs` | `system:menu:` list/add/edit/remove |
+| 部门 | `admin/src/api/dept.rs` | `system:dept:` list/add/edit/remove |
+| 字典类型/字典项（含导出；下拉数据源登录即可） | `admin/src/api/dict.rs` | `system:dict:` list/add/edit/remove |
+| 定时任务/任务日志 | `admin/src/api/job.rs` | `system:job:` list/edit |
+| 通知公告（未读/标记已读登录即可） | `admin/src/api/notice.rs` | `system:notice:` list/add/edit/remove |
+| 登录记录（含导出） | `admin/src/api/login_log.rs` | `system:loginlog:` list/remove |
+| 操作日志/审计（含导出） | `admin/src/api/audit_log.rs` | `system:auditlog:` list/remove |
+| CSV 导出工具（不注册路由） | `admin/src/api/csv.rs` | —（导出接口用各模块自己的 `:list` 码） |
+
+（另有一条 `GET /api/v1/health`，无鉴权，注册在 `main.rs` 自身。）
 
 **业务校验（400 友好提示）**：用户名唯一；不能删除/禁用自己；不能删除 `is_super`；
 角色被管理员引用时禁止删除；菜单有子节点或被角色引用时禁止删除；部门有子部门或管理员时禁止删除。
@@ -330,6 +337,12 @@ admin/
 admin/web/                  # 前端（见 §6）
 ```
 
+> 该树是 v1.0 时的结构。此后 `src/` 下加了 `audit`（审计中间件）、`crypto` / `hid`（密文列、
+> 隐藏 id）、`relations`、`retention` / `jobs`（日志保留、定时任务）、`security_scan`、`util` 等；
+> `models` 加了 `audit_log` / `dict` / `job` / `notice`，`api` 加了 `audit_log` / `avatar` /
+> `csv` / `dict` / `job` / `notice`（见 §5.3 的模块表）。
+> 完整清单以 `admin/src/` 为准。
+
 包名 `bee_admin`（目录 `admin/`）；工作区 `Cargo.toml` 的 members 增加 `"admin"`。
 
 `conf/app.conf`（INI，bee_config 读取）：
@@ -371,10 +384,14 @@ src/
     profile/          个人中心（改密码）
 ```
 
+> 以上是 v1.0 的页面。此后加了 `system/dict`（字典）、`system/job`（定时任务 + 执行记录）、
+> `system/notice`（通知公告）、`system/auditlog`（操作日志）与 `error/`（403、404）；
+> 完整清单以 `admin/web/src/pages/` 为准。
+
 - 菜单树来自 `/auth/menus`，icon 字符串 → antd 图标映射表；路由懒加载。
 - 按钮权限：`<Auth code="...">` 隐藏无权限按钮（后端仍逐接口鉴权，前端只是体验）。
 - 路由 `meta.perm` 不符 → 403 页。
-- 前端不写自动化测试（手工点验，见里程碑）。
+- 前端测试只覆盖纯逻辑（vitest；组件渲染与端到端仍手工点验，见 §9 与里程碑）。
 
 ## 7. 部署
 
@@ -402,13 +419,13 @@ M1–M2 框架活，M3 起后台活。每个里程碑独立可验证，不留到
 
 > 本节在 v1.3 做过一次校准：**已完成**的条目已移除或改写（操作日志/审计、登录失败锁定、
 > `log_level` 生效、LIKE 转义、禁用菜单即收权、Query/Path 错误信封、暗色主题、图标按需引入）。
-> 下面只列**当前仍未做**的事。
+> v2.7 又校准一次：字典/定时任务/通知公告（v1.5/v1.6）与验证码（v2.4）已完成、移出本节，
+> 日志保留按任务化后的实现重写。下面只列**当前仍未做**的事。
 
-- 字典管理、定时任务、通知公告（若依的其余模块）
 - sea-orm 式关联查询 DSL（关联用 `set_relations/get_relations` 三方法覆盖）
-- 验证码、密码复杂度策略
+- 密码复杂度策略（现状：仅「至少 6 位」下限，无大小写/符号等复杂度校验；加固方案见路线图 P6）
 - 多租户、部门数据权限之外的自定义数据权限
-- **前端测试只覆盖纯逻辑**：已引入 vitest（13 个用例，含变异验证），但没有 jsdom/RTL，
+- **前端测试只覆盖纯逻辑**：已引入 vitest（11 个测试文件 / 67 个用例，含变异验证），但没有 jsdom/RTL，
   组件渲染与端到端仍靠手工；CI 里跑 `pnpm test` + `pnpm build`
 - **数据权限的写路径校验只覆盖已知用例**：v1.4 起 §5.4 的规则已对非列表接口生效（见下），
   但集成用例只覆盖了 `data_scope=3` 与超管两种操作者；`4 仅本人` / `2 本部门及以下` / `5 自定义`
@@ -420,6 +437,10 @@ M1–M2 框架活，M3 起后台活。每个里程碑独立可验证，不留到
 - **`GET /api/v1/avatar/{id}` 不鉴权**（v1.2 起）：`<img src>` 带不了 Authorization 头，所以头像接口是匿名可读的——猜到 admin id 就能取到对应头像（并区分 404 与 200，可用于枚举 id）。头像属低敏信息，接受；若要收紧，改为签名 URL 或前端取 blob
 - **登录锁定的实现与边界**（v1.3 起改用 `security-rust` 的 `throttle`）：账号与来源 IP **共用同一阈值**（`[auth] max_fail` / `lock_minutes`）——这是安全取舍：若 IP 桶更宽松，攻击者能在自己的 IP 额度内反复封受害者账号且不被拦。封禁时长严格等于 `lock_minutes`，到点自动解除（"持续猛敲延长封禁"这一性质已消除）。代价与边界：① 共享出口 IP（公司 NAT/VPN）下 5 次失败会连带封掉整段 IP；② throttle 状态在**内存**里，服务重启即清零（可接受：限流是纵深防御，不是认证闸门）；③ 存储不可用时有意 fail-open（库的设计，非认证主闸门）
 - **审计中间件的一处静默**：失败响应体读取异常时会回一个空 body（实际不可达；`SELECT username` 失败已在 v1.2 补上 `tracing::error!`）
-- **日志保留只验了启动那一次**：`[log] retain_days`（默认 90，0=永久）在启动时清一遍并每 24h 循环，
-  但 24h 循环本身没有测试覆盖（循环写法与限流 purge 任务同形）
+- **日志保留的覆盖边界**：`[log] retain_days`（默认 90，0=永久）清理 `login_log` / `audit_log` /
+  `job_log`（v1.6 起 `job_log` 并入）；启动时先清一遍（删除效果由 `admin/tests/api_v14_test.rs` 覆盖），
+  此后由内置任务 `log_retention`（`admin/src/jobs.rs`，默认间隔 86400 秒 = 每天）调用
+  `retention::purge_all`。任务路径：调度循环真跑起它、写 `job_log`、回写 `last_run_at` /
+  `last_status` 均有覆盖（`admin/tests/api_v16_test.rs` 把间隔改成 2 秒等它自己跑），
+  但「任务跑一次实际删掉多少行」没有直接断言
 - **集成测试共用 `bee_admin_test` 库**：单个 `cargo test` 内安全（cargo 串行跑各二进制），但并发跑两个 cargo 进程会互相删表——这是三个集成测试文件共有的既有性质
