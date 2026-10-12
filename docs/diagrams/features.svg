@@ -117,7 +117,7 @@
   <text class="t-sub"  x="842" y="659" text-anchor="middle">用户名 / 状态 / 时间段 · 受数据权限</text>
   <rect class="box-module" x="530" y="676" width="196" height="44" rx="6"/>
   <text class="t-name" x="628" y="695" text-anchor="middle">操作日志</text>
-  <text class="t-sub"  x="628" y="711" text-anchor="middle">模块+动作留痕 · 数据权限过滤 · 可清空</text>
+  <text class="t-sub"  x="628" y="711" text-anchor="middle">模块+动作留痕 · 数据权限过滤</text>
 
   <text class="t-foot" x="24" y="766">© 2026 erik · https://erik.xyz</text>
 </svg>

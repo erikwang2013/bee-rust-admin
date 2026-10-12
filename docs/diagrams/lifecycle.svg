@@ -47,7 +47,7 @@
   <!-- 否：跳过种子，绕回主路径 -->
   <path class="a-no" d="M540,319 L600,319 L600,466 L540,466" marker-end="url(#an)"/>
   <text class="t-edge" x="606" y="300">否</text>
-  <text class="t-sub"  x="606" y="316">后续启动：跳过（幂等）</text>
+  <text class="t-sub"  x="606" y="316">后续启动：跳过超管写入，菜单/任务仍补齐</text>
   <text class="t-edge" x="546" y="366">是</text>
 
   <!-- ① -->
@@ -68,11 +68,11 @@
   <!-- ④ 判断 -->
   <rect class="box-decision" x="120" y="294" width="420" height="50" rx="7"/>
   <text class="t-name" x="136" y="316">④ admin 表为空？（首次启动判定）</text>
-  <text class="t-sub"  x="136" y="333">仅首次为真，之后每次启动都会跳过种子</text>
+  <text class="t-sub"  x="136" y="333">仅首次为真——它只决定「是否写超管」；菜单/任务补齐与它无关</text>
 
   <!-- ⑤ 种子 -->
   <rect class="box-backend" x="120" y="362" width="420" height="50" rx="7"/>
-  <text class="t-name" x="136" y="384">⑤ 写入种子（幂等）</text>
+  <text class="t-name" x="136" y="384">⑤ 补齐种子（菜单/任务每次；超管仅首次）</text>
   <text class="t-sub"  x="136" y="401">超管 admin + 菜单权限树（1 目录 / 9 菜单 / 31 按钮）</text>
 
   <!-- ⑥ 监听 -->
