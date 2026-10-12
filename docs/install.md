@@ -136,6 +136,10 @@ bash install.sh --dry-run --yes
 
 # 升级：只换二进制与服务文件，配置一个字节都不动（--db-* 不参与，DSN 以已有 conf 为准）
 bash install.sh --keep-conf ...
+
+# 没有 root / 自己管进程：不装 systemd 单元（也不会去 restart 服务，装完打印手动启动命令），
+# 站点也不装就再加 --no-nginx
+bash install.sh --no-systemd --no-nginx
 ```
 
 > **已经有 `app.conf` 时，脚本默认拒绝覆盖**（退出码 `6`）—— 因为 `encrypt_key` 一换，
@@ -143,7 +147,7 @@ bash install.sh --keep-conf ...
 > `app.conf.bak.<时间戳>`，但换了密钥之后数据仍可能解不开 —— 只有明确知道后果才用它。
 > **正常升级走 `--keep-conf`。**
 
-**退出码**：`0` 成功 · `2` 预检失败（什么都没写）· `3` 已就绪、只差 root 执行打印的命令 ·
+**退出码**：`0` 成功 · `1` 参数错误 / 构建失败等其它失败 · `2` 预检失败（什么都没写）· `3` 已就绪、只差 root 执行打印的命令 ·
 `4` 需要人工建库 · `5` 自检失败 · `6` 检测到已有配置且未给 `--force`。
 
 ### (b) Docker compose

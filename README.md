@@ -2,7 +2,7 @@
 
 基于 bee-rust 框架的 RBAC 管理后台 —— Rust 服务端 + React 前端，建库即用。
 
-`JWT 登录` · `管理员 / 角色 / 菜单 / 部门 / 字典 / 定时任务 / 通知公告 / 登录记录` · `菜单 + 按钮级权限` · `部门数据权限` · `中英双语` · `Docker 一键部署`
+`JWT 登录` · `管理员 / 角色 / 菜单 / 部门 / 字典 / 定时任务 / 通知公告 / 登录记录 / 操作日志` · `菜单 + 按钮级权限` · `部门数据权限` · `中英双语` · `Docker 一键部署`
 
 ---
 
@@ -62,7 +62,7 @@ INI 配置），前端是 Vite + React 18 + Ant Design 5 单页应用，两者�
 | 接入层 | nginx :8081 | 提供前端静态资源，`/api/` 反向代理到后端并透传 `X-Real-IP` |
 | 应用层 | `bee_admin` | bee_router（axum）· Auth 提取器 · 64 个 API handler · datascope 数据权限 · 统一响应信封 |
 | 框架层 | bee_orm / bee_config / bee_logs | 多后端连接池、QuerySet、CRUD、M2M、migrate 迁移；INI 配置；tracing 日志 |
-| 数据层 | MySQL 8.4 | 15 张表（11 张业务表 + 4 张关系表） |
+| 数据层 | MySQL 8.4 | 16 张表（11 张业务表 + 4 张关系表 + 1 张明文备份表） |
 
 ## 功能设计
 
@@ -102,6 +102,7 @@ INI 配置），前端是 Vite + React 18 + Ant Design 5 单页应用，两者�
 | **菜单管理** | 树形目录 / 菜单 / 按钮三层、权限码、图标与排序、防环校验、删除前校验子节点与角色引用 |
 | **部门管理** | 树形部门、负责人与排序、删除前校验子部门与在编管理员 |
 | **登录记录** | 按用户名 / 状态 / 时间段分页查询、按条件清空，记录受数据权限约束 |
+| **操作日志** | 有副作用的操作（POST / PUT / DELETE）自动留痕（时间 / 操作人 / 模块 / 动作 / 请求 / IP）、按用户名 / 模块 / 时间段筛选、导出与按条件清空（清空本身也留痕），记录受数据权限约束 |
 | **字典管理** | 字典类型 + 字典项两级维护、同类型内 value 唯一、删除类型级联删项、CSV 导出；`GET /dicts/{code}/items` 是登录即可用的下拉数据源（只回启用项） |
 | **定时任务** | 内置任务由**代码注册**（code 是注册键，库里只放调度与执行记录，界面不能新增/改名）、固定间隔（秒）调度 + 启停、手动触发一次、执行记录分页；`[job] enabled` 总开关关掉后仍可手动补跑 |
 | **通知公告** | 草稿 / 已发布两态（发布写 `published_at`，回退草稿不清空——留痕）、增删改、删公告同事务级联删已读记录；顶栏铃铛显示未读数 |
@@ -127,7 +128,7 @@ admin/                  管理后台服务端（crate bee_admin）
   src/error.rs          ApiError + 统一信封（code/msg/err/args）+ 错误码表 + 请求体提取器
   src/auth.rs           JWT 签发校验 + Auth 提取器（权限码加载、token_version 校验）
   src/datascope.rs      数据权限解析与查询注入（部门子树 / 本人 / 自定义）
-  src/api/              auth · admin · role · menu · dept · dict · job · notice · login_log · audit_log 十个模块
+  src/api/              auth · admin · avatar · role · menu · dept · dict · job · notice · login_log · audit_log 十一个模块
   src/models/           11 个模型（migrate 建表）。列长度用 `sql_type = "VARCHAR(n)"` 声明；
                         **唯一键与索引不走模型**（上游属性没有这两个概念），集中在
                         `src/seed.rs` 的 CONSTRAINTS 里建。连接表（admin_role/role_menu/
@@ -143,18 +144,23 @@ admin/                  管理后台服务端（crate bee_admin）
     src/auth/           AuthContext + 按钮级权限组件
     src/layouts/        动态菜单布局
     src/pages/          登录 / 首页 / 管理员 / 角色 / 菜单 / 部门 / 字典 / 定时任务 / 通知公告 /
-                        登录记录 / 个人中心
+                        登录记录 / 操作日志 / 个人中心
 docs/
   install.md            ★ 安装说明（三种装法、配置生成步骤、常见坑）
   usage.md              ★ 使用手册（权限体系怎么落地、各模块怎么用）
   release-checklist.md  ★ 发布 / 升级检查清单（逐条打勾）
   release.md            发版怎么发（scripts/release.sh 用法、产物口径、发完怎么验）
+  ponytail-debt.md      有意搁置台账（源码里 ponytail: 注释的汇总视图）
   diagrams/             本 README 引用的 4 张 SVG 图
   pet/                  项目宠物「阿守」的五态 SVG + 渲染器（node render.mjs）
   social/               社交预览图 1280×640（仓库 Settings → Social preview 上传那份 PNG）
   superpowers/specs/    设计文档（数据模型、接口清单、数据权限规则）
   superpowers/plans/    实施计划（ORM 执行层、后端、前端）
 install.sh              ★ 一键安装脚本（拉发布产物 / 源码构建 → 生成配置 → 装 systemd + nginx → 自检）
+scripts/
+  release.sh            发版：构建 → strip → 打包 → 产物自检 → gh release create
+  publish.sh            逐个发布工作区内未上传到 crates.io 的 crate
+  smoke-install.sh      install.sh 冒烟验证（/tmp 里装一套 scratch 实例 + 升级一次 + 清理）
 Dockerfile              后端镜像（多阶段构建）
 docker-compose.yml      MySQL + 后端 + 前端一键起栈
 ```
