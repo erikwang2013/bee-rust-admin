@@ -236,6 +236,21 @@ pub async fn encrypt_legacy(db: &Pool, guard: &encryptable::guard::Guard) -> Res
     } else {
         tracing::debug!("存量加密迁移：无明文（扫描 {scanned} 行）");
     }
+
+    // 备份还在就提醒运维「可以清理了」：它是密钥丢失时的唯一退路，但也是明文 PII，
+    // 无限期留着本身就是风险。数行失败只记 debug —— 这条迁移是「尽力而为」，
+    // 不能因为一次查询把启动搞挂。
+    match db.query("SELECT COUNT(*) AS n FROM admin_email_phone_backup", &[]).await {
+        Ok(rows) => {
+            let n = rows.first().and_then(|r| r.get("n")).and_then(|v| v.as_i64()).unwrap_or(0);
+            if n > 0 {
+                tracing::warn!(
+                    "admin_email_phone_backup 仍有 {n} 行明文备份：确认新密钥下 email/phone 解密正常（登录后看个人资料的邮箱/手机号原文）后，可按 docs/usage.md 的「运维 · 清理明文备份」清理"
+                );
+            }
+        }
+        Err(e) => tracing::debug!("admin_email_phone_backup 行数统计失败（不影响启动）：{e}"),
+    }
     Ok(())
 }
 

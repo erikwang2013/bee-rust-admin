@@ -205,7 +205,14 @@ async fn datascope4_self_only_visibility() {
         menu_id(&menus["data"], "system:admin:list").expect("种子菜单含 system:admin:list");
     let log_menu =
         menu_id(&menus["data"], "system:loginlog:list").expect("种子菜单含 system:loginlog:list");
-    let role = make_role(&c, &base, &admin_token, "t4_self", 4, &[admin_menu, log_menu]).await;
+    // 写路径要过「权限闸」才有机会撞上「数据范围闸」：少了 edit/remove 的话，
+    // A7 的 403 会来自缺权限（msg「缺少权限：…」），钉不住数据范围本身。
+    let edit_menu =
+        menu_id(&menus["data"], "system:admin:edit").expect("种子菜单含 system:admin:edit");
+    let remove_menu =
+        menu_id(&menus["data"], "system:admin:remove").expect("种子菜单含 system:admin:remove");
+    let role = make_role(&c, &base, &admin_token, "t4_self", 4,
+        &[admin_menu, log_menu, edit_menu, remove_menu]).await;
 
     // ── 3 个管理员（admin 由 seed 建，dept=0，天然不可见）；t4_peer / t4_child 无角色，只当见证人
     let t4_op = make_admin(&c, &base, &admin_token, "t4_op", Some(&a), &[role.clone()]).await;
@@ -245,4 +252,40 @@ async fn datascope4_self_only_visibility() {
         list_names(&c, api(&format!("/admins?size=100&dept_id={a}")), &t4_op_token).await;
     assert_eq!(total, 1, "dept_id 筛选不能放宽数据权限: {names:?}");
     assert_eq!(names, vec!["t4_op"], "筛选后仍恰为自己: {names:?}");
+
+    // ── A7 写路径同口径：4 档改/删**超范围**的人必须被数据范围闸拦下。
+    //     角色已勾 edit/remove，403 只可能来自范围闸 —— 用 err 稳定码钉死这一点
+    //     （缺权限是 `auth.forbidden` + msg「缺少权限：…」，与范围文案不是一回事）。
+    //     编辑那条的 dept_id 故意填范围内的 A部：目标在不在范围内是唯一拦截理由。
+    for (m, path, body) in [
+        (Method::PUT, format!("/admins/{t4_peer}"),
+            Some(json!({"nickname": "越界改的", "dept_id": a, "status": 1, "role_ids": []}))),
+        (Method::PUT, format!("/admins/{t4_peer}/status"), Some(json!({"status": 0}))),
+        (Method::DELETE, format!("/admins/{t4_peer}"), None),
+    ] {
+        let (st, v) = call(&c, m.clone(), api(&path), Some(&t4_op_token), body).await;
+        assert_eq!(st, 403, "{m} {path} 超范围必须 403: {v}");
+        assert!(v["msg"].as_str().unwrap_or("").contains("超出你的数据权限范围"),
+            "{m} {path} 应是范围闸文案而非「缺少权限：…」: {v}");
+        assert_eq!(v["err"], "scope.out_of_range", "{m} {path} 稳定码要对得上: {v}");
+    }
+
+    // ── A8 写路径的「自己」：范围内放行（别把闸门写死成一律 403）。
+    //     PUT /admins 是**全量覆盖**：role_ids 必须原样带上，否则等于清空自己的角色。
+    let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{t4_op}")), Some(&t4_op_token),
+        Some(json!({
+            "nickname": "t4_op 自己改的", "dept_id": a, "status": 1, "role_ids": [role],
+        }))).await;
+    assert_eq!(st, 200, "改自己的昵称必须 200: {v}");
+
+    // 读回确认：列表里昵称确实变了（不只看写接口回了 200）
+    let (st, v) = call(&c, Method::GET, api("/admins?size=100"), Some(&t4_op_token), None).await;
+    assert_eq!(st, 200, "改完再列: {v}");
+    let me = v["data"]["list"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["username"] == "t4_op")
+        .unwrap_or_else(|| panic!("自己仍在列表里: {v}"));
+    assert_eq!(me["nickname"], "t4_op 自己改的", "列表里的昵称已更新: {v}");
 }

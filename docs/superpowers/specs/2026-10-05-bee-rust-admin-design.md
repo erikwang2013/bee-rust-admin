@@ -225,7 +225,8 @@ login_log(id, admin_id BIGINT DEFAULT 0, username VARCHAR(64), ip VARCHAR(45),
 > 以上是 v1.0 首发的 8 张。此后又加了 8 张，共 16 张：`audit_log`（v1.2 审计）、
 > `dict_type` / `dict_item`（v1.5 字典）、`job` / `job_log`（v1.6 定时任务）、
 > `notice` / `notice_read`（v1.6 通知公告）、`admin_email_phone_backup`（存量 email/phone
-> 加密前的明文备份）。列的全貌**以代码为准**：模型表由 `admin/src/models/*.rs` 经
+> 加密前的明文备份，确认解密正常后可删，见 docs/usage.md 的运维小节）。
+> 列的全貌**以代码为准**：模型表由 `admin/src/models/*.rs` 经
 > `migrate::sync` 建（`admin/src/seed.rs::migrate` 里逐个调用），复合主键/复合唯一键/手写索引的表
 > （`admin_role` / `role_menu` / `role_dept` / `notice_read` / `dict_item` / `job_log`）
 > 与备份表在 `admin/src/seed.rs` 里走裸 DDL。
