@@ -147,6 +147,7 @@ admin/                  管理后台服务端（crate bee_admin）
 docs/
   install.md            ★ 安装说明（三种装法、配置生成步骤、常见坑）
   usage.md              ★ 使用手册（权限体系怎么落地、各模块怎么用）
+  release-checklist.md  ★ 发布 / 升级检查清单（逐条打勾）
   diagrams/             本 README 引用的 4 张 SVG 图
   pet/                  项目宠物「阿守」的五态 SVG + 渲染器（node render.mjs）
   social/               社交预览图 1280×640（仓库 Settings → Social preview 上传那份 PNG）
@@ -381,6 +382,8 @@ sudo nginx -t && sudo systemctl reload nginx
 > **想省掉抄改就用 [`install.sh`](install.sh)**：它按实际的 `--prefix` / 用户 / 端口
 > 渲染这两份文件，顺带生成配置、建库、跑自检。完整说明见 [`docs/install.md`](docs/install.md)
 > 里的「一键脚本」一节。
+> **升级现有部署**前先过一遍 [`docs/release-checklist.md`](docs/release-checklist.md)
+> （配置键、前后端同版本、回滚一条 `mv`）。
 
 ## 版权
 
