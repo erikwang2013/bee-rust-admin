@@ -8,8 +8,10 @@
 #
 # ══════════════════════════════════════════════════════════════════════════
 #  护栏：**默认不碰任何生产资源**（想绕过先想清楚）
-#  1. 库名/账号名固定 `<DSN用户>_smoke_test`，且硬性要求以 _test 结尾，撞上
-#     bee_admin / bee_admin_test 就直接退出 —— 这是「DROP DATABASE」前面最后一道闸。
+#  1. 库名/账号名固定 `<DSN用户>_smoke_test`：**固定后缀 + mktemp 前缀 + 收尾残留反查
+#     与生产 pid 比对**才是真正的保护；下面「以 _test 结尾 / 不撞生产库」两道在构造上
+#     恒真（兜底断言：将来谁改了命名规则立刻炸）。`ADMIN_USER`/`GRANT_HOST` 拼进
+#     DROP SQL 前先过字符集白名单 —— 来源虽是操作者自己的 app.conf，照样不许改写语句。
 #  2. 端口固定 180xx（生产 8080 一眼可分）；服务名 bra-smoke-<pid>（**必须**：
 #     测试脚本永远不许碰名叫 bee-admin 的单元 —— 换单元名是最后一道护栏。install.sh
 #     第 9 步的 `systemctl restart $SERVICE_NAME` 曾经不受 --no-systemd 约束、有 root 时
@@ -96,10 +98,17 @@ case $GRANT_HOST in 127.0.0.1|localhost) GRANT_HOST=127.0.0.1 ;; esac
 # ══════════════════════════════════════════════════════════════════════════
 #  2. scratch 命名 + 护栏（对不上就退出，什么都不做）
 # ══════════════════════════════════════════════════════════════════════════
+# 拼进 DROP DATABASE/USER 的两个串先做白名单（反引号/引号就能改写语句；来源是 app.conf，仍不收）
+case ${ADMIN_USER:-} in
+  ''|*[!A-Za-z0-9_]*) die "护栏：dsn 里的用户名只能含字母数字下划线（当前「${ADMIN_USER:-}」）—— 它要拼进 DROP 语句" ;;
+esac
+case $GRANT_HOST in
+  ''|*[!A-Za-z0-9_.:%-]*) die "护栏：授权主机名字符集异常（当前「$GRANT_HOST」）" ;;
+esac
 SCRATCH_DB=${ADMIN_USER}_smoke_test
 SCRATCH_USER=$SCRATCH_DB
 case $SCRATCH_DB in
-  *_test) ;;
+  *_test) ;;   # 构造上恒真，留着当断言：改了命名规则就在这里炸
   *) die "护栏：scratch 库名必须以 _test 结尾（当前 $SCRATCH_DB）—— 它后面是要被 DROP 的" ;;
 esac
 for n in "$PROD_DB" "$PROD_TEST_DB"; do
@@ -172,7 +181,9 @@ ARGS=(--mode build --yes
       --snowflake 9,0
       --db-host "$DB_HOST" --db-port "$DB_PORT"
       --db-name "$SCRATCH_DB" --db-user "$SCRATCH_USER" --db-pass "$DB_PASS"
-      --db-admin-user "$ADMIN_USER" --db-admin-pass "$ADMIN_PASS")
+      --db-admin-user "$ADMIN_USER")
+# 管理员口令**不进 argv**（argv 里 `ps` 看得见）：走 install.sh 支持的环境变量入口
+# （install.sh:139 的 BRA_DB_ADMIN_PASS），与头注释「口令不打印、不进 argv」的承诺一致。
 
 want_line() { # $1=日志 $2=必须出现的整串 $3=说明
   local line
@@ -182,7 +193,7 @@ want_line() { # $1=日志 $2=必须出现的整串 $3=说明
 run_install() { # $1=日志 $2...=额外参数；返回 install.sh 的退出码
   local log=$1; shift
   local rc=0
-  bash "$INSTALL" "${ARGS[@]}" "$@" >"$log" 2>&1 || rc=$?
+  BRA_DB_ADMIN_PASS="$ADMIN_PASS" bash "$INSTALL" "${ARGS[@]}" "$@" >"$log" 2>&1 || rc=$?
   printf '%s' "$rc"
 }
 
