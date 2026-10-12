@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 720" width="980" height="720" role="img" aria-label="bee-rust 管理后台 功能设计图">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 780" width="980" height="780" role="img" aria-label="bee-rust 管理后台 功能设计图">
   <title>BRA（Bee Rust Admin）— 功能设计（RBAC 权限模型）</title>
-  <desc>登录鉴权链、管理员-角色-菜单/部门权限模型、数据权限五档、八个功能模块</desc>
+  <desc>登录鉴权链、管理员-角色-菜单/部门权限模型、数据权限五档、九个功能模块</desc>
   <style>
     .bg { fill: #ffffff; }
     .panel { fill: #f7f8fa; stroke: #e5e7eb; stroke-width: 1; }
@@ -28,9 +28,9 @@
     </marker>
   </defs>
 
-  <rect class="bg" x="0" y="0" width="980" height="720"/>
+  <rect class="bg" x="0" y="0" width="980" height="780"/>
   <text class="t-title" x="24" y="30">BRA · 功能设计</text>
-  <text class="t-sub" x="24" y="48">登录鉴权 · 角色权限模型（菜单+按钮）· 部门数据权限 · 八大功能模块</text>
+  <text class="t-sub" x="24" y="48">登录鉴权 · 角色权限模型（菜单+按钮）· 部门数据权限 · 九大功能模块</text>
 
   <!-- 一、登录与鉴权 -->
   <rect class="panel" x="24" y="64" width="932" height="126" rx="8"/>
@@ -89,8 +89,8 @@
   <text class="t-sub" x="40" y="628">作用于列表接口（管理员/登录记录/操作日志/字典项/执行记录），条件参数化绑定</text>
 
   <!-- 四、功能模块 -->
-  <rect class="panel" x="514" y="434" width="442" height="250" rx="8"/>
-  <text class="panel-label" x="530" y="456">四、功能模块（8 个）</text>
+  <rect class="panel" x="514" y="434" width="442" height="310" rx="8"/>
+  <text class="panel-label" x="530" y="456">四、功能模块（9 个）</text>
   <rect class="box-module" x="530" y="468" width="196" height="44" rx="6"/>
   <text class="t-name" x="628" y="487" text-anchor="middle">管理员管理</text>
   <text class="t-sub"  x="628" y="503" text-anchor="middle">增删改 · 分配角色 · 重置密码 · 启停</text>
@@ -115,6 +115,9 @@
   <rect class="box-module" x="744" y="624" width="196" height="44" rx="6"/>
   <text class="t-name" x="842" y="643" text-anchor="middle">登录记录</text>
   <text class="t-sub"  x="842" y="659" text-anchor="middle">用户名 / 状态 / 时间段 · 受数据权限</text>
+  <rect class="box-module" x="530" y="676" width="196" height="44" rx="6"/>
+  <text class="t-name" x="628" y="695" text-anchor="middle">操作日志</text>
+  <text class="t-sub"  x="628" y="711" text-anchor="middle">模块+动作留痕 · 数据权限过滤 · 可清空</text>
 
-  <text class="t-foot" x="24" y="706">© 2026 erik · https://erik.xyz</text>
+  <text class="t-foot" x="24" y="766">© 2026 erik · https://erik.xyz</text>
 </svg>
