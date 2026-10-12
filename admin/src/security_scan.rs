@@ -1,5 +1,5 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-//! 请求安全扫描中间件（阶段 5a，security-rust 3.0.0 的 32 个检测器）。
+//! 请求安全扫描中间件（阶段 5a，security-rust 4.0.0 的 32 个检测器）。
 //!
 //! 契约见 `docs/superpowers/plans/2026-10-06-bra-v1.5-c-modules.md`
 //! 「阶段 5a 契约 · 请求安全扫描」。要点：
