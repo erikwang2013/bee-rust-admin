@@ -282,10 +282,10 @@ where
         .map_err(|e| ApiError::internal(format!("头像上传任务执行失败: {e}")))
 }
 
-/// 插件响应原文（`to_json()` 的 String）→ `Value`。
+/// 插件成功体原文（`upload_ok_to_json` / `save_chunk_ok_to_json` 的 String）→ `Value`。
 ///
-/// 字段名是它的 camelCase 契约（`chunk_size` / `saved_path` / `error`…），**原文透传**，
-/// 我们只在末片额外补一个 `avatar` 键；不照着重拼一遍 —— 拼一遍就多一处会对不上的地方。
+/// 字段名是它的 snake_case 契约（`chunk_size` / `saved_path` / `group_sub_dir`…），
+/// **原文透传**，我们只在末片额外补一个 `avatar` 键；不照着重拼一遍 —— 拼一遍就多一处会对不上的地方。
 fn plugin_json(raw: &str) -> Result<Value, ApiError> {
     serde_json::from_str(raw)
         .map_err(|e| ApiError::internal(format!("解析上传响应失败: {e}（原文 {raw}）")))
