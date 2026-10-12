@@ -3,7 +3,14 @@ import { Button, Space, Typography, theme } from 'antd';
 import { ReloadOutlined, UndoOutlined } from '@ant-design/icons';
 import type { CaptchaAnswer, CaptchaData } from '../../api/types';
 import { useI18n } from '../../i18n';
-import { clickAnswer, rotateAnswer, sliderAnswer, toImagePoint } from './captcha';
+import {
+  clickAnswer,
+  rotateAnswer,
+  sliderAnswerWithTrail,
+  toImagePoint,
+  toTrail,
+  type RawTrailSample,
+} from './captcha';
 
 interface Props {
   data: CaptchaData;
@@ -33,7 +40,8 @@ export default function CaptchaBox({ data, onAnswer, onRefresh }: Props) {
   /** 最新值放 ref：指针抬起要用的值不能等 React 的下一次渲染 */
   const xRef = useRef(0);
   const degRef = useRef(0);
-  const drag = useRef<{ px: number; x: number } | null>(null);
+  /** `trail`：本次拖拽的原始采样（坐标 + 时间戳），抬起时换算成插件要的轨迹。 */
+  const drag = useRef<{ px: number; x: number; trail: RawTrailSample[] } | null>(null);
   const rot = useRef<{ start: number; deg: number } | null>(null);
 
   const [x, setX] = useState(0);
@@ -47,21 +55,36 @@ export default function CaptchaBox({ data, onAnswer, onRefresh }: Props) {
   const onLoad = (el: HTMLImageElement) => setScale(el.clientWidth / el.naturalWidth || 1);
 
   // ── 滑块：拖动拼图块 ────────────────────────────────
+  // 拖拽过程顺手录轨迹（起点在按下、末点在抬起，`t` 用 performance.now()）：
+  // 后端 `[auth] captcha_trajectory` 开着时插件要这份轨迹判「像不像人」。
   const onPieceDown = (e: React.PointerEvent<HTMLImageElement>) => {
-    drag.current = { px: e.clientX, x: xRef.current };
+    drag.current = { px: e.clientX, x: xRef.current, trail: [[e.clientX, e.clientY, performance.now()]] };
     e.currentTarget.setPointerCapture(e.pointerId);
   };
   const onPieceMove = (e: React.PointerEvent<HTMLImageElement>) => {
     const d = drag.current;
     if (!d) return;
+    d.trail.push([e.clientX, e.clientY, performance.now()]);
     const next = Math.min(Math.max(d.x + (e.clientX - d.px) / scale, 0), Math.max(maxX, 0));
     xRef.current = next;
     setX(next);
   };
-  const onPieceUp = () => {
-    if (!drag.current) return;
+  const onPieceUp = (e: React.PointerEvent<HTMLImageElement>) => {
+    const d = drag.current;
+    if (!d) return;
     drag.current = null;
-    onAnswer(sliderAnswer(xRef.current));
+    // 轨迹照常上报（开关关着时插件直接放行），一条码路。换算口径见 captcha.ts 的 toTrail。
+    // 注意轨迹记的是**指针在图上划过的位置**，不是被夹在 [0, maxX] 里的拼图块 x：
+    // 后者是人手轨迹经过夹取后的样子，拿它算线性度会把「甩出去」抹平。
+    const im = imgRef.current;
+    const trail = im
+      ? toTrail(
+          [...d.trail, [e.clientX, e.clientY, performance.now()] as RawTrailSample],
+          im.getBoundingClientRect(),
+          { width: im.naturalWidth, height: im.naturalHeight },
+        )
+      : [];
+    onAnswer(sliderAnswerWithTrail(xRef.current, trail));
   };
 
   // ── 旋转：拖动图片 ──────────────────────────────────

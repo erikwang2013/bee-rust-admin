@@ -136,12 +136,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     seed::seed(&db, &cfg, &snowflake, &crypto).await?;
     let throttle = api::auth::login_throttle(&cfg);
 
-    // 登录验证码（poster-rust）。存储走插件默认的进程内 MemoryStorage；`from_manager`
-    // 会在接线期做一次存储探针，后端不可用现在就炸，而不是等第一个请求。
+    // 登录验证码（poster-rust）。存储走插件的进程内 MemoryStorage（`with_config` 即如此，
+    // 与 `new()` 在没配 `captcha.file_path` 时等价）；`from_manager` 会在接线期做一次
+    // 存储探针，后端不可用现在就炸，而不是等第一个请求。
     // `[auth] captcha = false` 时照样建（内存哈希表，零成本），由配置在请求期关掉。
+    //
+    // `[auth] captcha_trajectory` 只拨插件的 trajectory.enabled **开关**，阈值全用默认
+    // （≥4 点 / 300–5000ms / 线性度 ≤0.99）：真拖拽通常都满足；极快的甩动（<300ms）
+    // 会被判机器（症状 = 滑块怎么拖都报「验证码错误」），遇到了再调插件的阈值。
+    let mut poster_cfg = poster::PosterConfig::default();
+    poster_cfg.captcha.trajectory.enabled = cfg.captcha_trajectory;
     let captcha = poster::Guard::from_manager(std::sync::Arc::new(
-        poster::captcha::CaptchaManager::new()
-            .map_err(|e| format!("初始化验证码管理器失败: {e}"))?,
+        poster::captcha::CaptchaManager::with_config(std::sync::Arc::new(poster_cfg)),
     ))
     .map_err(|e| format!("初始化验证码存储失败: {e}"))?;
 

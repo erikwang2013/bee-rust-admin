@@ -41,7 +41,12 @@ export interface CaptchaData {
   extra: CaptchaExtra;
 }
 /** 提交给后端的答案：poster-rust `Answer` 的 serde 表示（外部标签，见 `captcha.rs`）。 */
-export type CaptchaAnswer = { Click: [number, number][] } | { Rotate: number } | { Slider: number };
+export type CaptchaAnswer =
+  | { Click: [number, number][] }
+  | { Rotate: number }
+  | { Slider: number }
+  /** 带拖拽轨迹的滑块（`[auth] captcha_trajectory` 开启时插件才校验轨迹，见 login/captcha.ts） */
+  | { SliderWithTrail: { x: number; trail: [number, number, number][]; duration_ms: number } };
 
 export interface Admin {
   id: string; username: string; nickname: string; email: string; phone: string; sex: number;

@@ -197,6 +197,7 @@ mod tests {
             max_fail: 5,
             lock_minutes: 10,
             captcha: true,
+            captcha_trajectory: false,
             retain_days: 90,
             job_enabled: true,
             security_scan: None,

@@ -214,7 +214,11 @@ cp admin/conf/app.conf.example admin/conf/app.conf
 其余可选开关见示例文件：`[log] retain_days`（日志保留天数，`0` = 永久，同时作用于
 登录/操作/任务执行记录）、`[job] enabled`（定时任务总开关，关掉后仍可手动补跑）、
 `[auth] max_fail` / `lock_minutes`（登录失败锁定）、`[auth] captcha`（登录图形验证码，
-默认开）。
+默认开）、`[auth] captcha_trajectory`（滑块拖拽轨迹校验，**默认关**）。
+`captcha_trajectory` 开启后滑块答案必须带轨迹（插件默认阈值：≥4 个采样点、300–5000ms、
+线性度 ≤0.99），只交裸数值的客户端一律失败 —— 新前端总是上报轨迹，开它不用重发前端；
+代价是「极快甩动」（<300ms）会被判机器（症状：滑块怎么拖都提示「验证码错误」），
+要放宽得改插件侧的 `min_duration_ms`。
 
 > 升级已有部署时：验证码凭据由新前端提交。**若先换后端、暂不重建前端，先把
 > `[auth] captcha` 写成 `false`**，否则老前端的登录会被判 400（验证码错误）。

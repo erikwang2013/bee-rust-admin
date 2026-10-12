@@ -678,6 +678,14 @@ mod tests {
     /// 服务端（生成时要画图），测试里没有「解题」一说，只能这样拿到可校验的凭据。
     /// 载荷字段与插件 `finish()` 写的一致（`type` + 各类型专属字段）。
     fn test_guard(payload: &str) -> (poster::Guard, Arc<poster::storage::MemoryStorage>) {
+        test_guard_opts(payload, false)
+    }
+
+    /// 同上，但轨迹校验按 `[auth] captcha_trajectory` 的开/关各来一份。
+    fn test_guard_opts(
+        payload: &str,
+        trajectory_enabled: bool,
+    ) -> (poster::Guard, Arc<poster::storage::MemoryStorage>) {
         use poster::captcha::CaptchaManager;
         use poster::storage::MemoryStorage;
         let mem = Arc::new(MemoryStorage::new());
@@ -687,6 +695,7 @@ mod tests {
         // 不是插件限流器本身的窗口滚动。
         let mut config = poster::PosterConfig::default();
         config.captcha.rate_limit.window_secs = 3600;
+        config.captcha.trajectory.enabled = trajectory_enabled;
         let manager =
             CaptchaManager::with_config_and_storage(Arc::new(config), mem.clone());
         (poster::Guard::new(Arc::new(manager)), mem)
@@ -739,6 +748,52 @@ mod tests {
         // 类型不符（载荷是 slider，答案按 click 交）也只是一次普通失败
         let (guard, _mem) = test_guard(r#"{"type":"slider","x":100.0}"#);
         assert!(verify_captcha(&guard, Some(KEY), Some(Answer::Click(vec![(1.0, 1.0)])), "1.2.3.4").is_err());
+    }
+
+    /// 轨迹校验（`[auth] captcha_trajectory = true` → 插件的 `captcha.trajectory.enabled`）。
+    /// 三组断言都拿**正确的 x** 去交，能不能过只差在轨迹上 —— 否则「谁都没过」也可能
+    /// 只是 x 答错了，测不出开关真的接上了。
+    #[test]
+    fn captcha_trajectory_gate() {
+        const PAYLOAD: &str = r#"{"type":"slider","x":100.0}"#;
+        // 人手轨迹，照插件自己的用例（先停一下再冲过去，线性度约 0.77 < 阈值 0.99）
+        let human = || vec![(0.0, 0.0, 0.0), (5.0, 0.0, 150.0), (6.0, 1.0, 300.0), (30.0, 0.0, 450.0)];
+
+        // a) 只交裸数值（老前端 / 脚本）：开关打开后必须失败
+        let (guard, _mem) = test_guard_opts(PAYLOAD, true);
+        let err = verify_captcha(&guard, Some(KEY), Some(Answer::Slider(100.0)), "1.2.3.4")
+            .unwrap_err();
+        assert_eq!(
+            err.into_response().status(),
+            StatusCode::BAD_REQUEST,
+            "开轨迹后裸数值不认"
+        );
+
+        // b) 带合法轨迹（5 点 / 1000ms / 明显非线性，线性度约 0.77）→ 通过。
+        //    这根轨迹**从 JSON 反序列化**：下面的字面量与前端 `captcha.test.ts` 里逐字
+        //    断言的请求体是同一份（「按下停一下再拖」的采样），「两边的形状对得上」
+        //    由它钉死，不靠注释约定。
+        const WIRE: &str = r#"{"SliderWithTrail":{"x":100,"trail":[[0,0,0],[0,0,300],[4,0,450],[9,2,600],[50,0,1000]],"duration_ms":1000}}"#;
+        let answer: Answer = serde_json::from_str(WIRE).expect("前端提交的形状必须能反序列化");
+        let (guard, _mem) = test_guard_opts(PAYLOAD, true);
+        verify_captcha(&guard, Some(KEY), Some(answer), "1.2.3.4")
+            .expect("合法轨迹 + 正确 x 应通过");
+
+        // c) 点太少 / 太快 → 失败（x 仍是对的，判定的只能是轨迹）
+        for (trail, duration_ms, why) in [
+            (vec![(0.0, 0.0, 0.0), (10.0, 0.0, 200.0), (30.0, 0.0, 400.0)], 400u64, "只有 3 点"),
+            (human(), 100u64, "100ms 甩过去的"),
+        ] {
+            let (guard, _mem) = test_guard_opts(PAYLOAD, true);
+            let err = verify_captcha(
+                &guard,
+                Some(KEY),
+                Some(Answer::SliderWithTrail { x: 100.0, trail, duration_ms }),
+                "1.2.3.4",
+            )
+            .unwrap_err();
+            assert_eq!(err.into_response().status(), StatusCode::BAD_REQUEST, "{why}");
+        }
     }
 
     /// 限流按身份分桶（身份由登录接口传的 `client_ip()` 派生）：一个 IP 打满额度后

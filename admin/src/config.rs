@@ -35,6 +35,12 @@ pub struct AppConfig {
     /// 不是「建库即用」的断点）。**关掉（false）时登录接口按老样子工作**：
     /// 不校验凭据、前端也不渲染验证码区。老部署升级时若暂时不重建前端，先设 false。
     pub captcha: bool,
+    /// 滑块**拖拽轨迹校验**开关（`[auth] captcha_trajectory` → poster-rust 2.0 的
+    /// `captcha.trajectory.enabled`）。**默认 false**：开启后滑块答案必须带轨迹
+    /// （插件默认阈值：≥4 个采样点、300–5000ms 总耗时、线性度 ≤0.99），
+    /// 只提交裸数值的客户端一律判失败；极快的甩动（<300ms）也会被判机器。
+    /// 前端已经**总是**上报轨迹（开关关着时插件直接放行），所以开这个开关不需要重发前端。
+    pub captcha_trajectory: bool,
     /// 日志保留天数（login_log / audit_log / job_log）；0 = 永久保留
     pub retain_days: i64,
     /// 定时任务总开关（`[job] enabled`）：false = 不启动调度循环（手动触发仍可用）
@@ -179,6 +185,8 @@ impl AppConfig {
             max_fail: num("auth", "max_fail", 5)?,
             lock_minutes: num("auth", "lock_minutes", 10)?,
             captcha: flag("auth", "captcha", true)?,
+            // 轨迹校验默认关：开了老前端（只提交裸数值）会被判失败，不能默认打开
+            captcha_trajectory: flag("auth", "captcha_trajectory", false)?,
             retain_days: num("log", "retain_days", 90)?,
             job_enabled: flag("job", "enabled", true)?,
             security_scan,
@@ -299,6 +307,31 @@ initial_admin_password = admin123
         map.get_mut("auth").unwrap().insert("captcha".into(), "off".into());
         let err = AppConfig::from_ini(&map).unwrap_err();
         assert!(format!("{err}").contains("[auth] captcha"), "应报出具体键: {err}");
+    }
+
+    /// 轨迹校验开关：与 `[auth] captcha` 共用 `flag()`，但**默认关**
+    /// （插件侧默认也是 false；开了老前端/脚本的裸数值答案会被判 400，不能默认打开）。
+    #[test]
+    fn captcha_trajectory_defaults_off_and_accepts_flags() {
+        assert!(!AppConfig::from_ini(&parse()).unwrap().captcha_trajectory, "缺键默认关");
+
+        let mut map = parse();
+        map.insert(
+            "auth".into(),
+            [("captcha_trajectory".to_string(), "true".to_string())].into_iter().collect(),
+        );
+        assert!(AppConfig::from_ini(&map).unwrap().captcha_trajectory, "显式 true 要认");
+        map.get_mut("auth").unwrap().insert("captcha_trajectory".into(), "1".into());
+        assert!(AppConfig::from_ini(&map).unwrap().captcha_trajectory, "1 也算 true");
+        map.get_mut("auth").unwrap().insert("captcha_trajectory".into(), " FALSE ".into());
+        assert!(!AppConfig::from_ini(&map).unwrap().captcha_trajectory, "大小写/空白要容错");
+        map.get_mut("auth").unwrap().insert("captcha_trajectory".into(), "0".into());
+        assert!(!AppConfig::from_ini(&map).unwrap().captcha_trajectory, "0 也算 false");
+
+        // 拼错的开关拒绝启动：默默当 true 会把老前端全挡在门外，当 false 又「以为在防机器」
+        map.get_mut("auth").unwrap().insert("captcha_trajectory".into(), "on".into());
+        let err = AppConfig::from_ini(&map).unwrap_err();
+        assert!(format!("{err}").contains("[auth] captcha_trajectory"), "应报出具体键: {err}");
     }
 
     /// 安全扫描阈值：老配置没有 [security] = 默认 off（只报告不拦截）；
