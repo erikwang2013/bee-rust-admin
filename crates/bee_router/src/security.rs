@@ -9,9 +9,14 @@ use crate::filter::Filter;
 /// A [`Filter`] that scans incoming requests for malicious payloads using
 /// the `security-rust` detection engine.
 ///
-/// By default, 27 detectors cover XSS, SQL injection, command injection,
+/// By default, 32 detectors cover XSS, SQL injection, command injection,
 /// SSRF, path traversal, and more.  If any attack is detected, the request
 /// is aborted with HTTP 400 and a message listing each matched attack type.
+///
+/// Only the presence of a detection matters to this filter — 4.x's single
+/// weak signals (`Severity::Low`, e.g. one `../` or a repeated query
+/// parameter) are blocked as well; use a custom [`Scanner`] (`scan_with`) if
+/// that is too strict for your traffic.
 ///
 /// # Body scanning
 ///

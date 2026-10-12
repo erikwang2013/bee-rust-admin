@@ -391,7 +391,7 @@ dependencies = [
  "poster-rust",
  "rand_core 0.6.4",
  "reqwest",
- "security-rust 4.0.0",
+ "security-rust",
  "serde",
  "serde_json",
  "snowflake-id-rust",
@@ -521,7 +521,7 @@ dependencies = [
  "bee_session",
  "bee_template",
  "http",
- "security-rust 1.0.7",
+ "security-rust",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -3788,15 +3788,6 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
-
-[[package]]
-name = "security-rust"
-version = "1.0.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d440dfbe0d083a4d819f1298f2262a488d8a8b6ebf1dc6dcd4a51e5705f9a5a4"
-dependencies = [
- "regex",
-]
 
 [[package]]
 name = "security-rust"
