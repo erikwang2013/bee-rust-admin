@@ -63,9 +63,9 @@ dependencies = [
 
 [[package]]
 name = "aetherupload-rust"
-version = "1.0.5"
+version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dbc2f95546a690e9b82aa2007439823dade68956ec7a49bce56d44db3e80abab"
+checksum = "a536737bcf028f2f9e7abcc0901fba2472a3ebaaef1256a5b01e8e7688677469"
 
 [[package]]
 name = "ahash"
@@ -155,9 +155,9 @@ dependencies = [
 
 [[package]]
 name = "apidoc-macros"
-version = "1.6.2"
+version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6b64338f71f883fa0f0134e6eb7a10299759ea1f21cd4417cc8eb02216cdd6c"
+checksum = "df67326eb73384356e77bdd5b2a7abc687b470533d451a2480d3cd6ebc345ebf"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -166,17 +166,21 @@ dependencies = [
 
 [[package]]
 name = "apidoc-rust"
-version = "1.6.2"
+version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "812305c5ddf868e2789df2d8580d65d51c03ba3da4f387618dc1be008b26e2ec"
+checksum = "d00bba170107163aa983f8b026e6d72e4d09c1645a2a6c06eb501ccad05e9de7"
 dependencies = [
  "apidoc-macros",
  "axum",
+ "base64 0.22.1",
+ "bytes",
  "fake",
+ "getrandom 0.2.17",
+ "hmac 0.12.1",
  "linkme",
- "md5",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tower-http 0.7.1",
 ]
 
@@ -387,7 +391,7 @@ dependencies = [
  "poster-rust",
  "rand_core 0.6.4",
  "reqwest",
- "security-rust 3.0.0",
+ "security-rust 4.0.0",
  "serde",
  "serde_json",
  "snowflake-id-rust",
@@ -1749,9 +1753,9 @@ checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 
 [[package]]
 name = "hashids-rust"
-version = "1.0.10"
+version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8c5a142c51302b810b96c860495533929b4449caeec61f0b78efbabc8e0a325"
+checksum = "e992b2f37a65c3b9691213f57a5f0b98a545cb2885dc71f850b10d513c396606"
 dependencies = [
  "axum",
 ]
@@ -2473,12 +2477,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "md5"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "490cc448043f947bae3cbee9c203358d62dbee0db12107a74be5c30ccfd09771"
-
-[[package]]
 name = "memcache"
 version = "0.17.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3147,9 +3145,9 @@ dependencies = [
 
 [[package]]
 name = "poster-rust"
-version = "1.1.2"
+version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5635bbe71d5b99783aec915c81bfc3c66c041533dc4a210599c7ac2c6b8db293"
+checksum = "b2805c06489006eaf5bc2f7784c3005fdf489991c2e2cff17e2ba67ce25ab745"
 dependencies = [
  "ab_glyph",
  "base64 0.22.1",
@@ -3802,9 +3800,9 @@ dependencies = [
 
 [[package]]
 name = "security-rust"
-version = "3.0.0"
+version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8effdb4a508890f49efb0be4ac02b7d1eb39eacc24e760d129ae2a44fc50806d"
+checksum = "142468dbc8e347618cb5075da1041b82381883142793bd0a718aebcedfa4ac3b"
 dependencies = [
  "regex",
 ]
@@ -4028,9 +4026,9 @@ dependencies = [
 
 [[package]]
 name = "snowflake-id-rust"
-version = "1.1.1"
+version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac3a4213a9141fb3bf4bfa390bd4bc4c0a9d0158105fa01893843296ce5b2a6c"
+checksum = "457c400b7c8b90a316304595c940cbdc42397f22a0ffaaa76c2794996e293098"
 
 [[package]]
 name = "socket2"

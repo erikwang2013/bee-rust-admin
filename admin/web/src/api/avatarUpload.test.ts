@@ -9,13 +9,13 @@ vi.mock('./client', () => ({ http: { post } }));
 const PREPROCESS = '/avatar/upload/preprocess';
 const CHUNK = '/avatar/upload/chunk';
 
+// 契约：aetherupload-rust 2.x 的成功体是 snake_case（1.x 的 camelCase + `error` 字段已废除）
 const preprocessOk = {
-  error: 0,
-  chunkSize: 4,
-  groupSubDir: '202610',
-  resourceTempBaseName: 'tmp123',
-  resourceExt: 'jpg',
-  savedPath: '',
+  chunk_size: 4,
+  group_sub_dir: '202610',
+  resource_temp_base_name: 'tmp123',
+  resource_ext: 'jpg',
+  saved_path: '',
 };
 
 /** 10 字节 → 4+4+2 三片（末片不足一片）。 */
@@ -27,11 +27,11 @@ const formsOf = (from: number) => post.mock.calls.slice(from).map((c) => c[1] as
 beforeEach(() => post.mockReset());
 
 describe('uploadAvatar 分片上传', () => {
-  it('按服务端 chunkSize 切片：索引从 1 开始，末片不足一片，末片 savedPath 非空即完成', async () => {
+  it('按服务端 chunk_size 切片：索引从 1 开始，末片不足一片，末片 saved_path 非空即完成', async () => {
     post.mockResolvedValueOnce(preprocessOk);
-    post.mockResolvedValueOnce({ error: 0, savedPath: '' });
-    post.mockResolvedValueOnce({ error: 0, savedPath: '' });
-    post.mockResolvedValueOnce({ error: 0, savedPath: '202610/abc.jpg' });
+    post.mockResolvedValueOnce({ saved_path: '' });
+    post.mockResolvedValueOnce({ saved_path: '' });
+    post.mockResolvedValueOnce({ saved_path: '202610/abc.jpg' });
 
     const progress: [number, number][] = [];
     await uploadAvatar(fileOf(10), { locale: 'zh', onProgress: (s, t) => progress.push([s, t]) });
@@ -47,7 +47,7 @@ describe('uploadAvatar 分片上传', () => {
 
   it('preprocess 带上原文件名、体积、md5 与 locale；chunk 带上插件要的上下文字段', async () => {
     post.mockResolvedValueOnce(preprocessOk);
-    post.mockResolvedValueOnce({ error: 0, savedPath: '202610/abc.jpg' });
+    post.mockResolvedValueOnce({ saved_path: '202610/abc.jpg' });
 
     await uploadAvatar(fileOf(4, 'my-photo.jpg'), { locale: 'en' });
 
@@ -69,8 +69,8 @@ describe('uploadAvatar 分片上传', () => {
 
   it('刚好整除时末片是整片（不会多切一片空的）', async () => {
     post.mockResolvedValueOnce(preprocessOk);
-    post.mockResolvedValueOnce({ error: 0, savedPath: '' });
-    post.mockResolvedValueOnce({ error: 0, savedPath: '202610/abc.jpg' });
+    post.mockResolvedValueOnce({ saved_path: '' });
+    post.mockResolvedValueOnce({ saved_path: '202610/abc.jpg' });
 
     await uploadAvatar(fileOf(8), { locale: 'zh' });
 
@@ -80,25 +80,13 @@ describe('uploadAvatar 分片上传', () => {
   });
 
   it('秒传命中：一个分片都不发，直接完成', async () => {
-    post.mockResolvedValueOnce({ ...preprocessOk, savedPath: '202610/exists.jpg' });
+    post.mockResolvedValueOnce({ ...preprocessOk, saved_path: '202610/exists.jpg' });
 
     const progress: [number, number][] = [];
     await uploadAvatar(fileOf(10), { locale: 'zh', onProgress: (s, t) => progress.push([s, t]) });
 
     expect(post).toHaveBeenCalledTimes(1);
     expect(progress).toEqual([[10, 10]]);
-  });
-
-  it('中途一片插件报错：整体失败，后面的片不再发', async () => {
-    post.mockResolvedValueOnce(preprocessOk);
-    post.mockResolvedValueOnce({ error: 0, savedPath: '' });
-    post.mockResolvedValueOnce({ error: '文件太大了', savedPath: '' });
-
-    const err = await uploadAvatar(fileOf(10), { locale: 'zh' }).catch((e: unknown) => e);
-
-    expect(err).toBeInstanceOf(AvatarUploadError);
-    expect((err as Error).message).toBe('文件太大了');
-    expect(post).toHaveBeenCalledTimes(3); // preprocess + 第 1、2 片，第 3 片没发
   });
 
   it('中途一片 HTTP 失败：原样抛出，不静默吞掉', async () => {
@@ -109,24 +97,26 @@ describe('uploadAvatar 分片上传', () => {
     expect(post).toHaveBeenCalledTimes(2);
   });
 
-  it('分片全传完却没等到 savedPath：按失败处理', async () => {
+  it('分片全传完却没等到 saved_path：按失败处理', async () => {
     post.mockResolvedValueOnce(preprocessOk);
-    post.mockResolvedValueOnce({ error: 0, savedPath: '' });
+    post.mockResolvedValueOnce({ saved_path: '' });
 
     await expect(uploadAvatar(fileOf(4), { locale: 'zh' })).rejects.toThrow('头像上传失败');
   });
 
-  it('服务端没给合法 chunkSize 时不发分片，报兜底文案', async () => {
-    post.mockResolvedValueOnce({ ...preprocessOk, chunkSize: 0 });
+  it('服务端没给合法 chunk_size 时不发分片，报兜底文案', async () => {
+    post.mockResolvedValueOnce({ ...preprocessOk, chunk_size: 0 });
 
     await expect(uploadAvatar(fileOf(10), { locale: 'zh' })).rejects.toThrow('头像上传失败');
     expect(post).toHaveBeenCalledTimes(1);
   });
 
-  it('error 非 0 但不是字符串（插件之外的意外回包）也用兜底文案', async () => {
-    post.mockResolvedValueOnce({ ...preprocessOk, error: 1 });
+  it('失败经 HTTP 层抛出（2.x 的失败体不再混在成功回包里）', async () => {
+    // 2.x：插件失败 → 后端转成 400 信封（msg = Problem.title），由 axios 拦截器统一抛
+    post.mockRejectedValueOnce(new AvatarUploadError('错误：上传数据超过大小限制'));
 
-    await expect(uploadAvatar(fileOf(10), { locale: 'zh' })).rejects.toThrow('头像上传失败');
+    await expect(uploadAvatar(fileOf(10), { locale: 'zh' }))
+      .rejects.toThrow('错误：上传数据超过大小限制');
     expect(post).toHaveBeenCalledTimes(1);
   });
 });

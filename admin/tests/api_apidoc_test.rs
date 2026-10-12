@@ -12,8 +12,6 @@ use serde_json::{Value, json};
 
 /// 文档站口令：只活在本测试进程的临时配置里，不进仓库配置。
 const APIDOC_PW: &str = "apidoc-test-pw";
-/// md5("apidoc-test-pw")：插件的 `/apidoc/auth` 收的是 md5(口令)，不是明文。
-const APIDOC_PW_MD5: &str = "8bb1ca928d959caadb2c80ead744b75b";
 
 /// 在 api.json 里按 method + url 定位端点。
 fn endpoint<'a>(doc: &'a Value, method: &str, url: &str) -> &'a Value {
@@ -64,10 +62,11 @@ async fn apidoc_menu_dept_bodies_are_documented() {
     .await;
     let c = reqwest::Client::new();
 
-    // 口令换 token（提交 md5；数据路由的 token 走 query，reqwest 负责 URL 编码）
+    // 口令换 token：apidoc 2.x 起是 POST + JSON body 传**明文**口令
+    // （不走 URL，且插件明确不做客户端摘要——摘要当凭据等于把摘要变成密码）。
     let v: Value = c
-        .get(format!("{base}/apidoc/auth"))
-        .query(&[("password", APIDOC_PW_MD5)])
+        .post(format!("{base}/apidoc/auth"))
+        .json(&json!({ "password": APIDOC_PW }))
         .send()
         .await
         .expect("apidoc auth 请求失败")

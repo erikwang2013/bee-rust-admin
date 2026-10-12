@@ -162,7 +162,7 @@ async fn log_retention(state: AppState) -> Result<String, String> {
 
 /// 头像孤儿清理：删头像组目录（`{upload_dir}/avatar/`）下**不再被任何 admin 引用**的
 /// 头像文件。引用形态两种都认（4b 前后各一种）：
-/// - 列里是插件的 `savedPath`（`avatar_202610_<md5>.png`）→ 按上传根解析成相对路径；
+/// - 列里是插件的 `saved_path`（`avatar_202610_<md5>.png`）→ 按上传根解析成相对路径；
 /// - 列里是老 URL（`/api/v1/avatar/xxx`）→ 老落盘路径是 `{id}.png` / `{id}.jpg`，
 ///   两种扩展名都算引用 —— 存量头像没迁移前仍在用，误删就是把别人的头像删没了。
 ///
@@ -199,7 +199,7 @@ async fn avatar_orphan_clean(state: AppState) -> Result<String, String> {
                 kept.insert(std::path::PathBuf::from(format!("{}.{ext}", admin.id)));
             }
         } else if let Some(resource) = state.aether.resource(stored) {
-            // savedPath → 插件的成品路径；只保留在本目录下的（配置换了 upload_dir 的
+            // saved_path → 插件的成品路径；只保留在本目录下的（配置换了 upload_dir 的
             // 陈旧值解析到别处，那不是本目录的孤儿，这里不碰）
             if let Ok(rel) = resource.path.strip_prefix(&dir) {
                 kept.insert(rel.to_path_buf());
@@ -256,10 +256,10 @@ fn collect_files(root: &std::path::Path) -> std::io::Result<Vec<std::path::PathB
 
 /// 删掉成品文件后，把它的秒传索引一起清掉。
 ///
-/// 索引里可能还留着 `group_hash → savedPath` 指向这个已删文件（管理员行被删、值被直接
+/// 索引里可能还留着 `group_hash → saved_path` 指向这个已删文件（管理员行被删、值被直接
 /// 改库 —— 文件成了孤儿但索引没过期），不清的话下次有人传同样的内容会「秒传命中」到一个
 /// 死链（头像 404）。`rel` 是相对头像组目录的路径，只有「一层子目录 + 文件名」这种插件
-/// 成品的位置才构造得出 savedPath；直接躺在 `avatar/` 下的老文件/手工文件跳过。
+/// 成品的位置才构造得出 saved_path；直接躺在 `avatar/` 下的老文件/手工文件跳过。
 fn purge_instant(state: &AppState, rel: &std::path::Path) {
     let (Some(subdir), Some(name)) = (
         rel.parent().and_then(|p| p.to_str()),

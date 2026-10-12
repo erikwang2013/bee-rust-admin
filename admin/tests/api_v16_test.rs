@@ -297,7 +297,7 @@ async fn v16_job_notice_features() {
         assert!(dir.join(kept).exists(), "{kept} 不在白名单里，一律不碰");
     }
 
-    // 新形态：列里是插件的 savedPath → 它指向的成品留着；老路径那个文件随之失去引用 → 删
+    // 新形态：列里是插件的 saved_path → 它指向的成品留着；老路径那个文件随之失去引用 → 删
     let saved_hash = "d41d8cd98f00b204e9800998ecf8427e";
     std::fs::write(dir.join("202610").join(format!("{saved_hash}.png")), b"x").unwrap();
     sqlx::query("UPDATE admin SET avatar = ? WHERE id = ?")
@@ -315,7 +315,7 @@ async fn v16_job_notice_features() {
     assert!(!dir.join(&legacy_name).exists(), "没人引用的老文件该删");
     assert!(
         dir.join("202610").join(format!("{saved_hash}.png")).exists(),
-        "savedPath 指向的成品必须留着"
+        "saved_path 指向的成品必须留着"
     );
     for kept in ["notes.txt", "12.png.bak", "half.png.part"] {
         assert!(dir.join(kept).exists(), "{kept} 仍然不能碰");

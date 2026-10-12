@@ -258,7 +258,8 @@ async fn security_scan_reports_then_blocks() {
         (status, r.json().await.unwrap_or(Value::Null))
     };
     assert_eq!(st, 200, "multipart 上传不能被拦（体不扫）: {v}");
-    assert_eq!(v["data"]["error"], 0, "上传预处理照常成功: {v}");
+    // 2.x 起成功体不再带 `error` 字段；有 chunk_size 就说明预处理真的走通了
+    assert!(v["data"]["chunk_size"].as_u64().unwrap_or(0) > 0, "上传预处理照常成功: {v}");
     assert!(
         scan_rows(&pool, "/api/v1/avatar/upload/preprocess").await.is_empty(),
         "multipart 的体不扫，不该留扫描痕"

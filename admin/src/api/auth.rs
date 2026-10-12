@@ -499,7 +499,7 @@ pub async fn profile(State(state): State<AppState>, auth: Auth) -> Result<Json<V
             "id": hid::enc(auth.admin.id),
             "username": auth.admin.username,
             "nickname": auth.admin.nickname,
-            // 列里存的是插件的 savedPath（内部地址），对外一律换成可用的 URL
+            // 列里存的是插件的 saved_path（内部地址），对外一律换成可用的 URL
             "avatar": super::avatar::public_avatar(&auth.admin.avatar, auth.admin.id),
             "email": email,
             "phone": phone,
@@ -665,6 +665,15 @@ mod tests {
     // 顶层 import 里没有它了（`IntoResponse` 只被这里的断言用）
     use axum::response::IntoResponse;
 
+    /// 合法 key：poster 2.x 起校验形态（32 位十六进制，即 `generate_key()` 的产物）。
+    /// 生产 key 由插件生成、天然合法；夹具必须造合法的，否则 2.x 直接判无效。
+    const KEY: &str = "0123456789abcdef0123456789abcdef";
+    /// 形态合法但存储里不存在（「key 不存在」那一档用）。
+    const KEY_ABSENT: &str = "ffffffffffffffffffffffffffffffff";
+    /// 限流用例的第二、第三个 key（都要合法且互不相同）。
+    const KEY2: &str = "22222222222222222222222222222222";
+    const KEY3: &str = "33333333333333333333333333333333";
+
     /// 造一个用内存存储的守卫，并**直接塞一份已知答案的载荷**：验证码的答案只存在
     /// 服务端（生成时要画图），测试里没有「解题」一说，只能这样拿到可校验的凭据。
     /// 载荷字段与插件 `finish()` 写的一致（`type` + 各类型专属字段）。
@@ -672,7 +681,7 @@ mod tests {
         use poster::captcha::CaptchaManager;
         use poster::storage::MemoryStorage;
         let mem = Arc::new(MemoryStorage::new());
-        put_key(&mem, "test-key", payload);
+        put_key(&mem, KEY, payload);
         // 限流窗口拉长到 1 小时：默认 60s 的固定窗口在「连着打 31 发」时可能正好跨窗，
         // 计数清零会让「额度耗尽」的断言偶发失败。这里要测的是我们这层的消费与分桶，
         // 不是插件限流器本身的窗口滚动。
@@ -683,10 +692,18 @@ mod tests {
         (poster::Guard::new(Arc::new(manager)), mem)
     }
 
+    /// 塞一份已知答案的载荷。**键名必须带 `captcha:` 前缀**：poster 2.x 起载荷存在
+    /// `captcha:{key}` 的命名空间里（`payload_key()`，见 2.0 的 `captcha/mod.rs`：
+    /// 把用户提交的 key 圈进自己的命名空间，防拼出限流键等别的子系统的键）。
+    /// 写裸 key 会「找不到载荷」→ 一律 400。前缀是插件的内部约定，夹具跟着它走。
     fn put_key(mem: &poster::storage::MemoryStorage, key: &str, payload: &str) {
         use poster::storage::Storage;
-        mem.set(key, payload.as_bytes(), std::time::Duration::from_secs(300))
-            .expect("内存存储写入不会失败");
+        mem.set(
+            &format!("captcha:{key}"),
+            payload.as_bytes(),
+            std::time::Duration::from_secs(300),
+        )
+        .expect("内存存储写入不会失败");
     }
 
     /// 通过 → 该 key 立刻作废（一次性，不可重放）；答错 → 400 而不是 401；
@@ -696,24 +713,24 @@ mod tests {
         let (guard, _mem) = test_guard(r#"{"type":"slider","x":100.0}"#);
 
         // 容差内（±4px）判过
-        verify_captcha(&guard, Some("test-key"), Some(Answer::Slider(103.0)), "1.2.3.4")
+        verify_captcha(&guard, Some(KEY), Some(Answer::Slider(103.0)), "1.2.3.4")
             .expect("容差内应通过");
         // 一次性：同一 key 再来一次必失败（校验通过时载荷已被删掉）
-        let err = verify_captcha(&guard, Some("test-key"), Some(Answer::Slider(100.0)), "1.2.3.4")
+        let err = verify_captcha(&guard, Some(KEY), Some(Answer::Slider(100.0)), "1.2.3.4")
             .unwrap_err();
         assert_eq!(err.into_response().status(), StatusCode::BAD_REQUEST, "重放要 400");
 
         // 答错
         let (guard, _mem) = test_guard(r#"{"type":"slider","x":100.0}"#);
-        let err = verify_captcha(&guard, Some("test-key"), Some(Answer::Slider(200.0)), "1.2.3.4")
+        let err = verify_captcha(&guard, Some(KEY), Some(Answer::Slider(200.0)), "1.2.3.4")
             .unwrap_err();
         assert_eq!(err.into_response().status(), StatusCode::BAD_REQUEST);
 
         // 没带凭据 / key 不存在：与本项目「登录失败」的 401 分开，统一 400
         for (key, answer) in [
             (None, Some(Answer::Slider(100.0))),
-            (Some("test-key"), None),
-            (Some("no-such-key"), Some(Answer::Slider(100.0))),
+            (Some(KEY), None),
+            (Some(KEY_ABSENT), Some(Answer::Slider(100.0))),
         ] {
             let err = verify_captcha(&guard, key, answer, "1.2.3.4").unwrap_err();
             assert_eq!(err.into_response().status(), StatusCode::BAD_REQUEST, "{key:?}");
@@ -721,7 +738,7 @@ mod tests {
 
         // 类型不符（载荷是 slider，答案按 click 交）也只是一次普通失败
         let (guard, _mem) = test_guard(r#"{"type":"slider","x":100.0}"#);
-        assert!(verify_captcha(&guard, Some("test-key"), Some(Answer::Click(vec![(1.0, 1.0)])), "1.2.3.4").is_err());
+        assert!(verify_captcha(&guard, Some(KEY), Some(Answer::Click(vec![(1.0, 1.0)])), "1.2.3.4").is_err());
     }
 
     /// 限流按身份分桶（身份由登录接口传的 `client_ip()` 派生）：一个 IP 打满额度后
@@ -732,17 +749,17 @@ mod tests {
         const PAYLOAD: &str = r#"{"type":"slider","x":100.0}"#;
         let (guard, mem) = test_guard(PAYLOAD);
         for _ in 0..30 {
-            let _ = verify_captcha(&guard, Some("test-key"), Some(Answer::Slider(0.0)), "9.9.9.9");
+            let _ = verify_captcha(&guard, Some(KEY), Some(Answer::Slider(0.0)), "9.9.9.9");
         }
         // 9.9.9.9 的额度已耗尽：换个新 key 交正确答案也不放行
-        put_key(&mem, "k2", PAYLOAD);
+        put_key(&mem, KEY2, PAYLOAD);
         assert!(
-            verify_captcha(&guard, Some("k2"), Some(Answer::Slider(100.0)), "9.9.9.9").is_err(),
+            verify_captcha(&guard, Some(KEY2), Some(Answer::Slider(100.0)), "9.9.9.9").is_err(),
             "同一身份超窗口上限后必须关闭"
         );
         // 同一个存储、同一个窗口，另一个身份照常通过
-        put_key(&mem, "k3", PAYLOAD);
-        assert!(verify_captcha(&guard, Some("k3"), Some(Answer::Slider(100.0)), "1.1.1.1").is_ok());
+        put_key(&mem, KEY3, PAYLOAD);
+        assert!(verify_captcha(&guard, Some(KEY3), Some(Answer::Slider(100.0)), "1.1.1.1").is_ok());
     }
 
     /// 假哈希必须是**可解析**的 argon2 串：解析失败时 `verify_password` 会立刻返回

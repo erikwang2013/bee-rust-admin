@@ -10,7 +10,7 @@
 //! 所以插件依赖只开零依赖内核（`default-features = false`），路由与信封都是我们的。
 //!
 //! 落盘位置由插件定：`{upload_dir}/avatar/{按月的子目录}/{整份 md5}.{ext}`；
-//! `admin.avatar` 列存的是它的 `savedPath`（`avatar_<子目录>_<md5>.<ext>`），
+//! `admin.avatar` 列存的是它的 `saved_path`（`avatar_<子目录>_<md5>.<ext>`），
 //! 对外 URL 仍是 `/api/v1/avatar/{hashids(id)}`（[`avatar_url`]）—— 前端拿到的形状不变。
 //!
 //! **存量头像不用迁移**：4b 之前的列值是 `/api/v1/avatar/xxx` 这种老 URL，读路径
@@ -23,6 +23,7 @@ use crate::hid;
 use crate::models::Admin;
 use crate::state::AppState;
 use crate::util::now;
+use aetherupload::json::{save_chunk_ok_to_json, upload_ok_to_json};
 use aetherupload::{
     ChunkBody, Config as UploadConfig, FormData, GroupConfig, MemoryInstantStore, Runtime,
     UploadController,
@@ -37,7 +38,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-/// 上传分组名。**不能含下划线**：插件的 `savedPath` 是 `group_subdir_name` 三段式，
+/// 上传分组名。**不能含下划线**：插件的 `saved_path` 是 `group_subdir_name` 三段式，
 /// 用 `_` 分隔，含下划线的分组名会让解码错位、该分组的资源永久 404（插件在
 /// `Config::resolve_group` 里直接拒）。
 pub(crate) const AVATAR_GROUP: &str = "avatar";
@@ -112,7 +113,7 @@ pub fn avatar_url(id: i64) -> String {
     format!("/api/v1/avatar/{}", hid::enc(id))
 }
 
-/// 列表 / 详情 / 个人资料里的 `avatar` 字段：列里存的是 savedPath（内部地址），
+/// 列表 / 详情 / 个人资料里的 `avatar` 字段：列里存的是 saved_path（内部地址），
 /// 对外一律换成可用的 URL；没有头像仍是空串（前端据此显示占位，别给一个必然 404 的地址）。
 pub fn public_avatar(stored: &str, id: i64) -> String {
     if stored.trim().is_empty() { String::new() } else { avatar_url(id) }
@@ -125,10 +126,10 @@ fn legacy_avatar_path(cfg: &AppConfig, id: i64, ext: &str) -> PathBuf {
 
 /// `POST /api/v1/avatar/upload/preprocess` —— 校验参数、判秒传、建临时文件。
 ///
-/// **秒传命中时（`savedPath` 非空）这里就把头像落库**：拿到非空 `savedPath` 的前端会
+/// **秒传命中时（`saved_path` 非空）这里就把头像落库**：拿到非空 `saved_path` 的前端会
 /// 直接结束流程、不再发 chunk（协议如此），不在这里处理的话换头像会静默失效。
 #[apidoc::title("头像上传 · 预检")]
-#[apidoc::desc("校验参数、判秒传、建临时文件；**秒传命中时本次就落库**并回可用的 avatar 地址（前端拿到非空 savedPath 即可结束流程）。需要登录")]
+#[apidoc::desc("校验参数、判秒传、建临时文件；**秒传命中时本次就落库**并回可用的 avatar 地址（前端拿到非空 saved_path 即可结束流程）。需要登录")]
 #[apidoc::url("/api/v1/avatar/upload/preprocess")]
 #[apidoc::method("POST")]
 #[apidoc::tag("头像")]
@@ -139,7 +140,7 @@ fn legacy_avatar_path(cfg: &AppConfig, id: i64, ext: &str) -> PathBuf {
 #[apidoc::not_debug]
 #[apidoc::response_status("200")]
 #[apidoc::response_status("400")]
-#[apidoc::returned(name = "data", ty = "object", desc = "插件响应：savedPath 非空 = 秒传命中（同时带 avatar 地址）；否则带分片信息（chunkSize 等）")]
+#[apidoc::returned(name = "data", ty = "object", desc = "插件响应：saved_path 非空 = 秒传命中（同时带 avatar 地址）；否则带分片信息（chunk_size 等）")]
 pub async fn preprocess(
     State(state): State<AppState>,
     auth: Auth,
@@ -152,19 +153,22 @@ pub async fn preprocess(
     })
     .await?;
 
-    let Some(message) = result.error else {
-        let done = !result.saved_path.is_empty();
-        if done {
-            finish(&state, &auth.admin, &result.saved_path).await?;
+    match result {
+        Ok(parsed) => {
+            let done = !parsed.saved_path.is_empty();
+            if done {
+                finish(&state, &auth.admin, &parsed.saved_path).await?;
+            }
+            let mut data = plugin_json(&upload_ok_to_json(&parsed))?;
+            if done {
+                // 秒传命中：把可直接用的地址一并给前端（与末片的 chunk 响应一致）
+                data["avatar"] = json!(avatar_url(auth.admin.id));
+            }
+            Ok(ok(data))
         }
-        let mut data = plugin_json(&result.to_json())?;
-        if done {
-            // 秒传命中：把可直接用的地址一并给前端（与末片的 chunk 响应一致）
-            data["avatar"] = json!(avatar_url(auth.admin.id));
-        }
-        return Ok(ok(data));
-    };
-    Err(ApiError::BadRequest(message))
+        // 2.x 起内核失败回 `Problem`（稳定 code + 本地化 title）；信封不变：400 + 文案
+        Err(problem) => Err(ApiError::BadRequest(problem.title)),
+    }
 }
 
 /// `POST /api/v1/avatar/upload/chunk` —— 逐片追加；末片组装完成后头像落库。
@@ -181,7 +185,7 @@ pub async fn preprocess(
 #[apidoc::not_debug]
 #[apidoc::response_status("200")]
 #[apidoc::response_status("400")]
-#[apidoc::returned(name = "data", ty = "object", desc = "插件响应；末片（savedPath 非空）额外带 avatar 地址")]
+#[apidoc::returned(name = "data", ty = "object", desc = "插件响应；末片（saved_path 非空）额外带 avatar 地址")]
 pub async fn chunk(
     State(state): State<AppState>,
     auth: Auth,
@@ -192,19 +196,21 @@ pub async fn chunk(
     let result =
         run_kernel(&state, move |runtime| UploadController::new(runtime).save_chunk(&request)).await?;
 
-    let Some(message) = result.error else {
-        let mut data = plugin_json(&result.to_json())?;
-        // `savedPath` 非空 = 组装完成（末片，或秒传命中后的幂等重发）；空串 = 中间片，库不动
-        if !result.saved_path.is_empty() {
-            finish(&state, &auth.admin, &result.saved_path).await?;
-            data["avatar"] = json!(avatar_url(auth.admin.id));
+    match result {
+        Ok(parsed) => {
+            let mut data = plugin_json(&save_chunk_ok_to_json(&parsed))?;
+            // `saved_path` 非空 = 组装完成（末片，或秒传命中后的幂等重发）；空串 = 中间片，库不动
+            if !parsed.saved_path.is_empty() {
+                finish(&state, &auth.admin, &parsed.saved_path).await?;
+                data["avatar"] = json!(avatar_url(auth.admin.id));
+            }
+            Ok(ok(data))
         }
-        return Ok(ok(data));
-    };
-    Err(ApiError::BadRequest(message))
+        Err(problem) => Err(ApiError::BadRequest(problem.title)),
+    }
 }
 
-/// 上传完成：把 `savedPath` 写进 `admin.avatar`，并删掉这位管理员**上一张**头像文件
+/// 上传完成：把 `saved_path` 写进 `admin.avatar`，并删掉这位管理员**上一张**头像文件
 /// （否则每换一次头像就多留一个文件，只涨不跌）。
 ///
 /// 幂等：末片重发、秒传命中后前端又发了末片 —— 此时库里的值就是新的，`old == saved`，
@@ -235,8 +241,8 @@ async fn finish(state: &AppState, admin: &Admin, saved_path: &str) -> Result<(),
         return Ok(());
     }
 
-    // savedPath 形态：先确认没有别的管理员还在引用同一份文件 —— 秒传（去重）意味着
-    // 内容相同的头像共用同一个 savedPath，删之前不查引用会把别人的头像删成 404。
+    // saved_path 形态：先确认没有别的管理员还在引用同一份文件 —— 秒传（去重）意味着
+    // 内容相同的头像共用同一个 saved_path，删之前不查引用会把别人的头像删成 404。
     // 本行此时已经改成新值，还匹配 `previous` 的都是别人。
     let others = Admin::query()
         .filter_eq("avatar", previous.clone())
@@ -249,7 +255,7 @@ async fn finish(state: &AppState, admin: &Admin, saved_path: &str) -> Result<(),
     }
 
     // 交给插件删：文件 + 秒传索引一起清（索引留着的话，下次重传同一张图会
-    // 「秒传命中」一个已经不存在的 savedPath → 头像 404）。
+    // 「秒传命中」一个已经不存在的 saved_path → 头像 404）。
     if !state.aether.delete_resource(&previous) {
         tracing::debug!("删旧头像文件 {previous} 未成功（可能已被删或路径非法）");
     }
@@ -278,7 +284,7 @@ where
 
 /// 插件响应原文（`to_json()` 的 String）→ `Value`。
 ///
-/// 字段名是它的 camelCase 契约（`chunkSize` / `savedPath` / `error`…），**原文透传**，
+/// 字段名是它的 camelCase 契约（`chunk_size` / `saved_path` / `error`…），**原文透传**，
 /// 我们只在末片额外补一个 `avatar` 键；不照着重拼一遍 —— 拼一遍就多一处会对不上的地方。
 fn plugin_json(raw: &str) -> Result<Value, ApiError> {
     serde_json::from_str(raw)
@@ -297,7 +303,7 @@ async fn read_form(multipart: &mut Multipart) -> Result<FormData, ApiError> {
         };
         if name == "resource_chunk" {
             let bytes = field.bytes().await.map_err(form_error)?;
-            // 单独一片不可能比整张图还大：超了说明客户端没按服务端给的 chunkSize 切
+            // 单独一片不可能比整张图还大：超了说明客户端没按服务端给的 chunk_size 切
             // （或有人在拿这个口塞别的东西）。真正的总大小闸在插件里（分组配置）。
             if bytes.len() as u64 > AVATAR_MAX_BYTES {
                 return Err(ApiError::BadRequest("头像不能超过 512 KB".into()));
@@ -305,6 +311,16 @@ async fn read_form(multipart: &mut Multipart) -> Result<FormData, ApiError> {
             form.push_file(name, ChunkBody::Bytes(bytes.to_vec()));
         } else {
             let text = field.text().await.map_err(form_error)?;
+            // 总大小闸：**自己拦**。插件 2.x 对超过 `resource_maxsize` 回的是
+            // 「缺少必要的文件参数」（语义不对），我们用自己的文案 + 稳定码
+            // （`avatar.too_large`，前端有译）。非数字交给插件去报参数非法。
+            if name == "resource_size" {
+                if let Ok(n) = text.trim().parse::<u64>() {
+                    if n > AVATAR_MAX_BYTES {
+                        return Err(ApiError::BadRequest("头像不能超过 512 KB".into()));
+                    }
+                }
+            }
             form.push_text(name, text);
         }
     }
@@ -324,9 +340,9 @@ fn form_error(e: axum::extract::multipart::MultipartError) -> ApiError {
 /// 库里两种值形态都认：
 /// - `/…` 开头 = 4b 之前的老 URL → 回落到老的 `{upload_dir}/avatar/{id}.{ext}`
 ///   （**存量头像不迁移也能显示**）；
-/// - 其它非空值 = 插件的 `savedPath` → 按上传根解析后读文件。
+/// - 其它非空值 = 插件的 `saved_path` → 按上传根解析后读文件。
 ///
-/// 路径参数是 hashids 短串，解出数字 id 才查库；`savedPath` 的三段合法性与分组
+/// 路径参数是 hashids 短串，解出数字 id 才查库；`saved_path` 的三段合法性与分组
 /// 由插件校验（`Runtime::resource`），不存在路径穿越。读不到一律 404。
 #[apidoc::title("读取头像")]
 #[apidoc::desc("**公开接口**（<img> 标签带不了 Authorization 头）。id 是 hashids 短串；读不到一律 404")]
@@ -457,7 +473,7 @@ initial_admin_password = admin123
         // hid 的全局单例在单测里没人初始化（main 才调）：本用例要编短串，自己来一次。
         // OnceLock 只能初始化一次，别的用例先跑就复用它的盐（与 hid.rs 的 setup 同一套路）。
         let _ = crate::hid::init("hid-unit-test-salt", 8);
-        // 存的是 savedPath（内部地址），对外的形状仍是 /api/v1/avatar/{短串}
+        // 存的是 saved_path（内部地址），对外的形状仍是 /api/v1/avatar/{短串}
         assert_eq!(
             public_avatar("avatar_202610_d41d8cd98f00b204e9800998ecf8427e.png", 7),
             avatar_url(7)

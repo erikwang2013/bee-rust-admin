@@ -53,7 +53,7 @@ impl AppState {
     /// 新主键。发号失败（时钟回拨越界 / 序列耗尽）→ 500，不静默用 0。
     pub fn next_id(&self) -> Result<i64, ApiError> {
         self.snowflake
-            .next_id()
+            .id() // snowflake-id-rust 2.x：Shared 的发号方法从 next_id 更名成 id
             .map_err(|e| ApiError::internal(format!("生成 id 失败: {e}")))
     }
 }

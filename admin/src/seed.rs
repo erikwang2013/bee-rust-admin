@@ -11,7 +11,8 @@ use snowflake::Shared;
 /// 插入前取一个雪花主键。seed 的函数走 `OrmError` 通道（没有 `ApiError`），
 /// 发号失败按查询错误上报 —— 进程刚起、表都还没建全，起不来比发出重复 id 好。
 fn next_id(sk: &Shared) -> Result<i64, OrmError> {
-    sk.next_id().map_err(|e| OrmError::QueryError(format!("雪花发号失败: {e}")))
+    sk.id() // snowflake-id-rust 2.x：Shared 的发号方法从 next_id 更名成 id
+        .map_err(|e| OrmError::QueryError(format!("雪花发号失败: {e}")))
 }
 
 /// 建表 + 补列（只在启动时跑，幂等）。

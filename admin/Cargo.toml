@@ -37,14 +37,14 @@ thiserror = "2"
 tracing = "0.1"
 # 登录限流用它的 throttle 模块。**不走 workspace = true**：workspace 表里那条
 # `security-rust = "1"` 是给 bee_router 的可选 security 特性的，1.x 没有 throttle。
-security-rust = "3"
+security-rust = "4"
 # 头像分片上传走 aetherupload-rust 的内核（分块追加落盘 / 秒传 / 完整性校验）。
 # **按版本依赖，不要用 path**：本机 path 在 CI 与其他机器上不存在，会让构建直接失败。
 # 不开默认以外的任何 feature（默认 = 零第三方依赖的纯内核）：`axum` feature 会从
 # crates.io 拉一份 bee_router，与 workspace 的 path 版冲突，而且它给的是**公开**路由
 # ——我们要的是登录后才可用的上传口，路由自己挂（见 src/api/avatar.rs）。
 # lib 名与包名不同：aetherupload-rust → `aetherupload`。
-aetherupload-rust = { version = "1.0.3", default-features = false }
+aetherupload-rust = { version = "2.1.0", default-features = false }
 # admin.email / phone 的落库加密（AES-256-GCM，随机 nonce）。**按版本依赖，不要用
 # path**：本机 path 在 CI 与其他机器上不存在，会让构建直接失败。
 # lib 名与包名不同：encryptable-rust → `encryptable`。
@@ -54,20 +54,20 @@ encryptable-rust = "1.2.1"
 # lib 名与包名不同：snowflake-id-rust → `snowflake`，hashids-rust → `hashids`。
 # hashids 开 `axum` 特性（项目本来就是 axum，无额外编译）；不用 `bee` ——
 # 那个特性会从 crates.io 拉一份 bee_router，与 workspace 的 path 版重复。
-snowflake-id-rust = "1.1.1"
-hashids-rust = { version = "1.0.10", features = ["axum"] }
+snowflake-id-rust = "2.0.0"
+hashids-rust = { version = "2.0.0", features = ["axum"] }
 # 登录图形验证码（点击 / 旋转 / 滑块，随机切）。**按版本依赖，不要用 path**：
 # 本机 path 在 CI 与其他机器上不存在。
 # 不开 `axum` 特性：那个特性给的是插件自带的 axum 路由，返回**裸 JSON**，
 # 与本项目 `{code,msg,data}` 信封不一致（前端拦截器按信封解包）；
 # 这里只用不依赖框架的核心 `Guard`（core 不挂 feature 门控），路由自己挂。
 # 更不要 `bee-rust` 特性 —— 它会从 crates.io 再拉一份 bee_router，与 workspace 的 path 版打架。
-poster-rust = "1.1.2"
+poster-rust = "2.0.0"
 # 接口文档站（阶段 5b）。**按版本依赖，不要用 path**：本机 path 在 CI 与其他机器上不存在。
 # lib 名与包名不同：apidoc-rust → `apidoc`（注解宏生成的 `apidoc::…` 路径靠它解析）。
 # `axum` 特性给的是 `apidoc::axum::apidoc_routes(cfg)`（内含 /apidoc、/apidoc/api.json 等），
 # 路由由我们自己 merge（默认关闭，见 [apidoc] enabled）。
-apidoc-rust = { version = "1.6.2", features = ["axum"] }
+apidoc-rust = { version = "2.0.0", features = ["axum"] }
 # 注解宏生成的注册项引用 `::linkme::…`（属性的 `crate = …` 未被 apidoc 宏设置），
 # 所以消费方必须**直接**依赖 linkme，不能只靠 apidoc 的 re-export。
 linkme = "0.3"
