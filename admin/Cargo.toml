@@ -6,8 +6,9 @@ license = "Apache-2.0"
 publish = false
 
 [dependencies]
-# 不用默认的 "full"：它会打开 bee_router 的 security（拉 security-rust 1.x），
-# 而本项目用的是 3.x 的 throttle，两者会同时进依赖图。
+# 不用默认的 "full"：它会把 kv / template / session / cache / security 一并拉进来
+# （依赖图白胖一圈），其中 security 打开的是 bee_router 的扫描特性 —— 我们的请求安全
+# 扫描是自己接 security_rust 的（src/security_scan.rs），不需要它。
 #
 # 注意 `router` 只启用 **依赖** `bee_logs`/`bee_config`，而 `bee_rust::bee_logs`
 # 这类 re-export 由**同名特性** `logs`/`config` 门控 —— 两组都得列。
@@ -35,8 +36,9 @@ argon2 = { version = "0.5", features = ["std"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
 thiserror = "2"
 tracing = "0.1"
-# 登录限流用它的 throttle 模块。**不走 workspace = true**：workspace 表里那条
-# `security-rust = "1"` 是给 bee_router 的可选 security 特性的，1.x 没有 throttle。
+# 登录限流用它的 throttle 模块。**不走 workspace = true**：workspace 表里那条（现在同为 4）
+# 是给 bee_router 的可选 security 特性用的（默认不启用），admin 这条是实打实要 throttle
+# 模块 —— 两个用点独立，各钉各的。
 security-rust = "4"
 # 头像分片上传走 aetherupload-rust 的内核（分块追加落盘 / 秒传 / 完整性校验）。
 # **按版本依赖，不要用 path**：本机 path 在 CI 与其他机器上不存在，会让构建直接失败。

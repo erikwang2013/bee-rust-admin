@@ -16,8 +16,10 @@ pub enum ApiError {
     NotFoundMsg(String),
     Internal(String),
     /// 带 `args` 的稳定错误码：`err` + `args` 进信封给前端拼文案，`msg` 仍是中文原文。
-    /// 只有「参数是原始值」的码（too_long / throttled / not_registered / forbidden）用它，
-    /// 静态消息走 `code_of` 表按 `msg` 自动挂码。
+    /// 两类码用它：①「参数是原始值」的码（too_long / throttled / not_registered / forbidden），
+    /// 静态消息走 `code_of` 表按 `msg` 自动挂码；②头像上传透传 aetherupload 的稳定码与
+    /// 真实状态码（409 乱序等，见 `api::avatar::problem_to_api_error`，`args` 可能为 null）。
+    /// 后一类不进 `ERR_TABLE`：前端查不到词表就回落后端 `msg`。
     Coded { status: StatusCode, err: &'static str, msg: String, args: Value },
 }
 

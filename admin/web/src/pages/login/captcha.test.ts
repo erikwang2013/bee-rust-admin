@@ -3,7 +3,6 @@ import {
   MAX_TRAIL_POINTS,
   clickAnswer,
   rotateAnswer,
-  sliderAnswer,
   sliderAnswerWithTrail,
   toImagePoint,
   toTrail,
@@ -52,13 +51,6 @@ describe('rotateAnswer', () => {
       expect(Rotate).toBeGreaterThanOrEqual(0);
       expect(Rotate).toBeLessThan(360);
     }
-  });
-});
-
-describe('sliderAnswer', () => {
-  it('保留两位小数', () => {
-    expect(sliderAnswer(173)).toEqual({ Slider: 173 });
-    expect(sliderAnswer(173.4567)).toEqual({ Slider: 173.46 });
   });
 });
 

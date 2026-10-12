@@ -38,11 +38,6 @@ export function rotateAnswer(cssDeg: number): CaptchaAnswer {
   return { Rotate: round2(deg) };
 }
 
-/** 滑块答案：x 是拼图块左边缘（图片像素）。 */
-export function sliderAnswer(x: number): CaptchaAnswer {
-  return { Slider: round2(x) };
-}
-
 /** 拖拽的原始采样：`[clientX, clientY, performance.now()]`，指针事件里原样收下。 */
 export type RawTrailSample = [number, number, number];
 

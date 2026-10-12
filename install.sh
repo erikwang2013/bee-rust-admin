@@ -858,7 +858,13 @@ fi
 #  9. 启动 + 自检
 # ══════════════════════════════════════════════════════════════════════════
 manual_start=0
-if run_root systemctl restart "$SERVICE_NAME" 2>/dev/null; then
+if [ "$WITH_SYSTEMD" != 1 ]; then
+  # --no-systemd：单元文件根本没装进系统，`restart $SERVICE_NAME` 只会打到**同名的别的单元**
+  # （默认服务名就是 bee-admin —— 那多半是生产那个），所以这里坚决不碰 systemd。
+  # 手动启动命令在收尾处打印（与 need-root 的提示同一口径）。
+  say "跳过重启服务（--no-systemd，单元没有装）"
+  manual_start=1
+elif run_root systemctl restart "$SERVICE_NAME" 2>/dev/null; then
   info "已重启 $SERVICE_NAME.service"
   sleep 2
 else
@@ -927,7 +933,9 @@ info "安装根：$PREFIX    版本：$(cat "$VERSION_FILE" 2>/dev/null || echo 
     printf '%s\n' "$need_root_cmds" >&2
     printf '\n' >&2
   else
-    printf '\n%s你用了 --no-systemd/--no-nginx：服务和站点都只渲染到 %s/etc/，没装到系统里。%s\n' \
+    # 走到这里 = 服务没被 systemd 托管（--no-systemd、--no-nginx、或没 root）。
+    # 只陈述这一件事：站点装没装是另一码事，别一起说。
+    printf '\n%s服务没有被 systemd 托管（--no-systemd / --no-nginx / 没 root）：单元只渲染到 %s/etc/，没装进系统。%s\n' \
       "$C_YEL" "$PREFIX" "$C_OFF" >&2
     printf '  要这么起（前台）：\n' >&2
   fi

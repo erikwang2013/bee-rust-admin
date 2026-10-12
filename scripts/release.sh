@@ -44,7 +44,8 @@ BRA 发版脚本
 用法：bash scripts/release.sh <tag> --notes-file FILE [--dry-run]
 
   <tag>               形如 v2.9.0（拒绝重发：本地与远端都不能已有这个 tag）。
-                      允许 v9.9.9-rc1 这样的预发布后缀。
+                      允许 v9.9.9-rc1 这样的预发布后缀 —— 带后缀的自动标 --prerelease
+                      （不标的话它会被当成正式版、占掉 Latest，有人就装到 rc 上了）。
   --notes-file FILE   Release 说明（标题只写 vX.Y.Z，描述全在这个文件里）
   --dry-run           真构建、真打包、真自检，打印将要执行的 gh 命令后退出
   --help              显示本帮助
@@ -187,8 +188,11 @@ info "bee-admin-web-dist.tar.gz $(stat -c%s "$ASSETS/bee-admin-web-dist.tar.gz")
 # ══════════════════════════════════════════════════════════════════════════
 #  发布（标题只写 tag；--target 钉住 HEAD，远端 tag 就落在被测过的那个提交上）
 # ══════════════════════════════════════════════════════════════════════════
-gh_cmd=(gh release create "$TAG" --title "$TAG" --notes-file "$NOTES" --target "$HEAD"
-        "$ASSETS/bee_admin" "$ASSETS/bee-admin-web-dist.tar.gz")
+gh_cmd=(gh release create "$TAG" --title "$TAG" --notes-file "$NOTES" --target "$HEAD")
+# 带后缀的 tag（v2.9.0-rc1）是预发布：必须标 --prerelease —— 不标就会被当成正式版发布、
+# 还会占掉 Latest，而 install.sh 默认模式取 latest，等于把人往 rc 上引。纯 vX.Y.Z 才不加。
+case $TAG in *-*) gh_cmd+=(--prerelease);; esac
+gh_cmd+=("$ASSETS/bee_admin" "$ASSETS/bee-admin-web-dist.tar.gz")
 
 if [ "$DRY_RUN" = 1 ]; then
   say "干跑结束：没有推送、没有建 release、没动远端。将要执行的命令是："

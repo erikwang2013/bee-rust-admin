@@ -11,8 +11,9 @@
 #  1. 库名/账号名固定 `<DSN用户>_smoke_test`，且硬性要求以 _test 结尾，撞上
 #     bee_admin / bee_admin_test 就直接退出 —— 这是「DROP DATABASE」前面最后一道闸。
 #  2. 端口固定 180xx（生产 8080 一眼可分）；服务名 bra-smoke-<pid>（**必须**：
-#     install.sh 第 9 步的 `systemctl restart $SERVICE_NAME` 不受 --no-systemd 约束，
-#     有 root 时会去 restart 生产单元；换个单元名就够不着它了）。
+#     测试脚本永远不许碰名叫 bee-admin 的单元 —— 换单元名是最后一道护栏。install.sh
+#     第 9 步的 `systemctl restart $SERVICE_NAME` 曾经不受 --no-systemd 约束、有 root 时
+#     就会去 restart 生产单元；现已加门控（--no-systemd 直接跳过重启）。
 #  3. 前缀是 mktemp 出来的 /tmp/bra-smoke-*，删它之前还要再验证一次路径形状。
 #  4. 全程只读 admin/conf/app.conf 拿管理员凭据（连接用 MYSQL_PWD，不进 argv、不打印）。
 # ══════════════════════════════════════════════════════════════════════════

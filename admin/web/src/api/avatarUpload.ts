@@ -3,9 +3,12 @@ import { http } from './client';
 import { md5Hex } from './md5';
 
 /**
- * 头像分片上传（aetherupload-rust 契约，见
- * docs/superpowers/plans/2026-10-06-bra-v1.5-c-modules.md「阶段 4b 契约」）。
- * 两个接口都是 multipart 表单，`data` 是插件原文：`error` 0 成功 / 字符串是插件文案。
+ * 头像分片上传（aetherupload-rust 2.x 契约，见
+ * docs/superpowers/plans/2026-10-06-bra-v1.5-c-modules.md「阶段 4b 契约」及其补记）。
+ * 两个接口都是 multipart 表单，`data` 是插件原文（`chunk_size` / `saved_path` …）——
+ * **成功体里没有 1.x 那个 `error` 字段**；失败是插件的 Problem，后端按它的真实状态码
+ * （400 / 409 / 413 / 415 …）与稳定码转成统一信封（`msg` 是插件文案）。HTTP 层的失败由
+ * 拦截器统一提示，不走下面的 AvatarUploadError。
  * 没有 md5 时插件（非宽松模式）末片校验会直接把整份上传判失败，所以这里带着真 hash 传。
  */
 interface PreprocessData {
