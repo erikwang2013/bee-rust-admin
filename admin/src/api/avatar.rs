@@ -311,9 +311,10 @@ async fn read_form(multipart: &mut Multipart) -> Result<FormData, ApiError> {
             form.push_file(name, ChunkBody::Bytes(bytes.to_vec()));
         } else {
             let text = field.text().await.map_err(form_error)?;
-            // 总大小闸：**自己拦**。插件 2.x 对超过 `resource_maxsize` 回的是
-            // 「缺少必要的文件参数」（语义不对），我们用自己的文案 + 稳定码
-            // （`avatar.too_large`，前端有译）。非数字交给插件去报参数非法。
+            // 总大小闸：**自己拦**。插件对超过 `resource_maxsize` 回的是
+            // `invalid_resource_params`——2.x 的文案是「缺少必要的文件参数」（完全不沾边），
+            // 3.x 改成「无效的文件参数」（不点明是「太大」）；我们用自己的文案 + 稳定码
+            // （`avatar.too_large`，前端有译），插件那道当兜底。非数字交给插件报参数非法。
             if name == "resource_size" {
                 if let Ok(n) = text.trim().parse::<u64>() {
                     if n > AVATAR_MAX_BYTES {

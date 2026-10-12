@@ -63,9 +63,9 @@ dependencies = [
 
 [[package]]
 name = "aetherupload-rust"
-version = "2.1.0"
+version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a536737bcf028f2f9e7abcc0901fba2472a3ebaaef1256a5b01e8e7688677469"
+checksum = "0847c75daad10be4b62231726857e35bdc5e99cc1f693e4391cba0e49e1eb2c4"
 
 [[package]]
 name = "ahash"

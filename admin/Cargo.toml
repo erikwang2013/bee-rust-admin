@@ -44,7 +44,7 @@ security-rust = "4"
 # crates.io 拉一份 bee_router，与 workspace 的 path 版冲突，而且它给的是**公开**路由
 # ——我们要的是登录后才可用的上传口，路由自己挂（见 src/api/avatar.rs）。
 # lib 名与包名不同：aetherupload-rust → `aetherupload`。
-aetherupload-rust = { version = "2.1.0", default-features = false }
+aetherupload-rust = { version = "3.0.0", default-features = false }
 # admin.email / phone 的落库加密（AES-256-GCM，随机 nonce）。**按版本依赖，不要用
 # path**：本机 path 在 CI 与其他机器上不存在，会让构建直接失败。
 # lib 名与包名不同：encryptable-rust → `encryptable`。

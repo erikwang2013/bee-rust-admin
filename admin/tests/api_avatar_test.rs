@@ -475,7 +475,7 @@ async fn v18_avatar_chunked_upload() {
     assert_eq!(st, 400, "超过 512 KB: {v}");
     assert!(
         v["msg"].as_str().unwrap_or("").contains("头像不能超过 512 KB"),
-        "超限走我们自己的文案（插件 2.x 对超限回的是「缺少必要的文件参数」，不用它）: {v}"
+        "超限走我们自己的文案（插件的 invalid_resource_params 不点明「太大」，不用它）: {v}"
     );
     assert_eq!(v["err"], "avatar.too_large", "稳定码给前端译: {v}");
 
