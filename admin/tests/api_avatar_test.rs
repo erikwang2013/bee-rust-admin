@@ -1,5 +1,5 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-//! 阶段 4b：头像分片上传（aetherupload-rust 1.0.3）的后端契约。
+//! 阶段 4b：头像分片上传（aetherupload-rust 3.0.0）的后端契约。
 //! 契约见 `docs/superpowers/plans/2026-10-06-bra-v1.5-c-modules.md`「阶段 4b 契约 · 头像分片上传」。
 //!
 //! 起真实进程 + 真库（bee_admin_test），需要 BEE_ADMIN_DB_DSN；上传根是
@@ -166,7 +166,7 @@ async fn v18_avatar_chunked_upload() {
     .await;
     assert_eq!(st, 200, "预处理: {v}");
     let data = &v["data"];
-    // 2.x 起成功体不再带 `error` 字段（失败走 Problem → 400 信封，下面各处有断言）
+    // 2.x 起成功体不再带 `error` 字段（失败走 Problem：真实状态码 + 稳定码透传，下面各处有断言）
     assert_eq!(
         data["chunk_size"], 128 * 1024,
         "chunk_size 由服务端给（必须小于 512KB 上限，否则头像永远只有一片）: {v}"
@@ -187,6 +187,23 @@ async fn v18_avatar_chunked_upload() {
 
     // ── 分两片传（手工切，不依赖 chunk_size）：末片才落库 ───────────
     let (first, second) = png.split_at(30);
+
+    // 乱序：服务端期待第 1 片时先发第 2 片 → 409 + 稳定码（可恢复，进度必须保留 ——
+    // 紧接着正常发第 1 片还是 200 就是证据），args 里带插件给的期望序号
+    let (st, v) = post_form(
+        &c,
+        api("/avatar/upload/chunk"),
+        Some(&admin),
+        chunk_form(&temp_base, "png", &subdir, &png_hash, 2, 2, second.to_vec()),
+    )
+    .await;
+    assert_eq!(st, 409, "分块乱序是 409（可恢复），不是 400: {v}");
+    assert_eq!(v["err"], "chunk_out_of_order", "插件的稳定码原样透传: {v}");
+    assert_eq!(
+        v["args"]["expected_index"], 1,
+        "插件 extra 里的期望序号进 args（前端据它续传）: {v}"
+    );
+
     let (st, v) = post_form(
         &c,
         api("/avatar/upload/chunk"),
@@ -450,7 +467,7 @@ async fn v18_avatar_chunked_upload() {
     assert_eq!(r.headers()["content-type"], "image/png");
     assert_eq!(r.bytes().await.unwrap().as_ref(), png.as_slice());
 
-    // ── 错误路径：插件的文案原样回给前端，且不带我们表里的 err 码（文案随 locale 变）──
+    // ── 错误路径：插件的真实状态码 + 稳定码 + 按 locale 出的文案，一起回给前端 ──
     let (st, v) = post_form(
         &c,
         api("/avatar/upload/preprocess"),
@@ -458,12 +475,15 @@ async fn v18_avatar_chunked_upload() {
         preprocess_form("avatar.gif", 68, &png_hash),
     )
     .await;
-    assert_eq!(st, 400, "扩展名不在白名单（gif）: {v}");
+    assert_eq!(st, 415, "扩展名不在白名单（gif）: {v}");
     assert!(
         v["msg"].as_str().unwrap_or("").contains("不支持的媒体类型"),
-        "locale=zh 时是插件 2.x 的中文文案: {v}"
+        "locale=zh 时是插件按请求 locale 出的文案: {v}"
     );
-    assert!(v.get("err").is_none(), "插件文案没有稳定错误码: {v}");
+    assert_eq!(
+        v["err"], "unsupported_media_type",
+        "插件 3.x 的稳定码原样透传（2.x 只给文案，没码）: {v}"
+    );
 
     let (st, v) = post_form(
         &c,

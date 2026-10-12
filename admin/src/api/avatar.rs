@@ -30,7 +30,7 @@ use aetherupload::{
 };
 use axum::Json;
 use axum::extract::{Multipart, State};
-use axum::http::{HeaderMap, header};
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use bee_orm::Model;
 use serde_json::{Value, json};
@@ -140,6 +140,7 @@ fn legacy_avatar_path(cfg: &AppConfig, id: i64, ext: &str) -> PathBuf {
 #[apidoc::not_debug]
 #[apidoc::response_status("200")]
 #[apidoc::response_status("400")]
+#[apidoc::response_status("415")]
 #[apidoc::returned(name = "data", ty = "object", desc = "插件响应：saved_path 非空 = 秒传命中（同时带 avatar 地址）；否则带分片信息（chunk_size 等）")]
 pub async fn preprocess(
     State(state): State<AppState>,
@@ -166,25 +167,29 @@ pub async fn preprocess(
             }
             Ok(ok(data))
         }
-        // 2.x 起内核失败回 `Problem`（稳定 code + 本地化 title）；信封不变：400 + 文案
-        Err(problem) => Err(ApiError::BadRequest(problem.title)),
+        // 内核失败回 `Problem`：真实状态码 + 稳定 code 一起透传（不再一律压成 400）
+        Err(problem) => Err(problem_to_api_error(problem)),
     }
 }
 
 /// `POST /api/v1/avatar/upload/chunk` —— 逐片追加；末片组装完成后头像落库。
 #[apidoc::title("头像上传 · 上传分片")]
-#[apidoc::desc("multipart 逐片追加（128 KB/片）；末片组装完成后头像落库并回 avatar 地址。需要登录")]
+#[apidoc::desc("multipart 逐片追加（128 KB/片）；末片组装完成后头像落库并回 avatar 地址。失败按插件的真实状态码与稳定码返回（409 分块乱序时可带 `args.expected_index`，据它续传）。需要登录")]
 #[apidoc::url("/api/v1/avatar/upload/chunk")]
 #[apidoc::method("POST")]
 #[apidoc::tag("头像")]
 #[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
-#[apidoc::param(name = "resource_chunk", ty = "file", required, desc = "分片内容（单个分片 ≤ 512 KB）")]
+#[apidoc::param(name = "resource_chunk", ty = "file", required, desc = "分片内容（单片不超过 preprocess 返回的 chunk_size，128 KB，超了回 413）")]
 #[apidoc::param(name = "chunk_index", ty = "int", required, desc = "分片序号，从 1 开始", mock = "1")]
 #[apidoc::param(name = "chunk_total", ty = "int", required, desc = "分片总数", mock = "3")]
 #[apidoc::param(name = "resource_hash", ty = "string", required, desc = "整文件 MD5（与预检同一个值）")]
 #[apidoc::not_debug]
 #[apidoc::response_status("200")]
 #[apidoc::response_status("400")]
+#[apidoc::response_status("409")]
+#[apidoc::response_status("413")]
+#[apidoc::response_status("415")]
+#[apidoc::response_status("422")]
 #[apidoc::returned(name = "data", ty = "object", desc = "插件响应；末片（saved_path 非空）额外带 avatar 地址")]
 pub async fn chunk(
     State(state): State<AppState>,
@@ -206,7 +211,7 @@ pub async fn chunk(
             }
             Ok(ok(data))
         }
-        Err(problem) => Err(ApiError::BadRequest(problem.title)),
+        Err(problem) => Err(problem_to_api_error(problem)),
     }
 }
 
@@ -280,6 +285,30 @@ where
     tokio::task::spawn_blocking(move || job(runtime))
         .await
         .map_err(|e| ApiError::internal(format!("头像上传任务执行失败: {e}")))
+}
+
+/// 插件失败体 → 统一信封：**状态码与稳定 `code` 原样透传**（409 乱序 / 413 超限 / 415 类型不对 …，
+/// 见插件 `error.rs` 的状态码 × code 表），`extra` 进 `args`（目前只有乱序的 `expected_index`）。
+/// 压成 400 + 文案的话，真实状态码没了、码也没了 —— 前端既没法续传判断也没法本地化，
+/// 只剩服务端中文原样弹窗。
+fn problem_to_api_error(problem: aetherupload::Problem) -> ApiError {
+    let status = StatusCode::from_u16(problem.status).unwrap_or(StatusCode::BAD_REQUEST);
+    let args = if problem.extra.is_empty() {
+        Value::Null
+    } else {
+        Value::Object(
+            problem
+                .extra
+                .into_iter()
+                // 与插件的线上形态一致：纯数字出数值（`expected_index` 客户端按数值比），其余出字符串
+                .map(|(k, v)| {
+                    let value = v.parse::<u64>().map_or_else(|_| Value::String(v), Value::from);
+                    (k.to_string(), value)
+                })
+                .collect(),
+        )
+    };
+    ApiError::Coded { status, err: problem.code, msg: problem.title, args }
 }
 
 /// 插件成功体原文（`upload_ok_to_json` / `save_chunk_ok_to_json` 的 String）→ `Value`。
