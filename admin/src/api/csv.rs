@@ -14,10 +14,12 @@ pub fn today() -> String {
 
 /// 单元格转义：
 /// - `= + - @` 开头前置 `'`——Excel 会把这类单元格当公式执行（CSV 注入）；
+///   `\t` / `\r` 按 OWASP 的扩展规则同样入列：Excel 会剥掉开头的制表/回车，
+///   露出来的下一个字符若是公式起始符，照样会执行；
 /// - 含逗号/引号/换行时按 RFC4180 用双引号包裹、内部引号翻倍。
 pub fn cell(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
-    if s.starts_with(['=', '+', '-', '@']) {
+    if s.starts_with(['=', '+', '-', '@', '\t', '\r']) {
         out.push('\'');
     }
     out.push_str(s);
@@ -125,6 +127,9 @@ mod tests {
         assert_eq!(cell("+86"), "'+86");
         assert_eq!(cell("-2"), "'-2");
         assert_eq!(cell("@x"), "'@x");
+        // OWASP 扩展：制表/回车开头也会被 Excel 剥掉后露出公式（`\r` 同时命中引号包裹）
+        assert_eq!(cell("\tx"), "'\tx");
+        assert_eq!(cell("\rx"), "\"'\rx\"");
         // 公式起始符只在前缀位置才危险
         assert_eq!(cell("a=b"), "a=b");
         assert_eq!(cell(""), "");

@@ -76,4 +76,8 @@ enabled = false
 password =
 
 [seed]
-initial_admin_password = admin123
+# 首次启动（admin 表为空）时用它创建内置超管 admin；库非空时本键被忽略。
+# **照抄示例值上线 = 公网后台用示例口令**，跑起来第一件事就是改。
+# 太弱（不足 8 位 / 少于两类字符）会在**那一次**启动时被拒绝并给出错误 —— 校验故意
+# 不放在配置加载期，免得存量部署（conf 里还是老口令）换个值之前起不来。
+initial_admin_password = change-me-please-1

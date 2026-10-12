@@ -16,7 +16,7 @@ use security_rust::throttle::{MemoryThrottleStore, Throttle, ThrottleConfig, Thr
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use crate::relations::RelationsExt;
 
 #[derive(Deserialize)]
@@ -184,6 +184,49 @@ pub fn captcha_create_throttle() -> Arc<Throttle<MemoryThrottleStore>> {
     ))
 }
 
+/// 全局桶的键。只有这一条，见 [`captcha_global_throttle`]。
+const CAPTCHA_GLOBAL_KEY: &str = "captcha:all";
+
+/// 全局桶的窗口内额度（次/分钟）。
+///
+/// 为什么不按建议的 300：实测一张验证码在插件存储里落 **2 条**记录（载荷 + 图），
+/// 合计约 26–54 KB（JSON 13–27 KB，图与载荷各一份）。300/min × TTL 300s ≈ 1500 张
+/// ≈ 40–80 MB，正好顶满插件的 64 MiB 预算 —— 顶满后写入 fail-closed，登录就炸。
+/// 150/min 减半到 ~20–40 MB（预算的三到六成），既留出余量，又比单 IP 的 60/min
+/// 高一个量级：正常用户打不满，刷子被压住。
+const CAPTCHA_GLOBAL_MAX: u32 = 150;
+
+/// `/captcha/new` 的**全局**桶：不限来源，把整个进程的验证码生成速率钉在一个上界上。
+///
+/// **这是速率兜底，不是精准配额。** 单 IP 那个桶（[`captcha_create_throttle`]）按
+/// `client_ip()` 分桶，而 `client_ip()` 读的是 **X-Real-IP / X-Forwarded-For 请求头**：
+/// 换个头就是一个新桶，单 IP 上限对分布式（或直接换头的）来源形同虚设。而每次生成都往
+/// 插件的进程内存储里塞两份记录（PNG + 载荷，几十 KB），64 MiB 预算（poster-rust
+/// `storage/memory.rs` 的 `DEFAULT_BUDGET`）填满后写入一律失败（fail-closed）→
+/// `/captcha/new` 全 500，而登录强制要验证码 = 全站登不进去。这道闸不吃请求头，
+/// 多来源刷子也绕不过：速率被压到 ~150/min，64 MiB 的填充时间从「不限速的几十秒」
+/// 拉到小时级（TTL 300s 内最多几百条在库）。
+///
+/// 为什么不并入 `state.captcha_throttle` 加个 key：`Throttle` 的阈值是**实例级**的，
+/// 全局额度要比单 IP 高一个量级（单 IP 打不满它），同实例就得同阈值，只能单独一个。
+/// 也因为它只有一条键（不像单 IP 桶的键随 IP 增长），不需要进 `main.rs` 的定时 purge。
+///
+/// ponytail: 单进程量。多实例部署下每个进程各算各的 —— 那种部署本来就要换掉
+/// poster 的进程内存储（见 `state.rs` 的说明），这道闸到那时该挪到网关。
+fn captcha_global_throttle() -> &'static Arc<Throttle<MemoryThrottleStore>> {
+    static GLOBAL: OnceLock<Arc<Throttle<MemoryThrottleStore>>> = OnceLock::new();
+    GLOBAL.get_or_init(|| {
+        Arc::new(Throttle::new(
+            MemoryThrottleStore::new(),
+            ThrottleConfig {
+                threshold: CAPTCHA_GLOBAL_MAX,
+                window_secs: 60,
+                ban_secs: 0,
+            },
+        ))
+    })
+}
+
 /// 验证码「校验 + 消费」的进程内互斥锁。
 ///
 /// 插件的 `verify_as` 是「读载荷 → 原子自增计数 → 通过后删 key」：并发下同一个 key 的
@@ -260,9 +303,21 @@ pub async fn captcha_new(
     ) {
         return Err(ApiError::throttled(1)); // 窗口 60s，所以报 1 分钟
     }
+    // 全局桶（见 `captcha_global_throttle` 的说明）：单 IP 桶按请求头分桶、换个头就绕，
+    // 这道不吃请求头，是内存增长的速率兜底
+    let global = captcha_global_throttle();
+    if matches!(
+        global.check(CAPTCHA_GLOBAL_KEY, now),
+        ThrottleDecision::Banned { .. } | ThrottleDecision::Allow { remaining: 0 }
+    ) {
+        return Err(ApiError::throttled(1));
+    }
     // 计数写失败不影响响应 —— 限流是纵深防御，不是主认证闸门
     if let Err(e) = throttle.record_failure(&key, now) {
         tracing::error!("验证码生成限流计数失败 ({key}): {e}");
+    }
+    if let Err(e) = global.record_failure(CAPTCHA_GLOBAL_KEY, now) {
+        tracing::error!("验证码生成全局限流计数失败: {e}");
     }
     let value = state
         .captcha
@@ -815,6 +870,49 @@ mod tests {
         // 同一个存储、同一个窗口，另一个身份照常通过
         put_key(&mem, KEY3, PAYLOAD);
         assert!(verify_captcha(&guard, Some(KEY3), Some(Answer::Slider(100.0)), "1.1.1.1").is_ok());
+    }
+
+    /// 全局桶（`/captcha/new` 的第二道闸）：必须是**同一个**进程级实例（static，
+    /// 不是每次调用新建一个 —— 那样等于没限），额度耗尽后走 `Allow { remaining: 0 }`
+    /// 而不是封禁（ban_secs = 0，窗口滑过自动恢复，不误伤后面的人）。
+    #[test]
+    fn captcha_global_throttle_caps_the_process() {
+        let t = captcha_global_throttle();
+        assert!(Arc::ptr_eq(t, captcha_global_throttle()), "必须是同一个 static 桶");
+        let now = now_unix();
+        for _ in 0..CAPTCHA_GLOBAL_MAX {
+            t.record_failure(CAPTCHA_GLOBAL_KEY, now).expect("内存存储计数不会失败");
+        }
+        assert_eq!(
+            t.check(CAPTCHA_GLOBAL_KEY, now),
+            ThrottleDecision::Allow { remaining: 0 },
+            "额度耗尽后拒绝本请求（与单 IP 桶同一套判定）"
+        );
+        // 额度按 key 计：全局性来自「对 `/captcha/new` 永远只用一个 key」
+        assert_eq!(
+            t.check("captcha:1.2.3.4", now),
+            ThrottleDecision::Allow { remaining: CAPTCHA_GLOBAL_MAX },
+            "别的 key 不受全局桶影响"
+        );
+    }
+
+    /// 上面那个额度是**算出来的**，算式的输入就在这儿钉住：一张验证码落 2 条记录、
+    /// 单条 ~13–27 KB。将来插件换了更大的图 / 更贵的载荷，这条会先红，提醒重算
+    /// `CAPTCHA_GLOBAL_MAX`（64 MiB 预算 ÷ TTL 300s ÷ 单张占用）。
+    #[test]
+    fn captcha_footprint_matches_the_global_budget_arithmetic() {
+        use poster::captcha::CaptchaManager;
+        use poster::storage::MemoryStorage;
+        let mem = Arc::new(MemoryStorage::new());
+        let manager =
+            CaptchaManager::with_config_and_storage(Arc::new(poster::PosterConfig::default()), mem.clone());
+        let guard = poster::Guard::from_manager(Arc::new(manager)).expect("构造守卫");
+        for i in 1..=3 {
+            let v = guard.create_json(None).expect("生成验证码");
+            let len = serde_json::to_string(&v).unwrap().len();
+            assert_eq!(mem.len(), i * 2, "一张验证码 = 载荷 + 图两条记录");
+            assert!(len < 64 * 1024, "第 {i} 张 {len} 字节，超出额度算式用的上限");
+        }
     }
 
     /// 假哈希必须是**可解析**的 argon2 串：解析失败时 `verify_password` 会立刻返回

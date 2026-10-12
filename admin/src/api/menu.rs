@@ -1,6 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use crate::api::{check_len, would_cycle};
 use crate::auth::Auth;
+use crate::datascope;
 use crate::error::{ApiError, AppJson, AppPath, ok};
 use crate::hid;
 use crate::models::Menu;
@@ -136,7 +137,7 @@ pub async fn tree(State(state): State<AppState>, auth: Auth) -> Result<Json<Valu
 }
 
 #[apidoc::title("新建菜单")]
-#[apidoc::desc("父节点必须存在；类型/名称校验不通过回 400")]
+#[apidoc::desc("父节点必须存在；类型/名称校验不通过回 400。非超管写的权限码必须是自己已有的（防就地造码提权）")]
 #[apidoc::url("/api/v1/menus")]
 #[apidoc::method("POST")]
 #[apidoc::tag("菜单")]
@@ -163,6 +164,8 @@ pub async fn create(
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:menu:add")?;
     validate_body(&body)?;
+    // B5 写路径闸（非超管）：权限码只能写自己已有的（超管不受管）
+    datascope::ensure_perm_writable(&auth, &body.perm)?;
     if !parent_exists(&state, body.parent_id).await? {
         return Err(ApiError::BadRequest("上级菜单不存在".into()));
     }
@@ -188,7 +191,7 @@ pub async fn create(
 }
 
 #[apidoc::title("编辑菜单")]
-#[apidoc::desc("父节点必须存在，且不能挂到自己的后代下（防环）")]
+#[apidoc::desc("父节点必须存在，且不能挂到自己的后代下（防环）。非超管写入的权限码必须是自己已有的")]
 #[apidoc::url("/api/v1/menus/{id}")]
 #[apidoc::method("PUT")]
 #[apidoc::tag("菜单")]
@@ -216,6 +219,8 @@ pub async fn update(
     auth.require("system:menu:edit")?;
     let id = hid::dec(&id)?;
     validate_body(&body)?;
+    // B5 写路径闸（非超管）：权限码只能写自己已有的（超管不受管）
+    datascope::ensure_perm_writable(&auth, &body.perm)?;
     if !parent_exists(&state, body.parent_id).await? {
         return Err(ApiError::BadRequest("上级菜单不存在".into()));
     }

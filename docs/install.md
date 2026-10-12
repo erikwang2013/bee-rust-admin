@@ -94,6 +94,11 @@ initial_admin_password = <自己定一个>
 > 换 `encrypt_key` = 库里已加密的 email/phone **永久解不开**（没有救援）；
 > 换 `hashids_salt` = 已发出的对外短 id 全部作废。**生成完就把这份 conf 备份好。**
 
+> ⚠️ `initial_admin_password` 只在**首次启动（admin 表为空）**时用来创建内置超管 `admin`：
+> 太弱（不足 8 位、或少于字母/数字/符号中的两类）会在**那一次**启动时被拒绝并给出明确错误，
+> 库非空后这个键就再也不起作用了。校验**刻意不放在配置加载期** —— 免得存量部署
+> （conf 里还留着老口令）在换值之前起不来。
+
 各键的完整说明（含默认值与「多实例必须各不同」之类）见
 [`admin/conf/app.conf.example`](../admin/conf/app.conf.example)。
 

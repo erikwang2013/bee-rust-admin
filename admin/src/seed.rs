@@ -505,6 +505,23 @@ pub async fn seed(
     if Admin::query().count(db).await? > 0 {
         return Ok(());
     }
+    // 口令强度只在**真要用它建超管**的这一刻校验：库非空时这个键本就被忽略（上面的
+    // return），放在配置加载期拒绝会让存量部署换个口令前整个起不来。口径复用建人
+    // 那条（`api::admin::validate_password`，≥8 位 + 至少两类字符）—— 照抄示例配置
+    // 装机就是公网后台 admin/admin123，这一步让那种部署死得响亮而不是悄悄上线。
+    match crate::api::admin::validate_password(&cfg.initial_admin_password, "initial_admin_password") {
+        Ok(()) => {}
+        Err(e) => {
+            let msg = match e {
+                crate::error::ApiError::BadRequest(m) => m,
+                other => format!("{other:?}"),
+            };
+            tracing::error!("[seed] initial_admin_password 太弱：{msg}");
+            return Err(OrmError::QueryError(format!(
+                "[seed] initial_admin_password 太弱（{msg}）—— admin 表为空时它会成为内置超管的口令，拒绝启动；请换一个至少 8 位、含字母/数字/符号中至少两类的口令"
+            )));
+        }
+    }
     tracing::info!("首次启动，写入种子数据");
 
     let admin = Admin {

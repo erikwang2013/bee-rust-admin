@@ -145,6 +145,16 @@ fn block_reason(auth: &Auth, role: &Role, perms: &HashSet<String>) -> Option<Blo
     None
 }
 
+/// `Block` → 对外错误。**只有这一份映射**：授予路径（`ensure_roles_grantable`）与
+/// 写路径（`ensure_role_writable`）对同一个原因给同一个状态码与稳定码，不各写各的。
+fn block_err(b: Block) -> ApiError {
+    match b {
+        Block::Off => ApiError::BadRequest("角色不存在或已停用".into()),
+        Block::Wider => ApiError::Forbidden("不能授予数据范围更宽的角色".into()),
+        Block::ExtraPerm => ApiError::Forbidden("不能授予包含你没有的权限的角色".into()),
+    }
+}
+
 /// 授予的角色不得超出操作者自身（B5）。超管放行；空集合放行（清空角色不是提权）；
 /// 角色必须存在且启用；非超管只能授予 `data_scope ∈ {3 本部门, 4 仅本人}`，
 /// 且角色的生效权限码必须是操作者权限码的子集 —— 授不出「自己都没有的能力」。
@@ -167,18 +177,81 @@ pub async fn ensure_roles_grantable(auth: &Auth, db: &Pool, role_ids: &[i64]) ->
         return Err(ApiError::BadRequest("角色不存在或已停用".into()));
     }
     for r in &roles {
-        match block_reason(auth, r, &role_perms(db, r.id).await?) {
-            None => {}
-            Some(Block::Off) => return Err(ApiError::BadRequest("角色不存在或已停用".into())),
-            Some(Block::Wider) => {
-                return Err(ApiError::Forbidden("不能授予数据范围更宽的角色".into()));
-            }
-            Some(Block::ExtraPerm) => {
-                return Err(ApiError::Forbidden("不能授予包含你没有的权限的角色".into()));
-            }
+        if let Some(b) = block_reason(auth, r, &role_perms(db, r.id).await?) {
+            return Err(block_err(b));
         }
     }
     Ok(())
+}
+
+/// 非超管能不能**改写**一个已存在的角色（B5 的写路径闸，`role::update` /
+/// `set_menus` / `set_depts` 共用这一处判定，调用点不许再抄一份规则）。
+/// 规则与 `ensure_roles_grantable` 同源 —— 同一个 `block_reason`：角色须启用、
+/// `data_scope ∈ {3,4}`、权限码是操作者的子集（口径一致：能授出去的角色才动得）。
+/// `new_scope`：本次要写入的新 `data_scope`（不改范围传 `None`），同样只允许 3/4 ——
+/// 把角色改成 1/2/5 等于给自己（或持同一角色的人）抬数据可见面，与「更宽的角色」
+/// 同一个错误码。超管一律放行。
+pub async fn ensure_role_writable(
+    auth: &Auth,
+    db: &Pool,
+    role: &Role,
+    new_scope: Option<i8>,
+) -> Result<(), ApiError> {
+    if auth.is_super {
+        return Ok(());
+    }
+    if let Some(b) = block_reason(auth, role, &role_perms(db, role.id).await?) {
+        return Err(block_err(b));
+    }
+    if new_scope.is_some_and(|s| !matches!(s, 3 | 4)) {
+        return Err(block_err(Block::Wider));
+    }
+    Ok(())
+}
+
+/// 非超管给角色挂菜单（`set_menus`）时的闸：
+/// ① 每个 `menu_id` 必须真实存在 —— 悬空 id 写进关联表就是谁也解释不清的脏行；
+/// ② 这批菜单的权限码必须是操作者权限码的子集（口径同 `block_reason` 的 `ExtraPerm`，
+///    含停用菜单：状态随时会被改，写进关联就是「授出去」）—— 否则「挂上自己角色」
+///    就是一条提权路。超管不受管。
+pub async fn ensure_menus_attachable(
+    auth: &Auth,
+    db: &Pool,
+    menu_ids: &[i64],
+) -> Result<(), ApiError> {
+    if auth.is_super {
+        return Ok(());
+    }
+    let ids = dedup_ids(menu_ids.to_vec());
+    if ids.is_empty() {
+        return Ok(()); // 清空菜单不是授予（同 ensure_roles_grantable 的空集合口径）
+    }
+    let menus = Menu::query()
+        .filter_in("id", &ids_to_values(&ids))
+        .map_err(ApiError::from)?
+        .all(db)
+        .await
+        .map_err(ApiError::from)?;
+    if menus.len() != ids.len() {
+        return Err(ApiError::BadRequest("菜单不存在".into()));
+    }
+    if menus
+        .iter()
+        .any(|m| !m.perm.is_empty() && !auth.perms.contains(&m.perm))
+    {
+        return Err(ApiError::Forbidden("不能授予包含你没有的权限的角色".into()));
+    }
+    Ok(())
+}
+
+/// 非超管往菜单上写 `perm`（`menu::create` / `menu::update`）时的闸：非空时必须是
+/// 操作者自己已有的权限码 —— 否则配合 `system:role:edit` 就地造一个码再挂到自己
+/// 角色上，是两次请求就能完成的提权。超管不受管。
+pub fn ensure_perm_writable(auth: &Auth, perm: &str) -> Result<(), ApiError> {
+    if auth.is_super || perm.is_empty() || auth.perms.contains(perm) {
+        return Ok(());
+    }
+    Err(ApiError::missing_permission(perm))
 }
 
 /// 只校验**新增**的角色（B5）：保留已挂的不算授予。

@@ -255,7 +255,7 @@ pub async fn create(
 }
 
 #[apidoc::title("编辑角色")]
-#[apidoc::desc("字段与新建一致（整批提交）；角色名与标识重复回 400")]
+#[apidoc::desc("字段与新建一致（整批提交）；角色名与标识重复回 400。非超管只能编辑权限码是自己子集、data_scope 为 3/4 的启用角色，且新 data_scope 也只能是 3/4（防自我提权）")]
 #[apidoc::url("/api/v1/roles/{id}")]
 #[apidoc::method("PUT")]
 #[apidoc::tag("角色")]
@@ -287,6 +287,9 @@ pub async fn update(
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
+    // B5 写路径闸（非超管）：角色得是自己能动的那类（启用、scope 3/4、权限码子集），
+    // 新范围也只能落在 3/4 —— 否则把自己的角色改成 scope=1 就是自我提权。
+    datascope::ensure_role_writable(&auth, &state.db, &r, Some(body.data_scope)).await?;
 
     r.name = body.name.trim().to_string();
     r.code = body.code.trim().to_string();
@@ -356,7 +359,7 @@ pub async fn get_menus(
 }
 
 #[apidoc::title("设置角色的菜单")]
-#[apidoc::desc("整批覆盖；服务端把祖先节点补全后再落库（antd 半选的父节点不会提交）")]
+#[apidoc::desc("整批覆盖；服务端把祖先节点补全后再落库（antd 半选的父节点不会提交）。非超管挂的菜单必须真实存在，且权限码不能超出自己已有的（防就地造码提权）")]
 #[apidoc::url("/api/v1/roles/{id}/menus")]
 #[apidoc::method("PUT")]
 #[apidoc::tag("角色")]
@@ -374,15 +377,16 @@ pub async fn set_menus(
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:edit")?;
     let id = hid::dec(&id)?;
-    let exists = Role::query()
+    let role = Role::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
         .one(&state.db)
         .await
-        .map_err(ApiError::from)?;
-    if exists.is_none() {
-        return Err(ApiError::NotFound);
-    }
+        .map_err(ApiError::from)?
+        .ok_or(ApiError::NotFound)?;
+    // B5 写路径闸（非超管）：角色得是自己能动的那类 + 挂的菜单存在且权限码不超出自己
+    datascope::ensure_role_writable(&auth, &state.db, &role, None).await?;
+    datascope::ensure_menus_attachable(&auth, &state.db, &body.menu_ids).await?;
     state
         .db
         .set_relations("role_menu", ("role_id", id), "menu_id", &dedup_ids(body.menu_ids))
@@ -416,7 +420,7 @@ pub async fn get_depts(
 }
 
 #[apidoc::title("设置角色的部门")]
-#[apidoc::desc("整批覆盖；只在数据范围 = 自定义时有意义")]
+#[apidoc::desc("整批覆盖；只在数据范围 = 自定义时有意义。非超管只能改自己管得了的角色（scope 为 5 的角色动不了）")]
 #[apidoc::url("/api/v1/roles/{id}/depts")]
 #[apidoc::method("PUT")]
 #[apidoc::tag("角色")]
@@ -434,15 +438,16 @@ pub async fn set_depts(
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:edit")?;
     let id = hid::dec(&id)?;
-    let exists = Role::query()
+    let role = Role::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
         .one(&state.db)
         .await
-        .map_err(ApiError::from)?;
-    if exists.is_none() {
-        return Err(ApiError::NotFound);
-    }
+        .map_err(ApiError::from)?
+        .ok_or(ApiError::NotFound)?;
+    // B5 写路径闸（非超管）：scope=5 的角色对非超管即不可动 —— 否则他自己那档
+    // 「自定义」范围就能被改成全公司可见
+    datascope::ensure_role_writable(&auth, &state.db, &role, None).await?;
     state
         .db
         .set_relations("role_dept", ("role_id", id), "dept_id", &dedup_ids(body.dept_ids))

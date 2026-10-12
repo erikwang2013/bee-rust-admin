@@ -455,4 +455,111 @@ async fn v14_backend_features() {
     let rows = v["data"]["list"].as_array().unwrap();
     assert!(rows.len() >= 5, "至少 5 个角色（含上面停用的那个）: {v}");
     assert!(rows.iter().all(|r| r["grantable"] == true), "超管全可授: {v}");
+
+    // ── B5 写路径闸：非超管的角色 / 菜单写入（修自我提权）────────────
+    // 修复前这三条路都通着（只有「授角色给人」被拦）：
+    //   ① PUT /roles/{自己角色} 把 data_scope 改成 1；② PUT /roles/{id}/menus 挂任意菜单；
+    //   ③ POST /menus 造一个自己没有的权限码再挂到自己角色上。权限码每请求从库重算，
+    //   提权下一个请求就生效。这里逐条钉死。
+    let rw_menus: Vec<String> = ["system:role:edit", "system:menu:add", "system:menu:edit"]
+        .iter()
+        .map(|p| perm_menu(p))
+        .collect();
+    let rw_role = make_role(&c, &base, &admin, "b5rw_actor", 3, 1, &rw_menus).await;
+    // 目标角色：scope=3、没挂菜单（空集是任何人的子集）→ 非超管可动
+    let peer_role = make_role(&c, &base, &admin, "b5rw_peer", 3, 1, &[]).await;
+    // scope=5（自定义）：非超管动不了（就是 set_depts 那条路）
+    let custom_role = make_role(&c, &base, &admin, "b5rw_custom", 5, 1, &[]).await;
+    // 带着别人没有的权限码（system:role:remove）的角色：不可动
+    let alien_perm_role = make_role(&c, &base, &admin, "b5rw_alienperm", 3, 1,
+        &[perm_menu("system:role:remove")]).await;
+
+    let (st, v) = call(&c, Method::POST, api("/admins"), Some(&admin), Some(json!({
+        "username": "b5rwop", "password": "b5rwop12345", "dept_id": dept_a, "role_ids": [rw_role],
+    }))).await;
+    assert_eq!(st, 200, "建写路径操作者: {v}");
+    let rwop = common::login(&base, "b5rwop", "b5rwop12345").await.expect("写路径操作者登录");
+
+    // ① 改自己角色的数据范围 → 1/2/5：全是加宽，必须 403（修复前最后一个请求就能看全站）
+    for scope in [1i8, 2, 5] {
+        let (st, v) = call(&c, Method::PUT, api(&format!("/roles/{rw_role}")), Some(&rwop), Some(json!({
+            "name": "b5rw_actor", "code": "b5rw_actor", "data_scope": scope, "status": 1,
+        }))).await;
+        assert_eq!(st, 403, "把自己角色的 data_scope 改成 {scope} 就是自我提权: {v}");
+        assert_eq!(v["msg"], "不能授予数据范围更宽的角色", "{v}");
+        assert_eq!(v["err"], "scope.wider_role", "稳定码要能对上表: {v}");
+    }
+    // 同一档内（3 ⇄ 4）与改名字/排序照旧放行
+    let (st, v) = call(&c, Method::PUT, api(&format!("/roles/{rw_role}")), Some(&rwop), Some(json!({
+        "name": "b5rw_actor", "code": "b5rw_actor", "data_scope": 4, "sort": 3, "status": 1,
+    }))).await;
+    assert_eq!(st, 200, "3→4 在同允许档位内，必须放行: {v}");
+    let (st, v) = call(&c, Method::PUT, api(&format!("/roles/{rw_role}")), Some(&rwop), Some(json!({
+        "name": "b5rw_actor", "code": "b5rw_actor", "data_scope": 3, "status": 1,
+    }))).await;
+    assert_eq!(st, 200, "改回 3 也放行: {v}");
+
+    // 角色本身不可动时 update 同样被拦：权限码超出自己 / scope=5
+    let (st, v) = call(&c, Method::PUT, api(&format!("/roles/{alien_perm_role}")), Some(&rwop), Some(json!({
+        "name": "b5rw_alienperm", "code": "b5rw_alienperm", "data_scope": 3, "status": 1,
+    }))).await;
+    assert_eq!(st, 403, "改权限码比自己多的角色: {v}");
+    assert_eq!(v["err"], "scope.extra_perms", "{v}");
+    let (st, v) = call(&c, Method::PUT, api(&format!("/roles/{custom_role}")), Some(&rwop), Some(json!({
+        "name": "b5rw_custom", "code": "b5rw_custom", "data_scope": 3, "status": 1,
+    }))).await;
+    assert_eq!(st, 403, "scope=5 的角色对非超管不可动（哪怕往窄了改）: {v}");
+    assert_eq!(v["err"], "scope.wider_role", "{v}");
+
+    // ② 挂菜单：自己 perm 之外的 → 403；悬空 id → 400；自己 perm 内 → 200
+    let (st, v) = call(&c, Method::PUT, api(&format!("/roles/{rw_role}/menus")), Some(&rwop),
+        Some(json!({"menu_ids": [perm_menu("system:role:remove")]}))).await;
+    assert_eq!(st, 403, "往自己角色挂一个自己 perm 之外的菜单: {v}");
+    assert_eq!(v["msg"], "不能授予包含你没有的权限的角色", "{v}");
+    assert_eq!(v["err"], "scope.extra_perms", "{v}");
+    let (st, v) = call(&c, Method::PUT, api(&format!("/roles/{rw_role}/menus")), Some(&rwop),
+        Some(json!({"menu_ids": [common::enc_id(999_997)]}))).await;
+    assert_eq!(st, 400, "挂不存在的菜单 id（脏关联行不写）: {v}");
+    assert_eq!(v["msg"], "菜单不存在", "{v}");
+    let (st, v) = call(&c, Method::PUT, api(&format!("/roles/{peer_role}/menus")), Some(&rwop),
+        Some(json!({"menu_ids": [perm_menu("system:role:edit")]}))).await;
+    assert_eq!(st, 200, "给 scope=3 的角色挂自己 perm 内的菜单必须放行: {v}");
+
+    // ③ 改自定义部门：scope=5 的角色动不了；scope=3 的照旧放行
+    let (st, v) = call(&c, Method::PUT, api(&format!("/roles/{custom_role}/depts")), Some(&rwop),
+        Some(json!({"dept_ids": [dept_a]}))).await;
+    assert_eq!(st, 403, "scope=5 角色的部门表非超管不可动: {v}");
+    assert_eq!(v["err"], "scope.wider_role", "{v}");
+    let (st, v) = call(&c, Method::PUT, api(&format!("/roles/{peer_role}/depts")), Some(&rwop),
+        Some(json!({"dept_ids": [dept_a]}))).await;
+    assert_eq!(st, 200, "scope=3 角色的部门表放行: {v}");
+
+    // ④ 造权限码：写自己没有的 perm → 403；写自己已有的 → 200；编辑同理
+    let (st, v) = call(&c, Method::POST, api("/menus"), Some(&rwop),
+        Some(json!({"name": "提权按钮", "type": "F", "perm": "system:role:remove"}))).await;
+    assert_eq!(st, 403, "非超管不能在菜单上就地造权限码: {v}");
+    assert_eq!(v["err"], "auth.forbidden", "{v}");
+    let (st, v) = call(&c, Method::POST, api("/menus"), Some(&rwop),
+        Some(json!({"name": "自有权限按钮", "type": "F", "perm": "system:menu:add"}))).await;
+    assert_eq!(st, 200, "写自己已有的权限码必须放行: {v}");
+    let own_menu = common::as_id(&v["data"]["id"]);
+    let (st, v) = call(&c, Method::PUT, api(&format!("/menus/{own_menu}")), Some(&rwop),
+        Some(json!({"name": "自有权限按钮", "type": "F", "perm": "system:role:remove"}))).await;
+    assert_eq!(st, 403, "编辑菜单时改成自己没有的权限码: {v}");
+    assert_eq!(v["err"], "auth.forbidden", "{v}");
+
+    // 超管不受任何新闸影响：改 scope=5 的角色、挂任意菜单、造任意权限码
+    let (st, v) = call(&c, Method::PUT, api(&format!("/roles/{custom_role}")), Some(&admin), Some(json!({
+        "name": "b5rw_custom", "code": "b5rw_custom", "data_scope": 5, "status": 1,
+    }))).await;
+    assert_eq!(st, 200, "超管改 scope=5 的角色: {v}");
+    let (st, v) = call(&c, Method::PUT, api(&format!("/roles/{custom_role}/menus")), Some(&admin),
+        Some(json!({"menu_ids": [perm_menu("system:role:remove")]}))).await;
+    assert_eq!(st, 200, "超管挂任意菜单: {v}");
+    let (st, v) = call(&c, Method::POST, api("/menus"), Some(&admin),
+        Some(json!({"name": "超管的按钮", "type": "F", "perm": "x:y:z"}))).await;
+    assert_eq!(st, 200, "超管造任意权限码: {v}");
+    let (st, v) = call(&c, Method::PUT, api(&format!("/roles/{custom_role}/depts")), Some(&admin),
+        Some(json!({"dept_ids": [dept_a, dept_b]}))).await;
+    assert_eq!(st, 200, "超管改任意角色的部门表: {v}");
 }

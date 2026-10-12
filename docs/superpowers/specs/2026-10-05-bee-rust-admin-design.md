@@ -313,6 +313,13 @@ detail / create / update / remove / set_status / reset_password / set_roles 上�
 角色列表/详情响应带 **`grantable`** 标记（同一条规则求值），供前端禁用授不出去的选项；
 写路径仍走 `ensure_roles_grantable` 硬校验，不依赖前端。
 
+**角色的写路径与菜单的 `perm` 写入同样受 B5 约束（同一口径，后补）**：`role::update` / `role::set_depts` /
+`role::set_menus` 用 `ensure_role_writable`（复用 `block_reason`：只能动启用、`data_scope ∈ {3,4}`、权限码
+是自己子集的角色；新 `data_scope` 也只允许 3/4 —— 否则 `system:role:edit` 就能把自己的角色改成"全部数据"，
+下一个请求即全站可见），`set_menus` 另用 `ensure_menus_attachable`（菜单必须真实存在，权限码得是自己子集），
+`menu::create/update` 用 `ensure_perm_writable`（非空的 `perm` 必须是自己已有的码，堵住"就地造码再挂给自己"）。
+错误沿用 `block_reason` 的既有映射与稳定码，超管一律放行。
+
 ### 5.5 错误与响应
 
 ```rust
