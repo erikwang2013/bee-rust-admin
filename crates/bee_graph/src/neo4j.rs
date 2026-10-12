@@ -1,18 +1,8 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-use std::time::Duration;
-
 use async_trait::async_trait;
 use reqwest::Client;
 
-/// Shared HTTP client: 30s request timeout, 5s connect timeout, so a hung
-/// backend cannot stall a request forever.
-pub(crate) fn http_client() -> Client {
-    Client::builder()
-        .timeout(Duration::from_secs(30))
-        .connect_timeout(Duration::from_secs(5))
-        .build()
-        .unwrap_or_else(|_| Client::new())
-}
+use crate::http::http_client;
 
 use crate::{
     Edge, GraphDB, GraphError, Params, PathResult, Properties, QueryResult, Traversal,

@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use reqwest::Client;
 
-use crate::influxdb::http_client;
+use crate::http::http_client;
 
 use crate::{
     Aggregation, CQSpec, Fields, FilterOp, Point, TagFilter, Tags, TimeSeries, TimeSeriesDB,

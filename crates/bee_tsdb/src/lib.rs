@@ -1,5 +1,8 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 
+#[cfg(any(feature = "influxdb", feature = "iotdb", feature = "questdb"))]
+mod http;
+
 #[cfg(feature = "influxdb")]
 pub mod influxdb;
 #[cfg(feature = "iotdb")]

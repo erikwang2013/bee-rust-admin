@@ -2,7 +2,7 @@
 use async_trait::async_trait;
 use reqwest::{Client, StatusCode};
 
-use crate::neo4j::http_client;
+use crate::http::http_client;
 
 use crate::{
     Edge, GraphDB, GraphError, Params, PathResult, Properties, QueryResult, Traversal,
