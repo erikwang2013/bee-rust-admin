@@ -148,6 +148,7 @@ docs/
   install.md            ★ 安装说明（三种装法、配置生成步骤、常见坑）
   usage.md              ★ 使用手册（权限体系怎么落地、各模块怎么用）
   release-checklist.md  ★ 发布 / 升级检查清单（逐条打勾）
+  release.md            发版怎么发（scripts/release.sh 用法、产物口径、发完怎么验）
   diagrams/             本 README 引用的 4 张 SVG 图
   pet/                  项目宠物「阿守」的五态 SVG + 渲染器（node render.mjs）
   social/               社交预览图 1280×640（仓库 Settings → Social preview 上传那份 PNG）
@@ -388,6 +389,8 @@ sudo nginx -t && sudo systemctl reload nginx
 > 里的「一键脚本」一节。
 > **升级现有部署**前先过一遍 [`docs/release-checklist.md`](docs/release-checklist.md)
 > （配置键、前后端同版本、回滚一条 `mv`）。
+> **要发版**看 [`docs/release.md`](docs/release.md)：一条 `bash scripts/release.sh vX.Y.Z --notes-file …`
+> 包掉构建、strip、打包、自检与 `gh release create`（`--dry-run` 只验不发）。
 
 ## 版权
 
