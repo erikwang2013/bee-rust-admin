@@ -45,6 +45,11 @@ RUN apt-get update \
     && useradd -r -u 10001 -m app
 
 WORKDIR /app
+# 头像落盘根（[app] upload_dir = uploads 是相对路径，基准就是 WORKDIR）：后端启动时就要
+# 能建能写它下面的 avatar/，建不出来直接退出。容器是以「宿主配置文件属主」的身份跑的
+# （compose 的 APP_UID，任意 uid）—— 镜像里没法预知是谁，所以给 1777（同 /tmp 的语义）。
+RUN install -d -m 1777 /app/uploads
+
 COPY --from=builder /src/bee_admin.release /app/bee_admin
 COPY admin/conf/app.conf.example /app/conf/app.conf.example
 

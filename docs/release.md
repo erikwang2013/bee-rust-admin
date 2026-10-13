@@ -8,6 +8,7 @@
 ```bash
 bash scripts/release.sh v2.9.0 --notes-file /tmp/notes-v2.9.0.md
 bash scripts/release.sh v2.9.0 --notes-file /tmp/notes-v2.9.0.md --dry-run   # 真构建真打包，不发
+bash scripts/release.sh v2.9.0 --notes-file /tmp/notes-v2.9.0.md --skip-images  # 本机没 docker，只发二进制
 ```
 
 前置（脚本自己查，一个不满足就退出、什么都不发）：
@@ -30,7 +31,14 @@ bash scripts/release.sh v2.9.0 --notes-file /tmp/notes-v2.9.0.md --dry-run   # �
 |---|---|
 | `bee_admin` | 后端 ELF，**`strip` 过** |
 | `bee-admin-web-dist.tar.gz` | 前端 dist，tar 根下是 `./index.html` 与 `./assets/` |
+| `bra-images-vX.Y.Z.tar.gz` | 后端 + 前端镜像（`bra-backend:$TAG`/`bra-web:$TAG` 的 `docker save`；`docker load -i` 即导入） |
+| `bra-compose-vX.Y.Z.tar.gz` | 离线 compose 包：`docker-compose.yml` + 预填 `.env`（MySQL 口令 / `BRA_VERSION=$TAG`）+ `app.conf.example` + 一页说明 |
 
+- **前两个给二进制安装**（`install.sh` 的 download 模式按名拉），**后两个给 Docker / compose
+  部署**（镜像只在本机构建、离线分发，随 release 附带，不推任何镜像仓库）。包里的 README
+  写清了解包 → `docker load` → 改两处口令 → `docker compose up -d`（不加 `--build`）这条路。
+- **`--skip-images`**：本机没有 docker daemon 时用它，只发前两个产物（镜像与 compose 包
+  那一节整个跳过，`gh` 资产列表也只剩两个）。
 - **一定要 strip**：不 strip 的二进制 22MB，strip 掉符号表后 ~16.6MB。这是发布口径的一部分，不是可选优化。
 - **资产名固定**：`install.sh` 的 download 模式按上面这两个名字去
   `releases/download/<tag>/` 拉；改名 = 所有一键安装直接挂掉。
@@ -41,16 +49,19 @@ bash scripts/release.sh v2.9.0 --notes-file /tmp/notes-v2.9.0.md --dry-run   # �
 ## 为什么 CI 不构建产物
 
 `.github/workflows/test.yml` 只跑测试，不发布、不上传任何产物（workflow 里写了「镜像仍在本机构建」）。
+镜像同理：只在本机构建、离线分发 —— 随 Release 附带的是 `docker save` 出来的包，不是推给某个镜像仓库。
 预编译产物有一条硬门槛：**需要 glibc ≥ 2.38**（Debian 13 / Ubuntu 24.04+）。
 在别的镜像里构建等于换一套运行时基线，先得把这条门槛重新评估 —— 所以产物只从本机发。
 
 ## 发完怎么验
 
-1. 两个资产能下（`install.sh --version <tag>` 拉的就是它们）：
+1. 各资产能下（前两个就是 `install.sh --version <tag>` 拉的那两个）：
 
    ```
    https://github.com/erikwang2013/bee-rust-admin/releases/download/v2.9.0/bee_admin
    https://github.com/erikwang2013/bee-rust-admin/releases/download/v2.9.0/bee-admin-web-dist.tar.gz
+   https://github.com/erikwang2013/bee-rust-admin/releases/download/v2.9.0/bra-images-v2.9.0.tar.gz
+   https://github.com/erikwang2013/bee-rust-admin/releases/download/v2.9.0/bra-compose-v2.9.0.tar.gz
    ```
 
 2. 装一套试试（默认 download 模式，会自己跑可运行性检查与健康检查）：

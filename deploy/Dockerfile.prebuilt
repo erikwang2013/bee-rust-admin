@@ -1,0 +1,47 @@
+# BRA 后端镜像（**预编译版**：直接打发布脚本产出的 strip 过的二进制，~30 秒）
+#
+# 与根 Dockerfile 的分工：那份从源码编译（要 Rust 工具链、几分钟到几十分钟）；这份只打
+# `target/release-assets/bee_admin`（scripts/release.sh 的产物），给「离线镜像包」用。
+#
+# ⚠️ 运行时阶段必须与根 Dockerfile 的运行时阶段**逐行等价**（debian:13 + libgomp1 +
+#    ca-certificates + useradd app + WORKDIR /app + ENV BEE_ADMIN_CONF + EXPOSE 8080 +
+#    USER app + CMD）—— 改根 Dockerfile 的运行时阶段时这里一起改，否则两个镜像的行为
+#    会悄悄漂移（构建来源不同已经是差异了，运行环境不能再有差异）。
+#    与根 Dockerfile 的全部差异只有两处：二进制来源（COPY release-assets，不编译），
+#    以及不 COPY admin/conf/app.conf.example（compose 是挂载 conf 进去的）。
+#
+# 构建（在仓库根目录执行；scripts/release.sh 就是这么调的）：
+#   docker build -f deploy/Dockerfile.prebuilt -t bra-backend:<tag> .
+# 前置：target/release-assets/bee_admin 已存在（先跑发布脚本的打包步骤）。
+#
+# 运行（必须挂载配置文件，否则启动时读不到 app.conf 会直接退出）：
+#   docker run -d --name bra -p 8080:8080 \
+#     --user "$(id -u):$(id -g)" \
+#     -v "$PWD/admin/conf/app.conf:/app/conf/app.conf:ro" \
+#     -e BEE_ADMIN_DB_DSN='mysql://user:pass@host:3306/bee_admin' \
+#     -e BEE_ADMIN_HTTP_ADDR=0.0.0.0:8080 \
+#     bra-backend:<tag>
+# 注意 --user：app.conf 通常是 600 权限，用镜像默认的非 root 用户（uid 10001）
+# 会读不到配置。以宿主机文件属主身份运行即可（compose 里对应 APP_UID/APP_GID）。
+
+# ── 运行阶段（与根 Dockerfile 的对应段逐行一致）────────────────
+# 与构建阶段同为 Debian 13（trixie）；有 trixie-slim 时可换成更小的镜像
+FROM debian:13
+# libgomp1：release 二进制链接了 OpenMP 运行时（libgomp.so.1），slim 基础镜像不自带
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgomp1 ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -r -u 10001 -m app
+
+WORKDIR /app
+# 头像落盘根（[app] upload_dir = uploads 是相对路径，基准就是 WORKDIR）：后端启动时就要
+# 能建能写它下面的 avatar/，建不出来直接退出。容器是以「宿主配置文件属主」的身份跑的
+# （compose 的 APP_UID，任意 uid）—— 镜像里没法预知是谁，所以给 1777（同 /tmp 的语义）。
+RUN install -d -m 1777 /app/uploads
+
+COPY target/release-assets/bee_admin /app/bee_admin
+
+ENV BEE_ADMIN_CONF=/app/conf/app.conf
+EXPOSE 8080
+USER app
+CMD ["/app/bee_admin"]

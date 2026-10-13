@@ -333,11 +333,12 @@ curl -G --data-urlencode "token=$TOKEN" http://127.0.0.1:8080/apidoc/api.json
 | `Dockerfile` | 后端镜像：多阶段构建（Rust 编译 → Debian 运行），非 root 用户运行 |
 | `admin/web/Dockerfile` | 前端镜像：pnpm 构建 → nginx，`/api/` 上游由环境变量 `BACKEND_UPSTREAM` 注入 |
 | `docker-compose.yml` | MySQL + 后端 + 前端一键起栈，对外 `8081` |
+| `deploy/Dockerfile.prebuilt` | 后端镜像的**预编译版**：打 `target/release-assets/bee_admin`，不发版时用不到（见下） |
 
 ```bash
 cp .env.example .env && vi .env                      # 填 MySQL root 密码
-cp admin/conf/app.conf.example admin/conf/app.conf   # 填 [jwt] secret（≥32 字符）
-docker compose up -d --build
+cp admin/conf/app.conf.example admin/conf/app.conf   # 填 [jwt] secret 与 [app] encrypt_key（示例值会被拒绝启动）
+docker compose up -d --build                        # 已有镜像想去掉 --build 见下
 # 打开 http://localhost:8081（初始账号 admin / 配置里的 initial_admin_password）
 ```
 
@@ -347,10 +348,19 @@ docker compose up -d --build
   `app.conf` 通常是 600 权限，用镜像默认的非 root 用户会读不到配置而启动失败；
   宿主 uid 不是 1000 时在 `.env` 里改
 - 想接已有的 MySQL：删掉 compose 里的 `mysql` 服务与 `depends_on`，直接改 `BEE_ADMIN_DB_DSN`
+- 本机已有 `bra-backend`/`bra-web` 镜像时（比如下面离线包 `docker load` 进来的）
+  不用 `--build`：`docker compose up -d` 直接用现有镜像，`--build` 才现场构建
 - 只构建镜像（不启动）：`docker build -t bra-backend .`（后端）与
-  `docker build -t bra-web admin/web`（前端）
-- 镜像只在本机构建/离线分发，**不经过 GitHub CI 发布**；需要私有镜像仓库时用
-  `docker tag` + `docker push` 推到自己的仓库即可
+  `docker build -t bra-web admin/web`（前端）；发布脚本走的是预编译版
+  `docker build -f deploy/Dockerfile.prebuilt -t bra-backend:<tag> .` —— 直接打
+  `target/release-assets/bee_admin`（发布口径 strip 过的那个），不重编译，~30 秒
+- **发布产物里的离线包**：每次 release 附带 `bra-images-vX.Y.Z.tar.gz`（后端 + 前端
+  镜像，`docker load -i` 直接导进来）与 `bra-compose-vX.Y.Z.tar.gz`（compose 文件 +
+  预填 `.env` + `app.conf.example` + 一页说明）—— 解包、`docker load`、按说明改两处
+  口令，再 `docker compose up -d` 即可起栈（离线部署用那套，见 `docs/release.md`）
+- 镜像只在本机构建、离线分发（`docker save`/`load`，或 `docker tag` + `docker push`
+  推到自己的仓库），**不经过 GitHub CI 发布**；发版时由 `scripts/release.sh` 把两个镜像
+  打进上面的离线包一起发（本机没有 docker daemon 时用 `--skip-images` 跳过）
 
 ### 测试
 

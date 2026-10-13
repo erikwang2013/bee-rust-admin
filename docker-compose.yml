@@ -7,6 +7,12 @@
 #   docker compose up -d --build
 #   浏览器打开 http://localhost:8081  （初始账号 admin / 配置里的 initial_admin_password）
 #
+# 两种起法（每个服务的 image + build 两个键都留着，就是为这个）：
+#   docker compose up -d          不重建：本机已有 bra-backend/bra-web 镜像就直接用
+#                                 （离线包 `docker load` 进来的镜像走这条路，不再编译）
+#   docker compose up -d --build  现场从源码构建（要 Rust/Node 工具链，慢）
+#   镜像 tag 取 .env 里的 BRA_VERSION（默认 latest）；离线包里的 .env 预填了 vX.Y.Z。
+#
 # 说明：
 #   - 后端容器的数据库地址由 BEE_ADMIN_DB_DSN 覆盖，指向 compose 内的 mysql 服务
 #   - 首次启动自动建表并写入超管与菜单权限种子
@@ -31,6 +37,7 @@ services:
     restart: unless-stopped
 
   bee-admin:
+    image: bra-backend:${BRA_VERSION:-latest}
     build:
       context: .
       dockerfile: Dockerfile
@@ -52,6 +59,7 @@ services:
     restart: unless-stopped
 
   bee-admin-web:
+    image: bra-web:${BRA_VERSION:-latest}
     build:
       context: admin/web
       dockerfile: Dockerfile

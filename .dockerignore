@@ -2,6 +2,10 @@
 .git
 .github
 target
+# …唯一例外：deploy/Dockerfile.prebuilt 打的就是发布脚本放在这里的 strip 产物
+# （`!` 对里层的重新包含要连父目录一起写，legacy builder 才会走下去）
+!target/release-assets/
+!target/release-assets/bee_admin
 docs
 admin/web
 admin/deploy

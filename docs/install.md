@@ -172,6 +172,10 @@ docker compose up -d --build
   默认 `1000:1000`）：`app.conf` 常是 600 权限，用镜像默认的非 root 用户会读不到配置而启动失败。
   你的宿主 uid/gid 不是 1000 就得在 `.env` 里改（`id -u` / `id -g` 查）
 - 想接已有的 MySQL：删掉 compose 里的 `mysql` 服务与 `depends_on`，改 `BEE_ADMIN_DB_DSN` 即可
+- **不想在本机编译**（省掉 Rust/Node 工具链）：每个 Release 还附带 `bra-images-vX.Y.Z.tar.gz`
+  与 `bra-compose-vX.Y.Z.tar.gz` 两个离线包（镜像是本机构建好的，`docker load -i` 即导入；
+  compose 包里有 compose 文件、预填 `.env` 与一页说明）—— 解包后 `docker compose up -d`
+  （**不加 `--build`**）就能起栈，细节见根 README 的 Docker 一节
 
 ### (c) 手工部署
 
