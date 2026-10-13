@@ -12,11 +12,11 @@ publish = false
 #
 # 注意 `router` 只启用 **依赖** `bee_logs`/`bee_config`，而 `bee_rust::bee_logs`
 # 这类 re-export 由**同名特性** `logs`/`config` 门控 —— 两组都得列。
-bee_rust = { version = "1.2.3", path = "../crates/bee_rust", default-features = false, features = ["router", "orm", "logs", "config"] }
+bee_rust = { version = "1.3.0", path = "../crates/bee_rust", default-features = false, features = ["router", "orm", "logs", "config"] }
 # 派生宏生成的代码引用 bee_orm::… 路径，必须直接依赖。
 # mysql：本项目只连 MySQL（上游按后端分特性，默认一个都没开）；
 # chrono：模型里大量 chrono::NaiveDateTime 字段，不开这个特性读取路径编不过。
-bee_orm = { version = "1.2.3", path = "../crates/bee_orm", features = ["mysql", "chrono"] }
+bee_orm = { version = "1.3.0", path = "../crates/bee_orm", features = ["mysql", "chrono"] }
 # multipart：头像分片上传的表单提取器（axum 0.8 默认不带，得显式开）
 axum = { version = "0.8", features = ["multipart"] }
 tokio = { version = "1", features = ["full"] }

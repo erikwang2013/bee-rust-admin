@@ -404,7 +404,7 @@ dependencies = [
 
 [[package]]
 name = "bee_cache"
-version = "1.2.3"
+version = "1.3.0"
 dependencies = [
  "async-trait",
  "memcache",
@@ -415,14 +415,14 @@ dependencies = [
 
 [[package]]
 name = "bee_cli"
-version = "1.2.3"
+version = "1.3.0"
 dependencies = [
  "clap",
 ]
 
 [[package]]
 name = "bee_config"
-version = "1.2.3"
+version = "1.3.0"
 dependencies = [
  "bee_config_macro",
  "notify",
@@ -433,7 +433,7 @@ dependencies = [
 
 [[package]]
 name = "bee_config_macro"
-version = "1.2.3"
+version = "1.3.0"
 dependencies = [
  "quote",
  "syn 2.0.119",
@@ -441,7 +441,7 @@ dependencies = [
 
 [[package]]
 name = "bee_graph"
-version = "1.2.3"
+version = "1.3.0"
 dependencies = [
  "async-trait",
  "axum",
@@ -454,7 +454,7 @@ dependencies = [
 
 [[package]]
 name = "bee_kv"
-version = "1.2.3"
+version = "1.3.0"
 dependencies = [
  "async-trait",
  "memcache",
@@ -465,7 +465,7 @@ dependencies = [
 
 [[package]]
 name = "bee_logs"
-version = "1.2.3"
+version = "1.3.0"
 dependencies = [
  "tracing",
  "tracing-appender",
@@ -474,7 +474,7 @@ dependencies = [
 
 [[package]]
 name = "bee_orm"
-version = "1.2.3"
+version = "1.3.0"
 dependencies = [
  "async-trait",
  "bee_orm_macro",
@@ -497,7 +497,7 @@ dependencies = [
 
 [[package]]
 name = "bee_orm_macro"
-version = "1.2.3"
+version = "1.3.0"
 dependencies = [
  "bee_orm",
  "chrono",
@@ -510,7 +510,7 @@ dependencies = [
 
 [[package]]
 name = "bee_router"
-version = "1.2.3"
+version = "1.3.0"
 dependencies = [
  "async-trait",
  "axum",
@@ -527,7 +527,7 @@ dependencies = [
 
 [[package]]
 name = "bee_rust"
-version = "1.2.3"
+version = "1.3.0"
 dependencies = [
  "bee_cache",
  "bee_config",
@@ -544,7 +544,7 @@ dependencies = [
 
 [[package]]
 name = "bee_search"
-version = "1.2.3"
+version = "1.3.0"
 dependencies = [
  "async-trait",
  "axum",
@@ -557,7 +557,7 @@ dependencies = [
 
 [[package]]
 name = "bee_session"
-version = "1.2.3"
+version = "1.3.0"
 dependencies = [
  "bee_cache",
  "serde",
@@ -569,7 +569,7 @@ dependencies = [
 
 [[package]]
 name = "bee_template"
-version = "1.2.3"
+version = "1.3.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -580,7 +580,7 @@ dependencies = [
 
 [[package]]
 name = "bee_tsdb"
-version = "1.2.3"
+version = "1.3.0"
 dependencies = [
  "async-trait",
  "axum",
