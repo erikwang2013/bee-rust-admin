@@ -359,7 +359,7 @@ pub async fn get_menus(
 }
 
 #[apidoc::title("设置角色的菜单")]
-#[apidoc::desc("整批覆盖；服务端把祖先节点补全后再落库（antd 半选的父节点不会提交）。非超管挂的菜单必须真实存在，且权限码不能超出自己已有的（防就地造码提权）")]
+#[apidoc::desc("整批覆盖：提交什么就存什么（antd 半选的父节点由**前端**补全后一并提交）。非超管挂的菜单必须真实存在，且权限码不能超出自己已有的（防就地造码提权）")]
 #[apidoc::url("/api/v1/roles/{id}/menus")]
 #[apidoc::method("PUT")]
 #[apidoc::tag("角色")]

@@ -547,6 +547,11 @@ async fn v14_backend_features() {
         Some(json!({"name": "自有权限按钮", "type": "F", "perm": "system:role:remove"}))).await;
     assert_eq!(st, 403, "编辑菜单时改成自己没有的权限码: {v}");
     assert_eq!(v["err"], "auth.forbidden", "{v}");
+    // 放宽口径：权限码**没变**时不该被挡 —— 编辑是整批提交，改名/挪位/排序都会带上菜单原有的
+    // perm；只有「引入自己没有的 perm」才算提权（上面那条）
+    let (st, v) = call(&c, Method::PUT, api(&format!("/menus/{own_menu}")), Some(&rwop),
+        Some(json!({"name": "自有权限按钮（改名）", "type": "F", "perm": "system:menu:add"}))).await;
+    assert_eq!(st, 200, "perm 未变、只是改名，不该被写路径闸挡住: {v}");
 
     // 超管不受任何新闸影响：改 scope=5 的角色、挂任意菜单、造任意权限码
     let (st, v) = call(&c, Method::PUT, api(&format!("/roles/{custom_role}")), Some(&admin), Some(json!({

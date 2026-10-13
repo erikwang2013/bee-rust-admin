@@ -219,15 +219,6 @@ pub async fn update(
     auth.require("system:menu:edit")?;
     let id = hid::dec(&id)?;
     validate_body(&body)?;
-    // B5 写路径闸（非超管）：权限码只能写自己已有的（超管不受管）
-    datascope::ensure_perm_writable(&auth, &body.perm)?;
-    if !parent_exists(&state, body.parent_id).await? {
-        return Err(ApiError::BadRequest("上级菜单不存在".into()));
-    }
-    if would_cycle(&parent_map(&state).await?, id, body.parent_id) {
-        return Err(ApiError::BadRequest("不能把菜单挂到自己的子节点下".into()));
-    }
-
     let mut m = Menu::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
@@ -235,6 +226,17 @@ pub async fn update(
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
+    // B5 写路径闸（非超管）：**只在权限码真的变了**时校验 —— 编辑是整批提交、会带上菜单原有的
+    // perm，改名 / 挪位 / 排序不该被挡；能造提权的只有「引入一个自己没有的 perm」。
+    if body.perm != m.perm {
+        datascope::ensure_perm_writable(&auth, &body.perm)?;
+    }
+    if !parent_exists(&state, body.parent_id).await? {
+        return Err(ApiError::BadRequest("上级菜单不存在".into()));
+    }
+    if would_cycle(&parent_map(&state).await?, id, body.parent_id) {
+        return Err(ApiError::BadRequest("不能把菜单挂到自己的子节点下".into()));
+    }
 
     m.parent_id = body.parent_id;
     m.name = body.name.trim().to_string();
