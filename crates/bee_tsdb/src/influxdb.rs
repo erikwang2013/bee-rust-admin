@@ -3,11 +3,11 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use reqwest::Client;
 
-use crate::http::{check_status, conn_err, http_error, query_err, http_client};
+use crate::http::{check_status, conn_err, http_client, http_error, query_err};
 
 use crate::{
-    CQSpec, Fields, FilterOp, Point, TagFilter, Tags, TimeSeries, TimeSeriesDB, Timestamp, TsdbError,
-    aggregation_fn,
+    CQSpec, Fields, FilterOp, Point, TagFilter, Tags, TimeSeries, TimeSeriesDB, Timestamp,
+    TsdbError, aggregation_fn,
 };
 
 /// InfluxDB v2 driver backed by its HTTP (Flux) API.
@@ -283,6 +283,8 @@ fn parse_csv(body: &str) -> Result<TimeSeries, TsdbError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::Aggregation;
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use axum::routing::post;

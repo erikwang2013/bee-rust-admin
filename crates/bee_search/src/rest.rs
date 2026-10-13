@@ -4,8 +4,8 @@ use reqwest::{Client, StatusCode};
 
 use crate::{
     AggResult, Aggregations, BulkResult, Document, DocumentId, Mapping, ScrollHandle, SearchEngine,
-    SearchError, SearchHit, SearchQuery, SearchResult, check_status, conn_err, http_error,
-    query_err, http_client,
+    SearchError, SearchHit, SearchQuery, SearchResult, check_status, conn_err, http_client,
+    http_error, query_err,
 };
 
 /// Shared REST implementation for Elasticsearch-compatible engines
@@ -209,4 +209,3 @@ fn parse_hits(payload: &serde_json::Value) -> SearchResult {
     let aggregations = payload.get("aggregations").cloned();
     SearchResult { total, hits, aggregations }
 }
-

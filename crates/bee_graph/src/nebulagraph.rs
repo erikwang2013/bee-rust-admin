@@ -2,7 +2,7 @@
 use async_trait::async_trait;
 use reqwest::Client;
 
-use crate::http::{backtick, conn_err, esc, http_error, query_err, http_client};
+use crate::http::{backtick, conn_err, esc, http_client, http_error, query_err};
 
 use crate::{
     Edge, GraphDB, GraphError, Params, PathResult, Properties, QueryResult, Traversal,

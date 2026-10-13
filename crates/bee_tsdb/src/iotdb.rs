@@ -3,11 +3,11 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use reqwest::Client;
 
-use crate::http::{conn_err, http_error, query_err, http_client};
+use crate::http::{conn_err, http_client, http_error, query_err};
 
 use crate::{
-    CQSpec, Fields, FilterOp, Point, TagFilter, Tags, TimeSeries, TimeSeriesDB, Timestamp, TsdbError,
-    aggregation_fn,
+    CQSpec, Fields, FilterOp, Point, TagFilter, Tags, TimeSeries, TimeSeriesDB, Timestamp,
+    TsdbError, aggregation_fn,
 };
 
 /// IoTDB driver backed by its REST API v1 (`POST /api/v1/query` with SQL).
@@ -221,6 +221,8 @@ impl IoTDB {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::Aggregation;
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use axum::routing::post;

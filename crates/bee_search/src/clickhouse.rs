@@ -5,8 +5,8 @@ use serde_json::{Value, json};
 
 use crate::{
     AggResult, Aggregations, BulkResult, Document, DocumentId, Mapping, ScrollHandle, SearchEngine,
-    SearchError, SearchHit, SearchQuery, SearchResult, check_status, conn_err, http_error,
-    query_err, http_client,
+    SearchError, SearchHit, SearchQuery, SearchResult, check_status, conn_err, http_client,
+    http_error, query_err,
 };
 
 /// ClickHouse driver backed by its HTTP interface (SQL-over-HTTP with
