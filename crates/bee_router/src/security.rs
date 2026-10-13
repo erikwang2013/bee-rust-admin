@@ -15,8 +15,7 @@ use crate::filter::Filter;
 ///
 /// Only the presence of a detection matters to this filter — 4.x's single
 /// weak signals (`Severity::Low`, e.g. one `../` or a repeated query
-/// parameter) are blocked as well; use a custom [`Scanner`] (`with_scanner`)
-/// if that is too strict for your traffic.
+/// parameter) are blocked as well.
 ///
 /// # Body scanning
 ///
@@ -32,12 +31,6 @@ impl SecurityFilter {
     /// Create a filter with all 32 detectors enabled.
     pub fn new() -> Self {
         Self { scanner: Scanner::default() }
-    }
-
-    /// Create a filter backed by a custom-configured [`Scanner`] (e.g. one
-    /// built via [`Scanner::builder()`]).
-    pub fn with_scanner(scanner: Scanner) -> Self {
-        Self { scanner }
     }
 
     /// Access the underlying scanner for direct use (e.g. scanning

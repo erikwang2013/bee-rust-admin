@@ -147,8 +147,8 @@ impl GraphDB for ArangoDB {
             TraversalDirection::Both => "ANY",
         };
         let label = traversal
-            .edge_labels
-            .first()
+            .edge_label
+            .as_ref()
             .map(|l| {
                 validate_key(l, "edge label")?;
                 Ok::<String, GraphError>(format!(" `{}`", esc(l)))
@@ -350,7 +350,7 @@ mod tests {
         let paths = db
             .traverse(Traversal {
                 start: "v1".into(),
-                edge_labels: vec!["KNOWS".into()],
+                edge_label: Some("KNOWS".into()),
                 max_depth: 1,
                 direction: TraversalDirection::Outgoing,
             })

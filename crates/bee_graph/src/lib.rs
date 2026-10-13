@@ -52,8 +52,8 @@ pub struct Edge {
 pub struct Traversal {
     /// Starting vertex ID.
     pub start: VertexId,
-    /// Edge label(s) to follow (empty = any).
-    pub edge_labels: Vec<String>,
+    /// Edge label to follow (`None` = any).
+    pub edge_label: Option<String>,
     /// Maximum depth / hops.
     pub max_depth: u32,
     /// Direction in which to traverse edges.
@@ -96,10 +96,6 @@ pub enum GraphError {
     /// The requested vertex does not exist.
     #[error("vertex not found: {0}")]
     VertexNotFound(VertexId),
-
-    /// The requested edge does not exist.
-    #[error("edge not found: {0}")]
-    EdgeNotFound(EdgeId),
 
     /// The connection to the graph backend failed.
     #[error("connection error: {0}")]
@@ -253,8 +249,8 @@ mod tests {
                         if !follows {
                             continue;
                         }
-                        if !traversal.edge_labels.is_empty()
-                            && !traversal.edge_labels.contains(&edge.label)
+                        if let Some(label) = &traversal.edge_label
+                            && *label != edge.label
                         {
                             continue;
                         }
@@ -354,7 +350,7 @@ mod tests {
         let paths = db
             .traverse(Traversal {
                 start: "a".into(),
-                edge_labels: vec!["KNOWS".into()],
+                edge_label: Some("KNOWS".into()),
                 max_depth: 1,
                 direction: TraversalDirection::Outgoing,
             })
@@ -387,7 +383,7 @@ mod tests {
         let result = db
             .traverse(Traversal {
                 start: "a".into(),
-                edge_labels: vec![],
+                edge_label: None,
                 max_depth: 1,
                 direction: TraversalDirection::Both,
             })

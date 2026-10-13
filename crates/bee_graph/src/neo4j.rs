@@ -114,7 +114,7 @@ impl GraphDB for Neo4j {
 
     async fn traverse(&self, traversal: Traversal) -> Result<Vec<PathResult>, GraphError> {
         let label =
-            traversal.edge_labels.first().map(|l| format!("`{}`", backtick(l))).unwrap_or_default();
+            traversal.edge_label.as_ref().map(|l| format!("`{}`", backtick(l))).unwrap_or_default();
         let arrow = match traversal.direction {
             TraversalDirection::Outgoing => "->",
             TraversalDirection::Incoming => "<-",

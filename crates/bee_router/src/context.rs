@@ -20,7 +20,6 @@ pub enum RouterError {
 
 pub struct Context {
     pub request: Request<Body>,
-    params: HashMap<String, String>,
     session: Session,
     pub templates: Arc<TemplateEngine>,
     response_status: StatusCode,
@@ -33,7 +32,6 @@ impl Context {
     pub fn new(request: Request<Body>, session: Session, templates: Arc<TemplateEngine>) -> Self {
         Self {
             request,
-            params: HashMap::new(),
             session,
             templates,
             response_status: StatusCode::OK,
@@ -41,14 +39,6 @@ impl Context {
             response_body: Vec::new(),
             aborted: false,
         }
-    }
-
-    pub fn set_params(&mut self, params: HashMap<String, String>) {
-        self.params = params;
-    }
-
-    pub fn param(&self, key: &str) -> Option<&str> {
-        self.params.get(key).map(|s| s.as_str())
     }
 
     pub fn json<T: serde::Serialize>(&mut self, data: &T) -> Result<(), RouterError> {
