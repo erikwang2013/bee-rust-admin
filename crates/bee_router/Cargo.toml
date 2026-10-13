@@ -16,10 +16,6 @@ async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror.workspace = true
-tracing = { workspace = true }
-http = "1"
-bee_config = { version = "1.2.3", path = "../bee_config" }
-bee_logs = { version = "1.2.3", path = "../bee_logs" }
 bee_template = { version = "1.2.3", path = "../bee_template" }
 bee_session = { version = "1.2.3", path = "../bee_session" }
 bee_cache = { version = "1.2.3", path = "../bee_cache" }

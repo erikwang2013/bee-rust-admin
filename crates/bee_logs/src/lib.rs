@@ -8,10 +8,12 @@ pub enum Output {
     MultiFile(String),
 }
 
+// ponytail: no async switch — `Output::File`/`MultiFile` already write through
+// a `tracing_appender::non_blocking` worker, so async is a property of the
+// chosen output; add a knob back only if `Stdout` needs buffering too.
 pub struct Logger {
     level: Level,
     output: Output,
-    async_mode: bool,
 }
 
 pub struct LogHandle {
@@ -20,7 +22,7 @@ pub struct LogHandle {
 
 impl Logger {
     pub fn new() -> Self {
-        Self { level: Level::INFO, output: Output::Stdout, async_mode: false }
+        Self { level: Level::INFO, output: Output::Stdout }
     }
 
     pub fn level(mut self, level: Level) -> Self {
@@ -30,11 +32,6 @@ impl Logger {
 
     pub fn output(mut self, output: Output) -> Self {
         self.output = output;
-        self
-    }
-
-    pub fn async_(mut self) -> Self {
-        self.async_mode = true;
         self
     }
 

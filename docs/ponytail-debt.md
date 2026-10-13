@@ -9,7 +9,8 @@
 |---|---|---|
 | [`admin/src/api/admin.rs:192`](../admin/src/api/admin.rs#L192) | 管理员列表每行一次关联查询（页 10 行 = 11 次查询） | 行数大改批量查 |
 | [`admin/src/api/auth.rs:174`](../admin/src/api/auth.rs#L174) | `/captcha/new` 限流阈值 60 次/分钟是拍的：正常用户一分钟开不了 60 次登录页，刷子被压到 60 条/分钟（按 TTL 300s 算单 IP 稳态 ≤ 300 条） | 要调就调这两个数（`threshold` / `window_secs`） |
-| [`admin/src/api/auth.rs:194`](../admin/src/api/auth.rs#L194) | 验证码「消费」的互斥锁只在单进程内有效 | 多实例部署要换插件的 Redis 存储，那才是真正跨进程的消费 |
+| [`admin/src/api/auth.rs:214`](../admin/src/api/auth.rs#L214) | 验证码全局限流的额度只在单进程内计数（多实例各算各的，总限量按实例数翻倍） | 多实例部署时挪到网关或换跨进程存储 |
+| [`admin/src/api/auth.rs:237`](../admin/src/api/auth.rs#L237) | 验证码「消费」的互斥锁只在单进程内有效 | 多实例部署要换插件的 Redis 存储，那才是真正跨进程的消费 |
 | [`admin/src/api/login_log.rs:78`](../admin/src/api/login_log.rs#L78) | 清空日志先全量取 id 再分批删（ORM 无按条件批量删） | 日志量极大时改为 ORM 批量删 |
 | [`admin/src/datascope.rs:207`](../admin/src/datascope.rs#L207) | 每行一次 `role_perms`（2 条查询）；角色是配置量级（几十个），不分批 | 注释未给触发条件 |
 | [`admin/src/jobs.rs:10`](../admin/src/jobs.rs#L10) | 调度假定单实例：同进程内靠 `last_run_at` 抢占，多实例下同一任务会重复跑 | 多实例部署前换成 DB 行锁 |
@@ -19,6 +20,7 @@
 | 位置 | 有意搁置什么（天花板） | 升级触发条件 / 路径 |
 |---|---|---|
 | [`crates/bee_graph/src/nebulagraph.rs:80`](../crates/bee_graph/src/nebulagraph.rs#L80) | nGQL `UPDATE VERTEX` 需要 tag 名而 trait 不携带：用通配 tag `*` 保持调用点简单 | 后端拒绝 `*` 时给 driver 加 tag 字段并在这里用它 |
+| [`crates/bee_logs/src/lib.rs:11`](../crates/bee_logs/src/lib.rs#L11) | `Logger` 没有异步开关：原 `async_mode` 字段与 `async_()` setter 从未被 `init()` 读取，是假开关（已删）；异步与否由 `Output` 变体决定（`File`/`MultiFile` 走 non_blocking worker，`Stdout` 同步） | `Stdout` 也被阻塞拖慢时再加 |
 | [`crates/bee_orm/src/lib.rs:44`](../crates/bee_orm/src/lib.rs#L44) | `MAX_BIND_PARAMS = 999`：所有后端统一按 sqlite 的经典上限分块（pg/mysql 允许 65535），换「一个常量、统一 SQL」 | 注释未给触发条件 |
 | [`crates/bee_orm/src/pool/mysql.rs:41`](../crates/bee_orm/src/pool/mysql.rs#L41) | 取连接超时写死 30s（mysql_async 0.34.2 没有 acquire timeout） | 调用方需要调时改成可配置 |
 | [`crates/bee_orm/src/pool/mysql.rs:219`](../crates/bee_orm/src/pool/mysql.rs#L219) | `bytes` 列按 UTF-8 文本解码；日期时间列在不带 `chrono` 特性时返回 null（带则按列类型分发） | 注释未给触发条件（`chrono` 是既有特性开关，不是升级路径） |
@@ -34,4 +36,4 @@
 
 ---
 
-共 18 条注释（本台账 17 行，`postgres.rs` 池超时 2 处合并 1 行）：admin 应用 6 条、crates 框架 12 条。
+共 20 条注释（本台账 19 行，`postgres.rs` 池超时 2 处合并 1 行）：admin 应用 7 条、crates 框架 13 条。

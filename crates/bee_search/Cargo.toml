@@ -26,7 +26,6 @@ clickhouse = ["dep:reqwest"]
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 axum = { workspace = true }
-serde = { workspace = true }
 
 # Build the docs with every feature: the optional backends gate public modules.
 [package.metadata.docs.rs]

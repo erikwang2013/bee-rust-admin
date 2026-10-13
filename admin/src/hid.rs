@@ -10,10 +10,8 @@
 //! 无效输入一律 400「无效的 id」（`ApiError::BadRequest`），不是 500 也不是 panic：
 //! `Guard::decode` 解不出东西时返回**空 Vec**（不是 Result），所以「空」或「多个值」
 //! 都判无效；`enc(0)` 解回来仍是 `0`（无部门 / 根节点的哨兵值要走得了往返）。
-#![allow(dead_code)] // 契约接口（enc_batch / dec_vec …）：调用点可能在将来，先按契约备着
 use crate::error::ApiError;
 use hashids::{Config, ConnectionConfig, Guard, HashidsManager};
-use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serializer};
 use serde_json::Value;
 use std::sync::{Arc, OnceLock};
@@ -44,12 +42,6 @@ pub fn enc(id: i64) -> String {
     guard().encode(&[id as u64])
 }
 
-/// 一批 i64 → **一个**短串（hashids 原生批量语义：解码回来是整批）。
-pub fn enc_batch(ids: &[i64]) -> String {
-    let nums: Vec<u64> = ids.iter().map(|i| *i as u64).collect();
-    guard().encode(&nums)
-}
-
 /// 一批 i64 → 一批短串（数组字段用：与逐个 `dec` 对称）。
 pub fn enc_vec(ids: &[i64]) -> Vec<String> {
     ids.iter().map(|i| enc(*i)).collect()
@@ -62,19 +54,6 @@ pub fn dec(s: &str) -> Result<i64, ApiError> {
         return Ok(v[0] as i64);
     }
     Err(ApiError::BadRequest(INVALID_ID.into()))
-}
-
-/// 一批短串 → 一批 i64；任一解不出即整体 400。
-pub fn dec_vec(v: &[String]) -> Result<Vec<i64>, ApiError> {
-    v.iter().map(|s| dec(s)).collect()
-}
-
-/// `Option<&str>` → `Option<i64>`：缺省 / 空串 = None（没传这个筛选条件）。
-pub fn dec_opt(v: Option<&str>) -> Result<Option<i64>, ApiError> {
-    match v.map(str::trim) {
-        None | Some("") => Ok(None),
-        Some(s) => dec(s).map(Some),
-    }
 }
 
 // ── serde 辅助 ──────────────────────────────────────────────
@@ -117,14 +96,6 @@ pub fn de_id<'de, D: Deserializer<'de>>(d: D) -> Result<i64, D::Error> {
     parse_one(&v).map_err(de_err::<D::Error>)
 }
 
-/// `Option<i64>` 字段 → 短串 / null。
-pub fn ser_opt_id<S: Serializer>(v: &Option<i64>, s: S) -> Result<S::Ok, S::Error> {
-    match v {
-        Some(id) => s.serialize_str(&enc(*id)),
-        None => s.serialize_none(),
-    }
-}
-
 /// null / 空串 / 缺省 → `None`（筛选项不生效）；其余同 [`de_id`]。
 pub fn de_opt_id<'de, D: Deserializer<'de>>(d: D) -> Result<Option<i64>, D::Error> {
     let v = Value::deserialize(d)?;
@@ -134,16 +105,7 @@ pub fn de_opt_id<'de, D: Deserializer<'de>>(d: D) -> Result<Option<i64>, D::Erro
     parse_one(&v).map(Some).map_err(de_err::<D::Error>)
 }
 
-/// `Vec<i64>` → 短串数组。
-pub fn ser_vec_id<S: Serializer>(v: &[i64], s: S) -> Result<S::Ok, S::Error> {
-    let mut seq = s.serialize_seq(Some(v.len()))?;
-    for id in v {
-        seq.serialize_element(&enc(*id))?;
-    }
-    seq.end()
-}
-
-/// 短串数组 → `Vec<i64>`。另认两种形状：单个 hashids 批量串（`enc_batch` 的产物）、
+/// 短串数组 → `Vec<i64>`。另认两种形状：单个 hashids 批量串（hashids 原生一次编多值的产物）、
 /// 数字数组（迁移期客户端）；`null` = 空数组。
 pub fn de_vec_id<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<i64>, D::Error> {
     let v = Value::deserialize(d)?;
@@ -182,7 +144,7 @@ mod tests {
         assert_eq!(dec(&enc(0)).unwrap(), 0);
         // 批量串解回的是整批，不是单个 id：`dec`（单个 id 的入口）必须拒
         //（数组字段走 de_vec_id，那才收批量串）
-        assert!(dec(&enc_batch(&[id, 1, 2])).is_err(), "批量串不该被当成单个 id");
+        assert!(dec(&guard().encode(&[id as u64, 1, 2])).is_err(), "批量串不该被当成单个 id");
         assert_eq!(enc_vec(&[1, 2]).len(), 2);
     }
 
@@ -218,44 +180,39 @@ mod tests {
         assert_eq!(serde_json::from_value::<One>(serde_json::json!({"id": ""})).unwrap().id, 0);
         assert!(serde_json::from_value::<One>(serde_json::json!({"id": "!!!"})).is_err());
 
-        #[derive(serde::Serialize, serde::Deserialize)]
+        #[derive(serde::Deserialize)]
         struct Many {
-            #[serde(serialize_with = "ser_vec_id", deserialize_with = "de_vec_id", default)]
+            #[serde(deserialize_with = "de_vec_id", default)]
             ids: Vec<i64>,
         }
-        let v = serde_json::to_value(Many { ids: vec![id, 1] }).unwrap();
-        assert!(v["ids"][0].is_string());
-        assert_eq!(serde_json::from_value::<Many>(v).unwrap().ids, vec![id, 1], "数组往返");
+        // 响应用 `enc_vec` 直接拼短串数组（见 `api/role.rs`），入站要认这个形状
+        assert_eq!(
+            serde_json::from_value::<Many>(serde_json::json!({"ids": enc_vec(&[id, 1])}))
+                .unwrap()
+                .ids,
+            vec![id, 1],
+            "短串数组往返"
+        );
         assert_eq!(
             serde_json::from_value::<Many>(serde_json::json!({"ids": [1, 2]})).unwrap().ids,
             vec![1, 2],
             "数字数组也认"
         );
         assert_eq!(
-            serde_json::from_value::<Many>(serde_json::json!({"ids": enc_batch(&[id, 1])})).unwrap().ids,
+            serde_json::from_value::<Many>(serde_json::json!({"ids": guard().encode(&[id as u64, 1])}))
+                .unwrap()
+                .ids,
             vec![id, 1],
             "单个批量串也认"
         );
 
-        #[derive(serde::Serialize, serde::Deserialize)]
+        #[derive(serde::Deserialize)]
         struct Opt {
-            #[serde(serialize_with = "ser_opt_id", deserialize_with = "de_opt_id", default)]
+            #[serde(deserialize_with = "de_opt_id", default)]
             dept_id: Option<i64>,
         }
-        let v = serde_json::to_value(Opt { dept_id: Some(id) }).unwrap();
-        assert!(v["dept_id"].is_string());
-        assert_eq!(serde_json::from_value::<Opt>(v).unwrap().dept_id, Some(id));
+        assert_eq!(serde_json::from_value::<Opt>(serde_json::json!({"dept_id": enc(id)})).unwrap().dept_id, Some(id));
         assert_eq!(serde_json::from_value::<Opt>(serde_json::json!({"dept_id": null})).unwrap().dept_id, None);
         assert_eq!(serde_json::from_value::<Opt>(serde_json::json!({"dept_id": ""})).unwrap().dept_id, None);
-    }
-
-    #[test]
-    fn dec_helpers_map_none_and_empty_to_none() {
-        setup();
-        assert_eq!(dec_opt(None).unwrap(), None);
-        assert_eq!(dec_opt(Some("")).unwrap(), None);
-        assert_eq!(dec_opt(Some("  ")).unwrap(), None);
-        assert_eq!(dec_vec(&[]).unwrap(), Vec::<i64>::new());
-        assert!(dec_vec(&["ok-not-a-hash".into()]).is_err());
     }
 }

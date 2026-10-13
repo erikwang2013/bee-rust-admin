@@ -435,7 +435,6 @@ dependencies = [
 name = "bee_config_macro"
 version = "1.2.3"
 dependencies = [
- "proc-macro2",
  "quote",
  "syn 2.0.119",
 ]
@@ -516,18 +515,14 @@ dependencies = [
  "async-trait",
  "axum",
  "bee_cache",
- "bee_config",
- "bee_logs",
  "bee_session",
  "bee_template",
- "http",
  "security-rust",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
  "tower",
- "tracing",
 ]
 
 [[package]]
@@ -564,7 +559,6 @@ dependencies = [
 name = "bee_session"
 version = "1.2.3"
 dependencies = [
- "async-trait",
  "bee_cache",
  "serde",
  "serde_json",
