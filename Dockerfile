@@ -44,7 +44,13 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -r -u 10001 -m app
 
-WORKDIR /app
+# 工作目录 /home：头像落盘根 [app] upload_dir=uploads 是相对路径，基准就是 WORKDIR
+WORKDIR /home
+# 预置这个落盘根（1777，同 /tmp 的语义）：后端启动时要 eager 建它下面的 avatar/，
+# 建不出来直接退出；容器以「宿主配置文件属主」的身份跑（compose 的 APP_UID，任意
+# uid），镜像里没法预知是谁 —— 所以给任何 uid 都能写。
+RUN install -d -m 1777 /home/uploads
+
 COPY --from=builder /src/bee_admin.release /app/bee_admin
 COPY admin/conf/app.conf.example /app/conf/app.conf.example
 

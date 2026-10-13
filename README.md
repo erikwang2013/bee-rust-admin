@@ -347,8 +347,9 @@ docker compose up -d --build                        # 已有镜像想去掉 --bu
 - 后端容器以**宿主机配置文件属主**的身份运行（`APP_UID`/`APP_GID`，默认 `1000:1000`）：
   `app.conf` 通常是 600 权限，用镜像默认的非 root 用户会读不到配置而启动失败；
   宿主 uid 不是 1000 时在 `.env` 里改
-- 上传的头像落在容器内 `/tmp/uploads`（compose 给后端指了 `working_dir: /tmp`：`upload_dir=uploads`
-  是相对 WORKDIR 的路径，而镜像里 `/app` 属 root，以 `APP_UID` 跑写不进去）；**容器重建即丢**
+- 上传的头像落在容器内 `/home/uploads`（镜像把 WORKDIR 指到 `/home`，并预置了这个可写目录：
+  `upload_dir=uploads` 是相对 WORKDIR 的路径，而 `/app` 属 root，以 `APP_UID` 跑写不进去）；
+  **容器重建即丢**
 - 想接已有的 MySQL：删掉 compose 里的 `mysql` 服务与 `depends_on`，直接改 `BEE_ADMIN_DB_DSN`
 - 本机已有 `bra-backend`/`bra-web` 镜像时（比如下面离线包 `docker load` 进来的）
   不用 `--build`：`docker compose up -d` 直接用现有镜像，`--build` 才现场构建
