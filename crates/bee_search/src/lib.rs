@@ -24,6 +24,39 @@ pub(crate) fn http_client() -> reqwest::Client {
         .unwrap_or_else(|_| reqwest::Client::new())
 }
 
+// Shared error mapping for the REST drivers: `name` is the driver name that
+// shows up in the message, so callers can tell backends apart.
+
+/// Failed request transport → [`SearchError::ConnectionError`].
+#[cfg(any(feature = "elasticsearch", feature = "opensearch", feature = "clickhouse"))]
+pub(crate) fn conn_err(e: reqwest::Error) -> SearchError {
+    SearchError::ConnectionError(e.to_string())
+}
+
+/// Failed body decode → [`SearchError::QueryError`].
+#[cfg(any(feature = "elasticsearch", feature = "opensearch", feature = "clickhouse"))]
+pub(crate) fn query_err(e: reqwest::Error) -> SearchError {
+    SearchError::QueryError(e.to_string())
+}
+
+/// Non-2xx response → [`SearchError::QueryError`] naming `name` and `op`.
+#[cfg(any(feature = "elasticsearch", feature = "opensearch", feature = "clickhouse"))]
+pub(crate) async fn http_error(res: reqwest::Response, name: &str, op: &str) -> SearchError {
+    let status = res.status();
+    let body = res.text().await.unwrap_or_default();
+    SearchError::QueryError(format!("{name} {op} failed with {status}: {body}"))
+}
+
+/// [`http_error`] as a `Result` guard for callers that only need the check.
+#[cfg(any(feature = "elasticsearch", feature = "opensearch", feature = "clickhouse"))]
+pub(crate) async fn check_status(
+    res: reqwest::Response,
+    name: &str,
+    op: &str,
+) -> Result<(), SearchError> {
+    if res.status().is_success() { Ok(()) } else { Err(http_error(res, name, op).await) }
+}
+
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------

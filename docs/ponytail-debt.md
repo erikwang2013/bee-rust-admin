@@ -28,7 +28,7 @@
 | [`crates/bee_orm/src/pool/postgres.rs:262`](../crates/bee_orm/src/pool/postgres.rs#L262) | `pg_sql` 盲替换所有 `?` → `$n`：前提是 `QuerySet` 只发 `?`、`filter()` 原始串是可信常量；手写 SQL 字符串字面量里的 `?` 也会被改写 | 注释未给触发条件 |
 | [`crates/bee_orm/src/pool/postgres.rs:288`](../crates/bee_orm/src/pool/postgres.rs#L288) | 只解码常见列类型；数组列与 timestamp-without-time-zone 系列返回 null（日期/数值随 `chrono` / `rust_decimal` 特性解码，关闭时落 `_` 分支 null） | 注释未给触发条件 |
 | [`crates/bee_tsdb/src/iotdb.rs:55`](../crates/bee_tsdb/src/iotdb.rs#L55) | `query_range` 无服务端过滤下推，tag 过滤在客户端解析后应用 | 吞吐成为问题时加上 |
-| [`crates/bee_tsdb/src/iotdb.rs:171`](../crates/bee_tsdb/src/iotdb.rs#L171) | IoTDB REST 不引用字符串值：含逗号的字符串会把行拆成多余片段（末列吸收多余部分），多列逗号仍会错位 | 真出问题时换成不含逗号的服务端格式 |
+| [`crates/bee_tsdb/src/iotdb.rs:161`](../crates/bee_tsdb/src/iotdb.rs#L161) | IoTDB REST 不引用字符串值：含逗号的字符串会把行拆成多余片段（末列吸收多余部分），多列逗号仍会错位 | 真出问题时换成不含逗号的服务端格式 |
 | [`crates/bee_tsdb/src/questdb.rs:41`](../crates/bee_tsdb/src/questdb.rs#L41) | `write_batch` 多行 VALUES 要求整批列布局一致，混合 schema 会错位 | 注释未给触发条件 |
 | [`crates/bee_tsdb/src/questdb.rs:79`](../crates/bee_tsdb/src/questdb.rs#L79) | QuestDB 无原生 CQ：`create_continuous_query` 是 no-op | 需要时再实现 |
 

@@ -4,7 +4,8 @@ use reqwest::{Client, StatusCode};
 
 use crate::{
     AggResult, Aggregations, BulkResult, Document, DocumentId, Mapping, ScrollHandle, SearchEngine,
-    SearchError, SearchHit, SearchQuery, SearchResult, http_client,
+    SearchError, SearchHit, SearchQuery, SearchResult, check_status, conn_err, http_error,
+    query_err, http_client,
 };
 
 /// Shared REST implementation for Elasticsearch-compatible engines
@@ -32,7 +33,7 @@ impl SearchEngine for RestEngine {
             .send()
             .await
             .map_err(conn_err)?;
-        check_status(res, "create_index").await
+        check_status(res, self.name, "create_index").await
     }
 
     async fn delete_index(&self, name: &str) -> Result<(), SearchError> {
@@ -42,7 +43,7 @@ impl SearchEngine for RestEngine {
             .send()
             .await
             .map_err(conn_err)?;
-        check_status(res, "delete_index").await
+        check_status(res, self.name, "delete_index").await
     }
 
     async fn index(&self, index: &str, id: DocumentId, doc: Document) -> Result<(), SearchError> {
@@ -53,7 +54,7 @@ impl SearchEngine for RestEngine {
             .send()
             .await
             .map_err(conn_err)?;
-        check_status(res, "index").await
+        check_status(res, self.name, "index").await
     }
 
     async fn bulk_index(
@@ -81,7 +82,7 @@ impl SearchEngine for RestEngine {
             .await
             .map_err(conn_err)?;
         if !res.status().is_success() {
-            return Err(http_error(res, "bulk_index", self.name).await);
+            return Err(http_error(res, self.name, "bulk_index").await);
         }
         let payload: serde_json::Value = res.json().await.map_err(query_err)?;
         // `_bulk` returns 200 even when items fail (`errors: true`); count
@@ -110,7 +111,7 @@ impl SearchEngine for RestEngine {
             return Ok(None);
         }
         if !res.status().is_success() {
-            return Err(http_error(res, "get", self.name).await);
+            return Err(http_error(res, self.name, "get").await);
         }
         let payload: serde_json::Value = res.json().await.map_err(query_err)?;
         Ok(payload.get("_source").cloned().filter(|v| !v.is_null()))
@@ -123,7 +124,7 @@ impl SearchEngine for RestEngine {
             .send()
             .await
             .map_err(conn_err)?;
-        check_status(res, "delete").await
+        check_status(res, self.name, "delete").await
     }
 
     async fn search(&self, index: &str, query: SearchQuery) -> Result<SearchResult, SearchError> {
@@ -135,7 +136,7 @@ impl SearchEngine for RestEngine {
             .await
             .map_err(conn_err)?;
         if !res.status().is_success() {
-            return Err(http_error(res, "search", self.name).await);
+            return Err(http_error(res, self.name, "search").await);
         }
         let payload: serde_json::Value = res.json().await.map_err(query_err)?;
         Ok(parse_hits(&payload))
@@ -150,7 +151,7 @@ impl SearchEngine for RestEngine {
             .await
             .map_err(conn_err)?;
         if !res.status().is_success() {
-            return Err(http_error(res, "scroll", self.name).await);
+            return Err(http_error(res, self.name, "scroll").await);
         }
         let payload: serde_json::Value = res.json().await.map_err(query_err)?;
         Ok(parse_hits(&payload))
@@ -166,7 +167,7 @@ impl SearchEngine for RestEngine {
             .await
             .map_err(conn_err)?;
         if !res.status().is_success() {
-            return Err(http_error(res, "aggregate", self.name).await);
+            return Err(http_error(res, self.name, "aggregate").await);
         }
         let payload: serde_json::Value = res.json().await.map_err(query_err)?;
         Ok(payload.get("aggregations").cloned().unwrap_or_default())
@@ -209,20 +210,3 @@ fn parse_hits(payload: &serde_json::Value) -> SearchResult {
     SearchResult { total, hits, aggregations }
 }
 
-async fn check_status(res: reqwest::Response, op: &str) -> Result<(), SearchError> {
-    if res.status().is_success() { Ok(()) } else { Err(http_error(res, op, "").await) }
-}
-
-async fn http_error(res: reqwest::Response, op: &str, name: &str) -> SearchError {
-    let status = res.status();
-    let body = res.text().await.unwrap_or_default();
-    SearchError::QueryError(format!("{name} {op} failed with {status}: {body}"))
-}
-
-fn conn_err(e: reqwest::Error) -> SearchError {
-    SearchError::ConnectionError(e.to_string())
-}
-
-fn query_err(e: reqwest::Error) -> SearchError {
-    SearchError::QueryError(e.to_string())
-}

@@ -2,7 +2,7 @@
 use async_trait::async_trait;
 use reqwest::{Client, StatusCode};
 
-use crate::http::http_client;
+use crate::http::{conn_err, esc, http_error, query_err, http_client};
 
 use crate::{
     Edge, GraphDB, GraphError, Params, PathResult, Properties, QueryResult, Traversal,
@@ -51,7 +51,7 @@ impl ArangoDB {
     ) -> Result<serde_json::Value, GraphError> {
         let res = req.send().await.map_err(conn_err)?;
         if !res.status().is_success() {
-            return Err(http_error(res, op).await);
+            return Err(http_error(res, "arangodb", op).await);
         }
         res.json().await.map_err(query_err)
     }
@@ -79,7 +79,7 @@ impl GraphDB for ArangoDB {
             return Ok(None);
         }
         if !res.status().is_success() {
-            return Err(http_error(res, "get_vertex").await);
+            return Err(http_error(res, "arangodb", "get_vertex").await);
         }
         let doc: serde_json::Value = res.json().await.map_err(query_err)?;
         Ok(Some(doc_to_vertex(&doc)))
@@ -102,7 +102,7 @@ impl GraphDB for ArangoDB {
             return Err(GraphError::VertexNotFound(id.clone()));
         }
         if !res.status().is_success() {
-            return Err(http_error(res, "update_vertex").await);
+            return Err(http_error(res, "arangodb", "update_vertex").await);
         }
         let payload: serde_json::Value = res.json().await.map_err(query_err)?;
         Ok(doc_to_vertex(payload.get("new").unwrap_or(&payload)))
@@ -114,7 +114,7 @@ impl GraphDB for ArangoDB {
             return Err(GraphError::VertexNotFound(id.clone()));
         }
         if !res.status().is_success() {
-            return Err(http_error(res, "delete_vertex").await);
+            return Err(http_error(res, "arangodb", "delete_vertex").await);
         }
         Ok(())
     }
@@ -151,7 +151,7 @@ impl GraphDB for ArangoDB {
             .first()
             .map(|l| {
                 validate_key(l, "edge label")?;
-                Ok::<String, GraphError>(format!(" `{}`", aql_esc(l)))
+                Ok::<String, GraphError>(format!(" `{}`", esc(l)))
             })
             .transpose()?
             .unwrap_or_default();
@@ -160,7 +160,7 @@ impl GraphDB for ArangoDB {
             "FOR v, e IN 1..{} {direction} \"{}/{}\"{label} RETURN {{v: v, e: e}}",
             traversal.max_depth,
             self.vertex_collection,
-            aql_esc(&traversal.start)
+            esc(&traversal.start)
         );
         let payload = self
             .send(
@@ -222,10 +222,6 @@ fn validate_key(s: &str, what: &str) -> Result<(), GraphError> {
     Ok(())
 }
 
-fn aql_esc(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"")
-}
-
 fn doc_to_vertex(doc: &serde_json::Value) -> Vertex {
     let props: Properties = doc
         .as_object()
@@ -260,20 +256,6 @@ fn edge_doc_to_edge(doc: &serde_json::Value) -> Edge {
         to: doc["_to"].as_str().unwrap_or("").to_string(),
         properties: props,
     }
-}
-
-fn conn_err(e: reqwest::Error) -> GraphError {
-    GraphError::ConnectionError(e.to_string())
-}
-
-fn query_err(e: reqwest::Error) -> GraphError {
-    GraphError::QueryError(e.to_string())
-}
-
-async fn http_error(res: reqwest::Response, op: &str) -> GraphError {
-    let status = res.status();
-    let body = res.text().await.unwrap_or_default();
-    GraphError::QueryError(format!("arangodb {op} failed with {status}: {body}"))
 }
 
 #[cfg(test)]

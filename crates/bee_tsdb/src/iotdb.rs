@@ -3,11 +3,11 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use reqwest::Client;
 
-use crate::http::http_client;
+use crate::http::{conn_err, http_error, query_err, http_client};
 
 use crate::{
-    Aggregation, CQSpec, Fields, FilterOp, Point, TagFilter, Tags, TimeSeries, TimeSeriesDB,
-    Timestamp, TsdbError,
+    CQSpec, Fields, FilterOp, Point, TagFilter, Tags, TimeSeries, TimeSeriesDB, Timestamp, TsdbError,
+    aggregation_fn,
 };
 
 /// IoTDB driver backed by its REST API v1 (`POST /api/v1/query` with SQL).
@@ -67,7 +67,7 @@ impl TimeSeriesDB for IoTDB {
             .await
             .map_err(conn_err)?;
         if !res.status().is_success() {
-            return Err(http_error(res, "query_range").await);
+            return Err(http_error(res, "iotdb", "query_range").await);
         }
         let payload: serde_json::Value = res.json().await.map_err(query_err)?;
         if payload["code"].as_i64().unwrap_or(200) != 200 {
@@ -107,16 +107,6 @@ fn path_prefix(measurement: &str, tags: &Tags) -> String {
         path.push_str(&format!(".{k}.{v}"));
     }
     path
-}
-
-fn aggregation_fn(agg: &Aggregation) -> &'static str {
-    match agg {
-        Aggregation::Mean => "mean",
-        Aggregation::Sum => "sum",
-        Aggregation::Count => "count",
-        Aggregation::Min => "min",
-        Aggregation::Max => "max",
-    }
 }
 
 fn iotdb_value(v: &serde_json::Value) -> Result<String, TsdbError> {
@@ -218,7 +208,7 @@ impl IoTDB {
             .await
             .map_err(conn_err)?;
         if !res.status().is_success() {
-            return Err(http_error(res, "exec").await);
+            return Err(http_error(res, "iotdb", "exec").await);
         }
         let payload: serde_json::Value = res.json().await.map_err(query_err)?;
         if payload["code"].as_i64().unwrap_or(200) != 200 {
@@ -226,20 +216,6 @@ impl IoTDB {
         }
         Ok(())
     }
-}
-
-async fn http_error(res: reqwest::Response, op: &str) -> TsdbError {
-    let status = res.status();
-    let body = res.text().await.unwrap_or_default();
-    TsdbError::QueryError(format!("iotdb {op} failed with {status}: {body}"))
-}
-
-fn conn_err(e: reqwest::Error) -> TsdbError {
-    TsdbError::ConnectionError(e.to_string())
-}
-
-fn query_err(e: reqwest::Error) -> TsdbError {
-    TsdbError::QueryError(e.to_string())
 }
 
 #[cfg(test)]

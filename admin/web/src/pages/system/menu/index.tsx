@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   App, Button, Form, Input, InputNumber, Modal, Popconfirm, Radio, Select, Space, Table, Tag, TreeSelect,
-  type TreeSelectProps,
 } from 'antd';
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -9,42 +8,12 @@ import { menuApi, type MenuForm } from '../../../api/menu';
 import type { Menu } from '../../../api/types';
 import Auth from '../../../auth/Auth';
 import { useI18n, type I18nKey } from '../../../i18n';
+import { allIds, subtreeIds, toTreeData } from '../../../tree';
 
 const TYPE_KEYS: Record<Menu['type'], I18nKey> = {
   M: 'menu.type_dir', C: 'menu.type_menu', F: 'menu.type_button',
 };
 const TYPE_COLORS: Record<Menu['type'], string> = { M: 'blue', C: 'green', F: 'orange' };
-
-type TreeNode = NonNullable<TreeSelectProps['treeData']>[number];
-
-/** 节点自身及其子孙的 id（父级选择里禁用，避免挂到自己下面成环）。 */
-function subtreeIds(nodes: Menu[], id: string): Set<string> {
-  const target = (function find(list: Menu[]): Menu | undefined {
-    for (const n of list) {
-      if (n.id === id) return n;
-      const hit = n.children && find(n.children);
-      if (hit) return hit;
-    }
-    return undefined;
-  })(nodes);
-  const out = new Set<string>();
-  const walk = (n: Menu) => { out.add(n.id); n.children?.forEach(walk); };
-  if (target) walk(target);
-  return out;
-}
-
-/** 树里所有节点的 id（编辑时判断回显的 parent_id 是不是真节点）。 */
-const allIds = (nodes: Menu[]): string[] => nodes.flatMap((n) => [n.id, ...allIds(n.children ?? [])]);
-
-/** 菜单树 → TreeSelect 数据（顶级用 `''`）。 */
-function toTreeData(nodes: Menu[], blocked: Set<string> = new Set()): TreeNode[] {
-  return nodes.map((n) => ({
-    value: n.id,
-    title: n.name,
-    disabled: blocked.has(n.id),
-    children: n.children?.length ? toTreeData(n.children, blocked) : undefined,
-  }));
-}
 
 export default function MenuPage() {
   const { message } = App.useApp();

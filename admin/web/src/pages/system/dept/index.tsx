@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   App, Button, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag, TreeSelect,
-  type TreeSelectProps,
 } from 'antd';
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -9,37 +8,7 @@ import { deptApi, type DeptForm } from '../../../api/dept';
 import type { Dept } from '../../../api/types';
 import Auth from '../../../auth/Auth';
 import { useI18n } from '../../../i18n';
-
-type TreeNode = NonNullable<TreeSelectProps['treeData']>[number];
-
-/** 节点自身及其子孙的 id（父级选择里禁用，避免挂到自己下面成环）。 */
-function subtreeIds(nodes: Dept[], id: string): Set<string> {
-  const target = (function find(list: Dept[]): Dept | undefined {
-    for (const d of list) {
-      if (d.id === id) return d;
-      const hit = d.children && find(d.children);
-      if (hit) return hit;
-    }
-    return undefined;
-  })(nodes);
-  const out = new Set<string>();
-  const walk = (d: Dept) => { out.add(d.id); d.children?.forEach(walk); };
-  if (target) walk(target);
-  return out;
-}
-
-/** 树里所有节点的 id（编辑时判断回显的 parent_id 是不是真节点）。 */
-const allIds = (nodes: Dept[]): string[] => nodes.flatMap((d) => [d.id, ...allIds(d.children ?? [])]);
-
-/** 部门树 → TreeSelect 数据（顶级用 `''`）。 */
-function toTreeData(nodes: Dept[], blocked: Set<string> = new Set()): TreeNode[] {
-  return nodes.map((d) => ({
-    value: d.id,
-    title: d.name,
-    disabled: blocked.has(d.id),
-    children: d.children?.length ? toTreeData(d.children, blocked) : undefined,
-  }));
-}
+import { allIds, subtreeIds, toTreeData } from '../../../tree';
 
 export default function DeptPage() {
   const { message } = App.useApp();

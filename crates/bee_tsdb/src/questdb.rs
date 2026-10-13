@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use reqwest::{Client, header::CONTENT_TYPE};
 
-use crate::http::http_client;
+use crate::http::{conn_err, http_error, query_err, http_client};
 
 use crate::{
     CQSpec, Fields, Point, TagFilter, Tags, TimeSeries, TimeSeriesDB, Timestamp, TsdbError,
@@ -66,7 +66,7 @@ impl TimeSeriesDB for QuestDB {
         );
         let res = self.post_exec(&sql).await?;
         if !res.status().is_success() {
-            return Err(http_error(res, "query_range").await);
+            return Err(http_error(res, "questdb", "query_range").await);
         }
         let payload: serde_json::Value = res.json().await.map_err(query_err)?;
         if let Some(err) = payload.get("error") {
@@ -185,7 +185,7 @@ impl QuestDB {
     async fn exec(&self, sql: &str) -> Result<(), TsdbError> {
         let res = self.post_exec(sql).await?;
         if !res.status().is_success() {
-            return Err(http_error(res, "exec").await);
+            return Err(http_error(res, "questdb", "exec").await);
         }
         let payload: serde_json::Value = res.json().await.map_err(query_err)?;
         if let Some(err) = payload.get("error") {
@@ -207,20 +207,6 @@ fn urlencode(s: &str) -> String {
         }
     }
     out
-}
-
-async fn http_error(res: reqwest::Response, op: &str) -> TsdbError {
-    let status = res.status();
-    let body = res.text().await.unwrap_or_default();
-    TsdbError::QueryError(format!("questdb {op} failed with {status}: {body}"))
-}
-
-fn conn_err(e: reqwest::Error) -> TsdbError {
-    TsdbError::ConnectionError(e.to_string())
-}
-
-fn query_err(e: reqwest::Error) -> TsdbError {
-    TsdbError::QueryError(e.to_string())
 }
 
 #[cfg(test)]

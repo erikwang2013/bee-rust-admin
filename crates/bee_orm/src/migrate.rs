@@ -165,11 +165,9 @@ async fn add_constraint<M: Model, D: Db + ?Sized>(db: &D, column: &ColumnDef) ->
         return Ok(());
     }
     let ddl = format!(
-        "ALTER TABLE {} ADD CONSTRAINT {name} FOREIGN KEY ({}) REFERENCES {} ({})",
+        "ALTER TABLE {} ADD CONSTRAINT {name} {}",
         M::table_name(),
-        column.name,
-        (reference.table)(),
-        (reference.pk_column)()
+        fk_clause(column.name, (reference.table)(), (reference.pk_column)())
     );
     db.execute(&ddl, &[]).await?;
     Ok(())
@@ -259,16 +257,8 @@ fn join_table_sql<M: Model + ?Sized>(
         side(def.foreign_column, target.sql, target_table, target.name),
     ];
     if table_level {
-        clauses.push(format!(
-            "FOREIGN KEY ({}) REFERENCES {} ({})",
-            def.local_column,
-            M::table_name(),
-            local.name
-        ));
-        clauses.push(format!(
-            "FOREIGN KEY ({}) REFERENCES {target_table} ({})",
-            def.foreign_column, target.name
-        ));
+        clauses.push(fk_clause(def.local_column, M::table_name(), local.name));
+        clauses.push(fk_clause(def.foreign_column, target_table, target.name));
     }
     clauses.push(format!("PRIMARY KEY ({}, {})", def.local_column, def.foreign_column));
     clauses.push(format!("UNIQUE ({}, {})", def.foreign_column, def.local_column));
@@ -286,15 +276,16 @@ fn local_pk_column<M: Model + ?Sized>() -> Result<&'static ColumnDef> {
     })
 }
 
-/// `FOREIGN KEY (col) REFERENCES t (pk)` for a column that has one.
+/// The table-level `FOREIGN KEY` clause (the portable spelling; the inline
+/// one is [`column_sql`]'s `REFERENCES`).
+fn fk_clause(column: &str, table: &str, pk: &str) -> String {
+    format!("FOREIGN KEY ({column}) REFERENCES {table} ({pk})")
+}
+
+/// The [`fk_clause`] of a column that has a reference, `None` otherwise.
 fn table_level_fk(column: &ColumnDef) -> Option<String> {
     let reference = column.references?;
-    Some(format!(
-        "FOREIGN KEY ({}) REFERENCES {} ({})",
-        column.name,
-        (reference.table)(),
-        (reference.pk_column)()
-    ))
+    Some(fk_clause(column.name, (reference.table)(), (reference.pk_column)()))
 }
 
 /// `<name> <type> [NOT NULL] [DEFAULT <v>] [PRIMARY KEY] [REFERENCES …]`,

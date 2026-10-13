@@ -90,10 +90,7 @@ impl Session {
 
     /// Refresh session data from the cache backend.
     pub async fn refresh(&mut self) -> Result<(), SessionError> {
-        let bytes = self.cache.get(&self.id).await?.ok_or(CacheError::NotFound)?;
-
-        self.data = serde_json::from_slice(&bytes)
-            .map_err(|e| SessionError::DeserializeError(e.to_string()))?;
+        self.data = Self::load(self.cache.clone(), &self.id, self.ttl).await?.data;
         Ok(())
     }
 }

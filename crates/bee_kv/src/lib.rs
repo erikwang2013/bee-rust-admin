@@ -74,13 +74,13 @@ mod tests {
         expires_at: Option<std::time::Instant>,
     }
 
-    /// In-memory stub used by doc-tests and integration tests.
-    pub struct StubKvStore {
+    /// In-memory store for this module's unit tests.
+    struct StubKvStore {
         data: Mutex<std::collections::HashMap<String, Entry>>,
     }
 
     impl StubKvStore {
-        pub fn new() -> Self {
+        fn new() -> Self {
             Self { data: Mutex::new(std::collections::HashMap::new()) }
         }
 

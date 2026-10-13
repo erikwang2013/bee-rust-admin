@@ -3,11 +3,10 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::{Value, json};
 
-use crate::http_client;
-
 use crate::{
     AggResult, Aggregations, BulkResult, Document, DocumentId, Mapping, ScrollHandle, SearchEngine,
-    SearchError, SearchHit, SearchQuery, SearchResult,
+    SearchError, SearchHit, SearchQuery, SearchResult, check_status, conn_err, http_error,
+    query_err, http_client,
 };
 
 /// ClickHouse driver backed by its HTTP interface (SQL-over-HTTP with
@@ -31,7 +30,7 @@ impl ClickHouse {
             .send()
             .await
             .map_err(conn_err)?;
-        check_status(res, "exec").await
+        check_status(res, "clickhouse", "exec").await
     }
 }
 
@@ -234,7 +233,7 @@ impl ClickHouse {
             .await
             .map_err(conn_err)?;
         if !res.status().is_success() {
-            return Err(http_error(res, "query").await);
+            return Err(http_error(res, "clickhouse", "query").await);
         }
         let text = res.text().await.map_err(query_err)?;
         if text.trim().is_empty() {
@@ -246,24 +245,6 @@ impl ClickHouse {
             })
             .collect()
     }
-}
-
-async fn check_status(res: reqwest::Response, op: &str) -> Result<(), SearchError> {
-    if res.status().is_success() { Ok(()) } else { Err(http_error(res, op).await) }
-}
-
-async fn http_error(res: reqwest::Response, op: &str) -> SearchError {
-    let status = res.status();
-    let body = res.text().await.unwrap_or_default();
-    SearchError::QueryError(format!("clickhouse {op} failed with {status}: {body}"))
-}
-
-fn conn_err(e: reqwest::Error) -> SearchError {
-    SearchError::ConnectionError(e.to_string())
-}
-
-fn query_err(e: reqwest::Error) -> SearchError {
-    SearchError::QueryError(e.to_string())
 }
 
 #[cfg(test)]

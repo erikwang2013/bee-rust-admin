@@ -2,7 +2,7 @@
 use async_trait::async_trait;
 use reqwest::Client;
 
-use crate::http::http_client;
+use crate::http::{backtick, conn_err, http_error, query_err, http_client};
 
 use crate::{
     Edge, GraphDB, GraphError, Params, PathResult, Properties, QueryResult, Traversal,
@@ -35,7 +35,7 @@ impl Neo4j {
             .await
             .map_err(conn_err)?;
         if !res.status().is_success() {
-            return Err(http_error(res, "cypher").await);
+            return Err(http_error(res, "neo4j", "cypher").await);
         }
         let payload: serde_json::Value = res.json().await.map_err(query_err)?;
         if let Some(err) = payload["errors"].as_array().and_then(|e| e.first()) {
@@ -152,10 +152,6 @@ impl GraphDB for Neo4j {
     }
 }
 
-fn backtick(s: &str) -> String {
-    s.replace('`', "``")
-}
-
 fn node_to_vertex(v: &serde_json::Value) -> Vertex {
     let props = v.get("properties").cloned().unwrap_or_else(|| serde_json::json!({}));
     Vertex {
@@ -178,20 +174,6 @@ fn rel_to_edge(r: &serde_json::Value) -> Edge {
         to: r["end"].as_str().unwrap_or("").to_string(),
         properties: props.as_object().cloned().unwrap_or_default(),
     }
-}
-
-fn conn_err(e: reqwest::Error) -> GraphError {
-    GraphError::ConnectionError(e.to_string())
-}
-
-fn query_err(e: reqwest::Error) -> GraphError {
-    GraphError::QueryError(e.to_string())
-}
-
-async fn http_error(res: reqwest::Response, op: &str) -> GraphError {
-    let status = res.status();
-    let body = res.text().await.unwrap_or_default();
-    GraphError::QueryError(format!("neo4j {op} failed with {status}: {body}"))
 }
 
 #[cfg(test)]

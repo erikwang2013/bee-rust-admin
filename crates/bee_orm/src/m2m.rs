@@ -31,7 +31,7 @@ use std::collections::{HashMap, HashSet};
 
 use serde_json::Value as Json;
 
-use crate::rel::{grouping_key, json_of};
+use crate::rel::{dedup_pk_values, grouping_key, index_rows_by, json_of};
 use crate::{Db, M2mDef, MAX_BIND_PARAMS, Model, OrmError, QuerySet, Result, Value};
 
 /// The join table of `L` targeting `R`, or `None` when `L` declares no m2m
@@ -83,14 +83,7 @@ pub async fn related_for<L: Model, R: Model, D: Db + ?Sized>(
     }
     // Step 1: the (local, foreign) pairs, one `IN` per 999-key chunk. Local
     // keys are deduped first; `IN` with a repeated key buys nothing.
-    let mut seen: HashSet<String> = HashSet::new();
-    let mut keys: Vec<Value> = Vec::new();
-    for local in locals {
-        let value = local.pk_value();
-        if seen.insert(grouping_key(&json_of(&value))) {
-            keys.push(value);
-        }
-    }
+    let keys = dedup_pk_values(locals);
     let mut pairs: HashMap<String, Vec<Json>> = HashMap::new();
     for chunk in keys.chunks(MAX_BIND_PARAMS) {
         let placeholders = vec!["?"; chunk.len()].join(", ");
@@ -121,12 +114,7 @@ pub async fn related_for<L: Model, R: Model, D: Db + ?Sized>(
         let query = QuerySet::<R>::new(R::table_name()).filter_in(R::pk_column(), chunk)?;
         rows.extend(query.rows(db).await?);
     }
-    let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
-    for (index, row) in rows.iter().enumerate() {
-        if let Some(value) = row.get(R::pk_column()) {
-            groups.entry(grouping_key(value)).or_default().push(index);
-        }
-    }
+    let groups = index_rows_by(&rows, R::pk_column());
     let mut result = Vec::with_capacity(locals.len());
     for local in locals {
         let key = grouping_key(&json_of(&local.pk_value()));

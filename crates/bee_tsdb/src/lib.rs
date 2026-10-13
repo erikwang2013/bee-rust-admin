@@ -76,6 +76,19 @@ pub enum Aggregation {
     Max,
 }
 
+/// The function name `agg` maps to, shared by the backends that spell them
+/// the same way (Flux and IoTDB SQL).
+#[cfg(any(feature = "influxdb", feature = "iotdb"))]
+pub(crate) fn aggregation_fn(agg: &Aggregation) -> &'static str {
+    match agg {
+        Aggregation::Mean => "mean",
+        Aggregation::Sum => "sum",
+        Aggregation::Count => "count",
+        Aggregation::Min => "min",
+        Aggregation::Max => "max",
+    }
+}
+
 /// Specification for a continuous query (CQ) that the time-series backend
 /// should maintain automatically.
 #[derive(Debug, Clone, Serialize, Deserialize)]

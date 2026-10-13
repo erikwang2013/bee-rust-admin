@@ -18,7 +18,7 @@ use std::collections::{HashMap, HashSet};
 
 use serde_json::Value as Json;
 
-use crate::{Db, MAX_BIND_PARAMS, Model, OrmError, QuerySet, Result, Value};
+use crate::{Db, MAX_BIND_PARAMS, Model, OrmError, QuerySet, Result, Row, Value};
 
 /// Declaration order: the first column of `C` that references `P`.
 pub fn fk_column_to<C: Model, P: Model>() -> Option<&'static str> {
@@ -78,15 +78,7 @@ pub async fn children_for_via<C: Model, P: Model, D: Db + ?Sized>(
     if parents.is_empty() {
         return Ok(Vec::new());
     }
-    // Dedupe parent keys: `IN` with a repeated key buys nothing.
-    let mut seen: HashSet<String> = HashSet::new();
-    let mut values: Vec<Value> = Vec::new();
-    for parent in parents {
-        let value = parent.pk_value();
-        if seen.insert(grouping_key(&json_of(&value))) {
-            values.push(value);
-        }
-    }
+    let values = dedup_pk_values(parents);
     let mut rows = Vec::new();
     for chunk in values.chunks(MAX_BIND_PARAMS) {
         let query = QuerySet::<C>::new(C::table_name()).filter_in(fk_column, chunk)?;
@@ -95,12 +87,7 @@ pub async fn children_for_via<C: Model, P: Model, D: Db + ?Sized>(
     // Group row indices by the fk value, then decode per parent below —
     // decoding once per parent occurrence keeps duplicates aligned without
     // requiring `C: Clone`.
-    let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
-    for (index, row) in rows.iter().enumerate() {
-        if let Some(value) = row.get(fk_column) {
-            groups.entry(grouping_key(value)).or_default().push(index);
-        }
-    }
+    let groups = index_rows_by(&rows, fk_column);
     let mut result = Vec::with_capacity(parents.len());
     for parent in parents {
         let key = grouping_key(&json_of(&parent.pk_value()));
@@ -146,6 +133,32 @@ pub(crate) fn grouping_key(value: &Json) -> String {
         Json::Bool(flag) => i64::from(*flag).to_string(),
         other => other.to_string(),
     }
+}
+
+/// The `pk_value`s of `models`, first occurrence wins: `IN` with a repeated
+/// key buys nothing.
+pub(crate) fn dedup_pk_values<M: Model>(models: &[M]) -> Vec<Value> {
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut values: Vec<Value> = Vec::new();
+    for model in models {
+        let value = model.pk_value();
+        if seen.insert(grouping_key(&json_of(&value))) {
+            values.push(value);
+        }
+    }
+    values
+}
+
+/// Row indices grouped by the grouping key of `column`'s value — the batched
+/// load path, so one row is decoded once per parent occurrence.
+pub(crate) fn index_rows_by(rows: &[Row], column: &str) -> HashMap<String, Vec<usize>> {
+    let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
+    for (index, row) in rows.iter().enumerate() {
+        if let Some(value) = row.get(column) {
+            groups.entry(grouping_key(value)).or_default().push(index);
+        }
+    }
+    groups
 }
 
 /// [`Value`] as JSON. Not a `From` impl on purpose: `Value` stays

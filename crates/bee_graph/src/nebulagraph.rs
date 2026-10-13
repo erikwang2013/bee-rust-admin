@@ -2,7 +2,7 @@
 use async_trait::async_trait;
 use reqwest::Client;
 
-use crate::http::http_client;
+use crate::http::{backtick, conn_err, esc, http_error, query_err, http_client};
 
 use crate::{
     Edge, GraphDB, GraphError, Params, PathResult, Properties, QueryResult, Traversal,
@@ -29,7 +29,7 @@ impl NebulaGraph {
             .await
             .map_err(conn_err)?;
         if !res.status().is_success() {
-            return Err(http_error(res, "ngql").await);
+            return Err(http_error(res, "nebulagraph", "ngql").await);
         }
         let payload: serde_json::Value = res.json().await.map_err(query_err)?;
         if payload["code"].as_i64().unwrap_or(-1) != 0 {
@@ -181,15 +181,6 @@ impl GraphDB for NebulaGraph {
     }
 }
 
-fn backtick(s: &str) -> String {
-    s.replace('`', "``")
-}
-
-/// Quote an ID or string value inside a double-quoted nGQL literal.
-fn esc(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"")
-}
-
 /// Render a JSON value as an nGQL literal.
 fn lit(v: &serde_json::Value) -> String {
     match v {
@@ -197,20 +188,6 @@ fn lit(v: &serde_json::Value) -> String {
         serde_json::Value::Null => "null".into(),
         _ => v.to_string(),
     }
-}
-
-fn conn_err(e: reqwest::Error) -> GraphError {
-    GraphError::ConnectionError(e.to_string())
-}
-
-fn query_err(e: reqwest::Error) -> GraphError {
-    GraphError::QueryError(e.to_string())
-}
-
-async fn http_error(res: reqwest::Response, op: &str) -> GraphError {
-    let status = res.status();
-    let body = res.text().await.unwrap_or_default();
-    GraphError::QueryError(format!("nebulagraph {op} failed with {status}: {body}"))
 }
 
 #[cfg(test)]
