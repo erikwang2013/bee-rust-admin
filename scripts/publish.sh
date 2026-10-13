@@ -13,7 +13,12 @@ on_crates() { curl -sf -o /dev/null -A "$UA" "https://crates.io/api/v1/crates/$1
 list() {
   cargo metadata --no-deps --format-version 1 \
     | python3 -c 'import json,sys
-for p in json.load(sys.stdin)["packages"]: print(p["name"], p["version"])'
+for p in json.load(sys.stdin)["packages"]:
+    # publish = false 的成员（admin / examples）永远上不了 crates.io —— 算进 pending 会让
+    # 外层循环永远 pending>0 地空转；这里直接跳过。
+    if p.get("publish") == []:
+        continue
+    print(p["name"], p["version"])'
 }
 
 while :; do

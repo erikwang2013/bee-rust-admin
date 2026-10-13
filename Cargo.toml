@@ -32,6 +32,9 @@ repository = "https://github.com/erikwang2013/bee-rust"
 description = "A production-grade web framework for Rust, inspired by Go's Beego"
 keywords = ["web", "framework", "beego", "mvc", "orm"]
 categories = ["web-programming"]
+# ⚠️ 这份 readme 是**框架本体仓**（github.com/erikwang2013/bee-rust，本机 /home/wwwroot/bee-rust）
+# 里 `docs/crates-readme.md`（含 13 种语言）的对应物 —— 本仓库没有这个文件，**发布也在本体仓做**
+# （那边有 per-crate changelog 的完整流程）。在这里直接 `cargo publish` 会报 readme 不存在。
 readme = "docs/crates-readme.md"
 
 [workspace.dependencies]
