@@ -45,6 +45,12 @@ services:
     # 若用镜像默认的非 root 用户（uid 10001）会读不到配置而启动失败。
     # 宿主 uid/gid 不是 1000 时，在 .env 里设 APP_UID / APP_GID。
     user: "${APP_UID:-1000}:${APP_GID:-1000}"
+    # upload_dir=uploads 是相对 WORKDIR 的路径，后端启动时要 eager 建 uploads/avatar/、
+    # 建不出来直接退出；而镜像里 /app 属 root，本服务以 APP_UID 跑写不进去。
+    # WORKDIR 挪到 /tmp（1777，任意 uid 可写）→ 头像落 /tmp/uploads（容器重建即丢，
+    # 本来也没给 uploads 挂卷）。不用 compose 直接 docker run 镜像时同理，见
+    # deploy/Dockerfile.prebuilt 头部的示例（带 -w /tmp）。
+    working_dir: /tmp
     environment:
       BEE_ADMIN_DB_DSN: mysql://root:${MYSQL_ROOT_PASSWORD}@mysql:3306/bee_admin
       # 必须绑 0.0.0.0：容器各有自己的网络命名空间，绑 127.0.0.1 的话

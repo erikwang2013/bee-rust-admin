@@ -171,6 +171,8 @@ docker compose up -d --build
 - 后端容器以**「宿主机配置文件属主」的身份**运行（`.env` 里的 `APP_UID`/`APP_GID`，
   默认 `1000:1000`）：`app.conf` 常是 600 权限，用镜像默认的非 root 用户会读不到配置而启动失败。
   你的宿主 uid/gid 不是 1000 就得在 `.env` 里改（`id -u` / `id -g` 查）
+- 上传的头像落在容器内 `/tmp/uploads`（compose 给后端指了 `working_dir: /tmp`：`upload_dir=uploads`
+  是相对 WORKDIR 的路径，而镜像里 `/app` 属 root，以 `APP_UID` 跑写不进去）；**容器重建即丢**
 - 想接已有的 MySQL：删掉 compose 里的 `mysql` 服务与 `depends_on`，改 `BEE_ADMIN_DB_DSN` 即可
 - **不想在本机编译**（省掉 Rust/Node 工具链）：每个 Release 还附带 `bra-images-vX.Y.Z.tar.gz`
   与 `bra-compose-vX.Y.Z.tar.gz` 两个离线包（镜像是本机构建好的，`docker load -i` 即导入；

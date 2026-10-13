@@ -17,12 +17,16 @@
 # 运行（必须挂载配置文件，否则启动时读不到 app.conf 会直接退出）：
 #   docker run -d --name bra -p 8080:8080 \
 #     --user "$(id -u):$(id -g)" \
+#     -w /tmp \
 #     -v "$PWD/admin/conf/app.conf:/app/conf/app.conf:ro" \
 #     -e BEE_ADMIN_DB_DSN='mysql://user:pass@host:3306/bee_admin' \
 #     -e BEE_ADMIN_HTTP_ADDR=0.0.0.0:8080 \
 #     bra-backend:<tag>
 # 注意 --user：app.conf 通常是 600 权限，用镜像默认的非 root 用户（uid 10001）
 # 会读不到配置。以宿主机文件属主身份运行即可（compose 里对应 APP_UID/APP_GID）。
+# 注意 -w /tmp：upload_dir=uploads 是相对 WORKDIR 的路径，后端启动时要 eager 建
+# uploads/avatar/，而镜像里 /app 属 root、进程又以宿主 uid 跑 —— WORKDIR 不挪到可写
+# 目录（/tmp，1777）就会 Permission denied 直接退出（compose 里对应 working_dir）。
 
 # ── 运行阶段（与根 Dockerfile 的对应段逐行一致）────────────────
 # 与构建阶段同为 Debian 13（trixie）；有 trixie-slim 时可换成更小的镜像
@@ -34,11 +38,6 @@ RUN apt-get update \
     && useradd -r -u 10001 -m app
 
 WORKDIR /app
-# 头像落盘根（[app] upload_dir = uploads 是相对路径，基准就是 WORKDIR）：后端启动时就要
-# 能建能写它下面的 avatar/，建不出来直接退出。容器是以「宿主配置文件属主」的身份跑的
-# （compose 的 APP_UID，任意 uid）—— 镜像里没法预知是谁，所以给 1777（同 /tmp 的语义）。
-RUN install -d -m 1777 /app/uploads
-
 COPY target/release-assets/bee_admin /app/bee_admin
 
 ENV BEE_ADMIN_CONF=/app/conf/app.conf
