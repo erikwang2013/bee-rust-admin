@@ -46,6 +46,9 @@ const ENTRY_ANTD = [
 ];
 
 export default defineConfig({
+  // 版本号注入：发布时 release.sh / 前端镜像用 BRA_VERSION=<git tag> 传（仓库里没有版本
+  // 文件，版本以 tag 为准）；本地 / CI 直接构建回落到 dev。页脚站点信息（src/SiteInfo.tsx）读它。
+  define: { __APP_VERSION__: JSON.stringify(process.env.BRA_VERSION || 'dev') },
   plugins: [
     react(),
     ...(analyze

@@ -626,7 +626,8 @@ else
   mkdir -p "$TMP"
   say "从源码构建（这一步慢，几分钟到几十分钟）"
   ( cd "$REPO_DIR" && cargo build --release -p bee_admin ) || step_fail "$EXIT_FAIL" "cargo 构建失败"
-  ( cd "$REPO_DIR/admin/web" && pnpm install --frozen-lockfile && pnpm build ) \
+  # BRA_VERSION 进页脚站点信息（src/SiteInfo.tsx）：--version 给了就用它，否则显示 latest
+  ( cd "$REPO_DIR/admin/web" && pnpm install --frozen-lockfile && BRA_VERSION="$VERSION" pnpm build ) \
     || step_fail "$EXIT_FAIL" "前端构建失败"
   install -m0755 "$REPO_DIR/target/release/bee_admin" "$BIN_NEW"
   tar czf "$TMP/bee-admin-web-dist.tar.gz" -C "$REPO_DIR/admin/web/dist" .

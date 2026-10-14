@@ -16,6 +16,8 @@ RUN corepack enable
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY . .
+# 版本号注入：release.sh 用 --build-arg BRA_VERSION=<tag> 传；直接 docker build 不带时回落 dev
+ARG BRA_VERSION=dev
 RUN pnpm build
 
 # ── 运行阶段 ───────────────────────────────────────────────

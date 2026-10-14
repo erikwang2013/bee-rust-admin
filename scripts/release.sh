@@ -160,7 +160,7 @@ say "构建后端（这一步慢，几分钟到几十分钟；机器忙的时候
 [ -x "$BIN_SRC" ] || die "$BIN_SRC 没生成"
 
 say "构建前端（pnpm install --frozen-lockfile + pnpm build）"
-( cd "$ROOT/admin/web" && pnpm install --frozen-lockfile && pnpm build ) || die "前端构建失败"
+( cd "$ROOT/admin/web" && pnpm install --frozen-lockfile && BRA_VERSION="$TAG" pnpm build ) || die "前端构建失败"
 [ -f "$DIST_SRC/index.html" ] || die "$DIST_SRC/index.html 没生成"
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -217,7 +217,7 @@ else
     || die "本机没有可用的 docker daemon；离线镜像包需要它（或用 --skip-images 跳过，见 --help）"
   docker build -f deploy/Dockerfile.prebuilt -t "bra-backend:$TAG" . \
     || die "后端镜像构建失败（deploy/Dockerfile.prebuilt）"
-  docker build -t "bra-web:$TAG" admin/web \
+  docker build -t "bra-web:$TAG" admin/web --build-arg BRA_VERSION="$TAG" \
     || die "前端镜像构建失败（admin/web/Dockerfile）"
   info "bra-backend:$TAG / bra-web:$TAG 构建完成"
 

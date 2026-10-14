@@ -9,6 +9,7 @@ import { TOKEN_KEY } from '../../api/client';
 import { captchaApi, loginWithCaptcha } from '../../api/captcha';
 import type { CaptchaAnswer, CaptchaData } from '../../api/types';
 import CaptchaBox from './CaptchaBox';
+import SiteInfo from '../../SiteInfo';
 
 export default function LoginPage() {
   const { reload } = useAuth();
@@ -97,6 +98,9 @@ export default function LoginPage() {
           </Form.Item>
         </Form>
       </Card>
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0 }}>
+        <SiteInfo />
+      </div>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { avatarUrl, useAuth } from '../auth/AuthContext';
 import { ThemeToggle } from '../theme';
 import { LanguageToggle, useI18n } from '../i18n';
 import NoticeBell from './NoticeBell';
+import SiteInfo from '../SiteInfo';
 import type { MenuNode } from '../api/types';
 
 const { Header, Sider, Content } = Layout;
@@ -73,20 +74,24 @@ export default function BasicLayout() {
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Sider collapsible collapsed={collapsed} onCollapse={setCollapsed} theme="dark" width={220}>
-        <div style={{ height: 48, margin: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-          <span style={{ display: 'inline-flex', background: '#fff', borderRadius: '50%', padding: 2 }}>
-            <img src="/keeper-head.svg" alt={t('common.mascot_alt')} width={collapsed ? 30 : 26} height={collapsed ? 30 : 26} />
-          </span>
-          {!collapsed && <span style={{ color: '#fff', fontWeight: 600 }}>{t('layout.app_name')}</span>}
+        {/* flex 列撑满：logo / 菜单 / 底部站点信息（SiteInfo 的 marginTop:auto 把它压到底） */}
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <div style={{ height: 48, margin: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <span style={{ display: 'inline-flex', background: '#fff', borderRadius: '50%', padding: 2 }}>
+              <img src="/keeper-head.svg" alt={t('common.mascot_alt')} width={collapsed ? 30 : 26} height={collapsed ? 30 : 26} />
+            </span>
+            {!collapsed && <span style={{ color: '#fff', fontWeight: 600 }}>{t('layout.app_name')}</span>}
+          </div>
+          <Menu
+            theme="dark"
+            mode="inline"
+            items={items}
+            selectedKeys={[loc.pathname]}
+            defaultOpenKeys={['/' + (loc.pathname.split('/')[1] ?? '')]}
+            onClick={({ key }) => { if (String(key).startsWith('/')) nav(String(key)); }}
+          />
+          {!collapsed && <SiteInfo compact />}
         </div>
-        <Menu
-          theme="dark"
-          mode="inline"
-          items={items}
-          selectedKeys={[loc.pathname]}
-          defaultOpenKeys={['/' + (loc.pathname.split('/')[1] ?? '')]}
-          onClick={({ key }) => { if (String(key).startsWith('/')) nav(String(key)); }}
-        />
       </Sider>
       <Layout>
         <Header style={{ background: token.colorBgContainer, padding: '0 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
