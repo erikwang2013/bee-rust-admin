@@ -9,8 +9,8 @@
 #   bee_admin                  ELF 可执行，**strip 过** —— 不 strip 是 22MB，发布口径 16.6MB
 #   bee-admin-web-dist.tar.gz  前端 dist，tar 根下必须是 ./index.html 与 ./assets/
 #   bra-images-$TAG.tar.gz     后端 + 前端镜像（bra-backend:$TAG / bra-web:$TAG 的 docker save）
-#   bra-compose-$TAG.tar.gz    离线 compose 包（docker-compose.yml + 预填 .env + app.conf.example
-#                              + 一页说明），与镜像包配套给 compose 部署用
+#   bra-compose-$TAG.tar.gz    离线 compose 包（docker-compose.yml + compose-up.sh + 预填
+#                              .env(+.example) + app.conf.example + 一页说明），与镜像包配套
 # 资产名固定；Release **标题只写 vX.Y.Z**（描述全部写在 notes 文件里）。
 #
 # CI 只测、不构建产物（.github/workflows/test.yml 里写了「镜像仍在本机构建」），
@@ -228,18 +228,21 @@ else
   sha_img=$(sha256sum "$ASSETS/bra-images-$TAG.tar.gz" | cut -d' ' -f1)
   info "bra-images-$TAG.tar.gz   $(stat -c%s "$ASSETS/bra-images-$TAG.tar.gz") 字节  sha256 $sha_img"
 
-  say "组 compose 包（compose 文件 + 预填 .env + app.conf.example + 一页 README）"
+  say "组 compose 包（compose 文件 + compose-up.sh + 预填 .env + app.conf.example + 一页 README）"
   compose_pkg=$(mktemp -d)
   pkg="$compose_pkg/bra-compose-$TAG"
   mkdir -p "$pkg/admin/conf"
   cp docker-compose.yml "$pkg/docker-compose.yml"
   cp admin/conf/app.conf.example "$pkg/admin/conf/app.conf.example"
+  cp compose-up.sh "$pkg/compose-up.sh"
+  cp .env.example "$pkg/.env.example"
   # .env 与 README 用「引号 heredoc + @TAG@ 占位」生成：内容里全是 markdown 反引号，
   # 不引号的 heredoc 会把它们当命令替换执行掉
   cat > "$pkg/.env" <<'EOF'
-# docker compose 用的环境变量（离线包已预填；第一行必须改成你自己的口令）
+# docker compose 用的环境变量（离线包已预填）
 
-# compose 内置 MySQL 的 root 密码（必填）
+# compose 内置 MySQL 的 root 密码（必填）。留着这个占位符也行：跑 ./compose-up.sh 会
+# 自动生成随机口令并写回本文件；想自己定就先改掉（脚本只补「没填的」）。
 MYSQL_ROOT_PASSWORD=change-me-please
 
 # 镜像 tag：compose 里的 bra-backend / bra-web 就取这个 tag，= 本包 docker load 进来的
@@ -263,20 +266,18 @@ compose 起栈：MySQL + 后端 + 前端（对外 8081）。不用 Rust / Node �
 #    （镜像不在本机时 compose 会想现场 build，而本包没有源码，所以必须先 load）
 docker load -i bra-images-@TAG@.tar.gz
 
-# 2) 准备后端配置：这两项必填，示例值会被拒绝启动
-#      [app] encrypt_key = base64:<openssl rand -base64 32 的输出>
-#      [jwt] secret      = 随机 ≥32 字符
-cp admin/conf/app.conf.example admin/conf/app.conf
-vi admin/conf/app.conf
+# 2) 起栈：缺的口令 / 密钥自动生成，写回本地 .env 与 admin/conf/app.conf
+./compose-up.sh
 
-# 3) 改 .env 第一行的 MySQL root 口令（预填的 change-me-please 必须换）
-vi .env
-
-# 4) 起栈
-docker compose up -d
-
-# 打开 http://localhost:8081（初始账号 admin / 配置里的 initial_admin_password）
+# 打开 http://localhost:8081（初始账号 admin）
+# 初始口令：脚本生成时会打印在屏幕上，也在 admin/conf/app.conf 的 [seed] initial_admin_password
 ```
+
+- 想自己指定口令 / 密钥：先 `cp admin/conf/app.conf.example admin/conf/app.conf` 改好
+  （MySQL root 在 `.env` 里改）再跑 `./compose-up.sh` —— 脚本只补「空 / 占位符」的值，
+  填过的不动，重复跑不会重新生成
+- 脚本生成的值就落在本目录的这两个文件里：**记得备份 `admin/conf/app.conf`** ——
+  `encrypt_key` 丢了（或换了），库里已加密的 email/phone 永久解不开
 
 ## 两个坑
 
@@ -297,7 +298,7 @@ EOF
   sed -i "s/@TAG@/$TAG/g" "$pkg/.env" "$pkg/README.md"
   tar czf "$ASSETS/bra-compose-$TAG.tar.gz" -C "$compose_pkg" "bra-compose-$TAG" \
     || die "组 compose 包失败"
-  for f in docker-compose.yml .env README.md admin/conf/app.conf.example; do
+  for f in docker-compose.yml .env .env.example compose-up.sh README.md admin/conf/app.conf.example; do
     tar tzf "$ASSETS/bra-compose-$TAG.tar.gz" | grep -qx "bra-compose-$TAG/$f" \
       || die "compose 包里没有 $f"
   done

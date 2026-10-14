@@ -157,13 +157,17 @@ bash install.sh --no-systemd --no-nginx
 
 ### (b) Docker compose
 
-仓库里已备好 `docker-compose.yml`（MySQL + 后端 + 前端三件套，对外 `8081`）：
+仓库里已备好 `docker-compose.yml`（MySQL + 后端 + 前端三件套，对外 `8081`）与一键脚本
+`compose-up.sh`（缺的口令 / 密钥自动生成，写回 `.env` 与 `admin/conf/app.conf`）：
 
 ```bash
-cp .env.example .env && vi .env                      # 填 MySQL root 密码
-cp admin/conf/app.conf.example admin/conf/app.conf   # 填 jwt secret / encrypt_key
+./compose-up.sh --build     # 缺的口令/密钥自动生成并打印初始口令；已有镜像时去掉 --build
+# 打开 http://localhost:8081（初始账号 admin；初始口令在 admin/conf/app.conf 的 [seed] initial_admin_password）
+
+# 想自己填（或不想用脚本）：
+cp .env.example .env && cp admin/conf/app.conf.example admin/conf/app.conf
+vi .env admin/conf/app.conf    # 填 MySQL root 密码、jwt secret、encrypt_key
 docker compose up -d --build
-# 打开 http://localhost:8081（初始账号 admin / 配置里的 initial_admin_password）
 ```
 
 - 容器内的数据库地址由 `BEE_ADMIN_DB_DSN` 注入（指向 compose 里的 `mysql` 服务）；
@@ -174,6 +178,8 @@ docker compose up -d --build
 - 上传的头像落在容器内 `/home/uploads`（镜像把 WORKDIR 指到 `/home`，并预置了这个可写目录：
   `upload_dir=uploads` 是相对 WORKDIR 的路径，而 `/app` 属 root，以 `APP_UID` 跑写不进去）；
   **容器重建即丢**
+- `compose-up.sh` 只补「空 / 占位符」的值（填过的不动，重复跑不会重新生成）；生成的值就在本地
+  两个文件里，**记得备份 `admin/conf/app.conf`**（`encrypt_key` 丢了，库里已加密的 email/phone 永久解不开）
 - 想接已有的 MySQL：删掉 compose 里的 `mysql` 服务与 `depends_on`，改 `BEE_ADMIN_DB_DSN` 即可
 - **不想在本机编译**（省掉 Rust/Node 工具链）：每个 Release 还附带 `bra-images-vX.Y.Z.tar.gz`
   与 `bra-compose-vX.Y.Z.tar.gz` 两个离线包（镜像是本机构建好的，`docker load -i` 即导入；

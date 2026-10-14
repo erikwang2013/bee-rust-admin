@@ -333,13 +333,17 @@ curl -G --data-urlencode "token=$TOKEN" http://127.0.0.1:8080/apidoc/api.json
 | `Dockerfile` | 后端镜像：多阶段构建（Rust 编译 → Debian 运行），非 root 用户运行 |
 | `admin/web/Dockerfile` | 前端镜像：pnpm 构建 → nginx，`/api/` 上游由环境变量 `BACKEND_UPSTREAM` 注入 |
 | `docker-compose.yml` | MySQL + 后端 + 前端一键起栈，对外 `8081` |
+| `compose-up.sh` | compose 一键起栈：缺的口令 / 密钥自动生成并写回本地文件（见下） |
 | `deploy/Dockerfile.prebuilt` | 后端镜像的**预编译版**：打 `target/release-assets/bee_admin`，不发版时用不到（见下） |
 
 ```bash
-cp .env.example .env && vi .env                      # 填 MySQL root 密码
-cp admin/conf/app.conf.example admin/conf/app.conf   # 填 [jwt] secret 与 [app] encrypt_key（示例值会被拒绝启动）
-docker compose up -d --build                        # 已有镜像想去掉 --build 见下
-# 打开 http://localhost:8081（初始账号 admin / 配置里的 initial_admin_password）
+./compose-up.sh --build     # 缺的口令/密钥（MySQL root、encrypt_key、jwt secret、初始口令）
+                            # 自动生成并写回 .env 与 admin/conf/app.conf；已有镜像时去掉 --build
+# 打开 http://localhost:8081（初始账号 admin；初始口令生成时会打印在屏幕上，
+# 也在 admin/conf/app.conf 的 [seed] initial_admin_password）
+
+# 想自己填（或不想用脚本）：cp .env.example .env && cp admin/conf/app.conf.example admin/conf/app.conf
+# 填好 MySQL root 密码、[jwt] secret、[app] encrypt_key（示例值会被拒绝启动）再 docker compose up -d --build
 ```
 
 - 容器内的数据库地址由 `BEE_ADMIN_DB_DSN` 注入（指向 compose 里的 `mysql` 服务）；
@@ -350,6 +354,9 @@ docker compose up -d --build                        # 已有镜像想去掉 --bu
 - 上传的头像落在容器内 `/home/uploads`（镜像把 WORKDIR 指到 `/home`，并预置了这个可写目录：
   `upload_dir=uploads` 是相对 WORKDIR 的路径，而 `/app` 属 root，以 `APP_UID` 跑写不进去）；
   **容器重建即丢**
+- `compose-up.sh` 只补「空 / 占位符」的密钥口令，填过的一律不动（重复跑不会重新生成）；
+  生成的值落在 `.env` 与 `admin/conf/app.conf` 里 —— **记得备份 `admin/conf/app.conf`**：
+  `encrypt_key` 丢了（或换了），库里已加密的 email/phone 永久解不开
 - 想接已有的 MySQL：删掉 compose 里的 `mysql` 服务与 `depends_on`，直接改 `BEE_ADMIN_DB_DSN`
 - 本机已有 `bra-backend`/`bra-web` 镜像时（比如下面离线包 `docker load` 进来的）
   不用 `--build`：`docker compose up -d` 直接用现有镜像，`--build` 才现场构建
