@@ -7,6 +7,7 @@ import { TOKEN_KEY } from '../../api/client';
 import { avatarUrl, useAuth } from '../../auth/AuthContext';
 import { useI18n } from '../../i18n';
 import { isStrongPassword } from '../../password';
+import Totp from './Totp';
 
 const MAX_AVATAR = 512 * 1024; // 服务端对头像体积的硬闸
 
@@ -251,6 +252,10 @@ export default function ProfilePage() {
       >
         <Button danger loading={kicking}>{t('profile.kick_others')}</Button>
       </Popconfirm>
+
+      <Divider />
+
+      <Totp />
     </Card>
   );
 }

@@ -415,6 +415,8 @@ async fn admin_item(
         dept_id,
         status,
         is_super: 0,
+        totp_secret: String::new(),
+        totp_enabled: 0,
         token_version: 0,
         last_login_at: None,
         last_login_ip: String::new(),

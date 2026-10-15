@@ -1,9 +1,10 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use crate::config::AppConfig;
 use crate::error::ApiError;
-use crate::models::{Admin, Menu, Role};
+use crate::models::{Admin, AdminLoginDevice, Menu, Role};
 use crate::state::AppState;
 use axum::extract::FromRequestParts;
+use bee_orm::Model;
 use axum::http::header;
 use axum::http::request::Parts;
 use jwt_rust::config::JwtConfig;
@@ -22,6 +23,11 @@ pub struct Claims {
     pub sub: i64,
     /// token_version：管理员改密/被禁用后自增，旧 token 立即失效
     pub ver: i32,
+    /// 登录设备行的 id（`admin_login_device`，项 7）；0 = 没有设备概念。
+    /// `default` 是**升级兼容**：老 token 里没有这个字段，解出来是 0，
+    /// 于是不按设备校验 —— 不然一升级重启就把所有在线的人踢下线。
+    #[serde(default)]
+    pub dv: i64,
 }
 
 /// 签发/校验两端共用的标记（issuer 与 audience 同值即可）
@@ -62,14 +68,15 @@ pub fn expire_secs(cfg: &AppConfig) -> i64 {
     cfg.jwt_expire_hours * 3600
 }
 
-/// 签发 token，返回 (token, 有效期秒数)。
+/// 签发 token，返回 (token, 有效期秒数)。`device_id` = 登录设备行 id（见 [`Claims::dv`]）。
 pub fn sign_token(
     jwt: &Jwt,
     admin_id: i64,
     ver: i32,
+    device_id: i64,
     expire_secs: i64,
 ) -> Result<(String, i64), ApiError> {
-    let claims = Claims { sub: admin_id, ver };
+    let claims = Claims { sub: admin_id, ver, dv: device_id };
     // 负数直接用 `as u64` 会绕成天文数字（token 永不过期），先夹到 0 = 立即过期
     let token = jwt
         .encode(&claims, Some(expire_secs.max(0) as u64))
@@ -88,6 +95,9 @@ pub struct Auth {
     pub roles: Vec<Role>,
     pub perms: HashSet<String>,
     pub is_super: bool,
+    /// 本次请求来自哪个设备行（0 = 老 token / 无设备）。设备列表要标出「当前设备」，
+    /// 退出其他设备换发 token 时也要把它带回去。
+    pub device_id: i64,
 }
 
 impl Auth {
@@ -123,6 +133,23 @@ impl FromRequestParts<AppState> for Auth {
 
         if admin.status != 1 || admin.token_version != claims.ver {
             return Err(ApiError::Unauthorized);
+        }
+
+        // 设备闸门（项 7）：token 带了设备 id 就得是本人**在用**的设备。
+        // 被踢的设备（status=0）在这里断掉，下一次请求 401 —— 与 token_version 的
+        // 全局失效互不影响，所以能精确踢一台。
+        let device_id = claims.dv;
+        if device_id > 0 {
+            let dev = AdminLoginDevice::query()
+                .filter_eq("id", device_id)
+                .map_err(ApiError::from)?
+                .one(&state.db)
+                .await
+                .map_err(ApiError::from)?;
+            match dev {
+                Some(d) if d.admin_id == admin.id && d.status == 1 => touch_device(state, d).await,
+                _ => return Err(ApiError::Unauthorized),
+            }
         }
 
         let is_super = admin.is_super == 1;
@@ -176,7 +203,23 @@ impl FromRequestParts<AppState> for Auth {
             }
         };
 
-        Ok(Auth { admin, roles, perms, is_super })
+        Ok(Auth { admin, roles, perms, is_super, device_id })
+    }
+}
+
+/// 设备「最后活跃」的写库间隔（分钟）：每个请求都 UPDATE 一次太吵，隔这么久才刷一次。
+/// 代价是这一列最多滞后这么久 —— 它是给人看的时间，不是审计时间（审计看 audit_log）。
+const ACTIVE_INTERVAL_MINUTES: i64 = 10;
+
+/// 刷新设备最后活跃时间。写失败只打警告：这是展示信息，不该让这次请求 500。
+async fn touch_device(state: &AppState, mut d: AdminLoginDevice) {
+    let now = crate::util::now();
+    if now.signed_duration_since(d.last_active_at) < chrono::Duration::minutes(ACTIVE_INTERVAL_MINUTES) {
+        return;
+    }
+    d.last_active_at = now;
+    if let Err(e) = d.update(&state.db).await {
+        tracing::warn!("刷新设备活跃时间失败 (id={}): {e}", d.id);
     }
 }
 
@@ -217,17 +260,25 @@ mod tests {
     #[test]
     fn sign_and_verify_roundtrip() {
         let jwt = build_jwt(&cfg()).unwrap();
-        let (token, ttl) = sign_token(&jwt, 7, 3, expire_secs(&cfg())).unwrap();
+        let (token, ttl) = sign_token(&jwt, 7, 3, 42, expire_secs(&cfg())).unwrap();
         assert_eq!(ttl, 86400);
         let claims = verify_token(&jwt, &token).unwrap();
         assert_eq!(claims.sub, 7);
         assert_eq!(claims.ver, 3);
+        assert_eq!(claims.dv, 42, "设备 id 要随 token 往返");
+    }
+
+    /// 老 token（payload 里没有 `dv`）解出来是 0 = 不按设备校验：升级重启不踢人。
+    #[test]
+    fn legacy_token_without_device_field_decodes_as_zero() {
+        let c: Claims = serde_json::from_value(serde_json::json!({ "sub": 7, "ver": 3 })).unwrap();
+        assert_eq!(c.dv, 0, "缺 dv 字段 = 0 = 不按设备校验");
     }
 
     #[test]
     fn tampered_token_rejected() {
         let jwt = build_jwt(&cfg()).unwrap();
-        let (token, _) = sign_token(&jwt, 7, 0, expire_secs(&cfg())).unwrap();
+        let (token, _) = sign_token(&jwt, 7, 0, 0, expire_secs(&cfg())).unwrap();
         let mut other = cfg();
         other.jwt_secret = "9999999999999999999999999999999999".into();
         assert!(verify_token(&build_jwt(&other).unwrap(), &token).is_err());

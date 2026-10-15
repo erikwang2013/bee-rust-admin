@@ -34,6 +34,13 @@ pub struct Admin {
     pub dept_id: i64,
     pub status: i8,
     pub is_super: i8,
+    /// 动态验证码密钥（项 7）：base32 明文经 `crate::crypto` 加密后落库，空串 = 没绑。
+    /// `skip_serializing` 与 password 同理：任何列表/详情接口都不该把它带出去。
+    #[serde(skip_serializing, default)]
+    #[bee(sql_type = "VARCHAR(255)")]
+    pub totp_secret: String,
+    /// 0 未启用 / 1 已启用。密钥有值但这里是 0 = 生成了还没验证过（登录不要码）
+    pub totp_enabled: i8,
     pub token_version: i32,
     #[serde(serialize_with = "crate::util::ser_opt_dt")]
     pub last_login_at: Option<NaiveDateTime>,

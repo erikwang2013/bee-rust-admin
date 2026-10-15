@@ -23,6 +23,11 @@ export function loginWithCaptcha(body: {
   /** 验证码关闭 / 未取到验证码时不带这两个字段 */
   captcha_key?: string;
   captcha_answer?: CaptchaAnswer;
+  /**
+   * 动态验证码（项 7）：该账号绑定了 TOTP 时必填。第一次不带 —— 后端回
+   * `err = auth.totp_required`，前端据此亮出输入框，用户填了再带上来。
+   */
+  code?: string;
 }) {
   return http.post<LoginResult>('/auth/login', body);
 }

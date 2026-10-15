@@ -17,6 +17,7 @@ mod retention;
 mod seed;
 mod security_scan;
 mod state;
+mod totp;
 mod util;
 
 use axum::response::IntoResponse;
@@ -252,6 +253,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .put("/profile", api::auth::update_profile)
                 .get("/menus", api::auth::menus)
                 .put("/password", api::auth::change_password)
+                // 动态验证码与登录设备（项 7）：自服务，不需要权限码
+                .post("/totp/setup", api::totp::setup)
+                .post("/totp/enable", api::totp::enable)
+                .post("/totp/disable", api::totp::disable)
+                .get("/devices", api::totp::devices)
+                .delete("/devices/{id}", api::totp::kick)
         })
         // 头像：读取公开（<img> 标签带不了 Authorization 头）；上传两条分片路由都要求
         // 登录（不挂插件的公开路由，理由见 `api::avatar`）。`/{id}` 只吃单段路径，

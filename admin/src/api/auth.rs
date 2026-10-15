@@ -4,7 +4,7 @@ use crate::config::AppConfig;
 use crate::crypto;
 use crate::hid;
 use crate::error::{ApiError, AppJson, CAPTCHA_FAILED, ok};
-use crate::models::{Admin, LoginLog, Menu};
+use crate::models::{Admin, AdminLoginDevice, LoginLog, Menu};
 use crate::state::AppState;
 use crate::util::{hash_password, now, now_unix, verify_password};
 use axum::Json;
@@ -28,6 +28,8 @@ pub struct LoginBody {
     /// 验证码答案：poster-rust `Answer` 的 serde 表示（外部标签）：
     /// `{"Slider": 173.0}` / `{"Rotate": 37.2}` / `{"Click": [[x, y], …]}`。
     pub captcha_answer: Option<Answer>,
+    /// 动态验证码（项 7）：该账号绑定了 TOTP 时必填（`err = auth.totp_required` 提示前端补上）
+    pub code: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -98,6 +100,49 @@ pub async fn write_login_log(
         // 登录记录写失败不能影响登录本身
         tracing::error!("写登录记录失败: {e}");
     }
+}
+
+/// 找到或新建一条设备行（项 7）。身份是 (admin_id, UA)：同 UA 复用一行、顺手更新 IP
+/// 与活跃时间；被踢过的行（status=0）不复用 —— 复用它等于踢完立刻又能用同一条，
+/// 列表上也看不出踢过。
+///
+/// shortcut: (admin_id, UA) 上没有唯一键，同一账号同 UA 同时登两次会建出两行；
+/// 列表/踢出都按行来，多一行只是多一条设备记录。要收口就加 `(admin_id, user_agent,
+/// status)` 唯一键 + 冲突重试。
+async fn find_or_create_device(
+    state: &AppState,
+    admin_id: i64,
+    ua: &str,
+    ip: &str,
+) -> Result<AdminLoginDevice, ApiError> {
+    let now = now();
+    let found = AdminLoginDevice::query()
+        .filter_eq("admin_id", admin_id)
+        .map_err(ApiError::from)?
+        .filter_eq("user_agent", ua)
+        .map_err(ApiError::from)?
+        .filter_eq("status", 1)
+        .map_err(ApiError::from)?
+        .all(&state.db)
+        .await
+        .map_err(ApiError::from)?;
+    if let Some(mut d) = found.into_iter().next() {
+        d.ip = ip.to_string();
+        d.last_active_at = now;
+        d.update(&state.db).await.map_err(ApiError::from)?;
+        return Ok(d);
+    }
+    let d = AdminLoginDevice {
+        id: state.next_id()?,
+        admin_id,
+        user_agent: ua.to_string(),
+        ip: ip.to_string(),
+        status: 1,
+        created_at: now,
+        last_active_at: now,
+    };
+    d.insert(&state.db).await.map_err(ApiError::from)?;
+    Ok(d)
 }
 
 /// 限流窗口与封禁时长（秒）。调用方已保证 `lock_minutes > 0`。
@@ -335,6 +380,7 @@ pub async fn captcha_new(
 #[apidoc::param(name = "password", ty = "string", required, desc = "密码（明文提交，务必走 HTTPS）", mock = "admin123")]
 #[apidoc::param(name = "captcha_key", ty = "string", desc = "[auth] captcha = true 时必填：/api/v1/captcha/new 返回的 key")]
 #[apidoc::param(name = "captcha_answer", ty = "object", desc = "验证码答案，形状同 poster-rust Answer（Slider 滑动 / Rotate 旋转 / Click 点选）")]
+#[apidoc::param(name = "code", ty = "string", desc = "动态验证码（该账号绑定 TOTP 后必填；缺了回 err = auth.totp_required，前端据此显示输入框后带码重试）", mock = "123456")]
 #[apidoc::response_status("200")]
 #[apidoc::response_status("400")]
 #[apidoc::response_status("429")]
@@ -351,6 +397,7 @@ pub async fn captcha_new(
             {name = "sex", ty = "int", desc = "性别：0 未知 / 1 男 / 2 女"},
             {name = "is_super", ty = "bool", desc = "是否超级管理员"},
             {name = "dept_id", ty = "string", desc = "部门短串（0 = 无部门）"},
+            {name = "totp_enabled", ty = "bool", desc = "是否已绑定动态验证码（项 7）"},
         ]},
         ])]
 pub async fn login(
@@ -428,8 +475,32 @@ pub async fn login(
         return Err(ApiError::BadRequest("账号已被禁用".into()));
     }
 
-    let (token, expires_in) =
-        sign_token(&state.jwt, admin.id, admin.token_version, expire_secs(&state.cfg))?;
+    // 动态验证码闸门（项 7）：绑定了才要。放在密码之后 —— 码是第二因子，
+    // 先要码等于让不知道密码的人也能把这条路径走一遍。
+    if admin.totp_enabled == 1 {
+        let code = body.code.as_deref().unwrap_or("");
+        if code.trim().is_empty() {
+            // 客户端没带码（老前端/脚本）是协议没对齐，不是有人在猜密码：
+            // 留档但**不计数** —— 否则一个没升级的前端能把用户刷进封禁。
+            write_login_log(&state, admin.id, &admin.username, &headers, 0, "需要动态验证码").await;
+            return Err(ApiError::BadRequest(crate::error::TOTP_REQUIRED.into()));
+        }
+        if !crate::api::totp::verify_code(&state, &admin, code)? {
+            write_login_log(&state, admin.id, &admin.username, &headers, 0, "动态验证码错误").await;
+            record_login_failure(&state, username, &ip);
+            return Err(ApiError::BadRequest(crate::error::BAD_TOTP.into()));
+        }
+    }
+
+    // 设备行（项 7）：同账号同 UA 复用一条，token 里带上它的 id，之后能单独踢掉这台
+    let device = find_or_create_device(&state, admin.id, &user_agent(&headers), &ip).await?;
+    let (token, expires_in) = sign_token(
+        &state.jwt,
+        admin.id,
+        admin.token_version,
+        device.id,
+        expire_secs(&state.cfg),
+    )?;
 
     let mut updated = admin.clone();
     updated.last_login_at = Some(now());
@@ -465,6 +536,7 @@ pub async fn login(
             "sex": admin.sex,
             "is_super": admin.is_super == 1,
             "dept_id": hid::enc(admin.dept_id),
+            "totp_enabled": admin.totp_enabled == 1,
         }
     })))
 }
@@ -514,8 +586,14 @@ pub async fn logout_others(
     admin.updated_at = now();
     admin.update(&state.db).await.map_err(ApiError::from)?;
 
-    let (token, expires_in) =
-        sign_token(&state.jwt, admin.id, admin.token_version, expire_secs(&state.cfg))?;
+    // 换发的 token 仍挂在**当前这台设备**上：不然一杯新 token 就把本机从设备列表里摘掉
+    let (token, expires_in) = sign_token(
+        &state.jwt,
+        admin.id,
+        admin.token_version,
+        auth.device_id,
+        expire_secs(&state.cfg),
+    )?;
     write_login_log(&state, admin.id, &admin.username, &headers, 1, "退出其他设备").await;
     Ok(ok(json!({ "token": token, "expires_in": expires_in })))
 }
@@ -538,6 +616,7 @@ pub async fn logout_others(
             {name = "sex", ty = "int", desc = "性别：0 未知 / 1 男 / 2 女"},
             {name = "is_super", ty = "bool", desc = "是否超级管理员"},
             {name = "dept_id", ty = "string", desc = "部门短串（0 = 无部门）"},
+            {name = "totp_enabled", ty = "bool", desc = "是否已绑定动态验证码（项 7）"},
         ]},
             {name = "roles", ty = "array", required, desc = "角色标识数组，如 [\"super\"]"},
             {name = "perms", ty = "array", required, desc = "权限码数组，如 [\"system:admin:list\"]"},
@@ -561,6 +640,8 @@ pub async fn profile(State(state): State<AppState>, auth: Auth) -> Result<Json<V
             "sex": auth.admin.sex,
             "is_super": auth.is_super,
             "dept_id": hid::enc(auth.admin.dept_id),
+            // 个人中心要据此显示「绑定 / 解绑动态验证码」（项 7）
+            "totp_enabled": auth.admin.totp_enabled == 1,
         },
         "roles": roles,
         "perms": perms,

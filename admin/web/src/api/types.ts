@@ -15,7 +15,19 @@ export interface UserInfo {
   id: string; username: string; nickname: string; avatar: string; is_super: boolean; dept_id: string;
   /** 后端 /auth/profile 返回时回填资料表单；未返回则为空 */
   email?: string; phone?: string;
+  /** 是否已绑定动态验证码（项 7）；登录/资料接口都带 */
+  totp_enabled?: boolean;
 }
+
+/** 登录设备（项 7，`/auth/devices` 的每一行）。 */
+export interface LoginDevice {
+  id: string; user_agent: string; ip: string; created_at: string; last_active_at: string;
+  /** 本次请求来自这台设备（列表里唯一一行 true） */
+  current: boolean;
+}
+
+/** 动态验证码绑定材料（`/auth/totp/setup`）：密钥、otpauth 链接、二维码 SVG。 */
+export interface TotpSetup { secret: string; otpauth_url: string; qr_svg: string }
 export interface Profile { user: UserInfo; roles: string[]; perms: string[] }
 export interface MenuNode { id: string; parent_id: string; name: string; path: string; icon: string; children?: MenuNode[] }
 

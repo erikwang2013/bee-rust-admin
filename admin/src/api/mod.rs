@@ -20,6 +20,7 @@ pub mod login_log;
 pub mod menu;
 pub mod notice;
 pub mod role;
+pub mod totp;
 
 /// 按 id 分批删；返回**实际**删除条数。
 /// `table` 只传调用方写死的常量，id 来自数据库，值一律走绑定参数。

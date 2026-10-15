@@ -84,6 +84,16 @@ percent-encoding = "2"
 # CSV 导入的解析（项 3，见 src/api/import.rs）：引号、字段内换行、跨行字段这些
 # 手写 split(',') 一定错的地方交给它；导出侧仍用 api/csv.rs 那套手写渲染（那边只需转义）。
 csv = "1"
+# TOTP 动态验证码（项 7，见 src/totp.rs）：RFC 4226 就是 HMAC-SHA1，标准实现
+# 比手写 HMAC 稳妥。**钉 0.12/0.10**：这是 brief 里已确认在依赖图里的版本
+# （hmac 0.13 + sha2 0.11 那一代 API 变了，别升）；两个包都已在 Cargo.lock，
+# 声明只多几行，不新增编译成本。base32 与 otpauth URL 自己写（见 src/totp.rs）。
+hmac = "0.12"
+sha1 = "0.10"
+# 动态验证码的二维码：后端直接出 SVG（前端 `data:image/svg+xml,` 内联即可，
+# 不必再依赖一个 base64 编码库）。**只开 svg**：默认特性会拉 image 全家桶。
+# qrcode 0.14 本来就在依赖图里（poster-rust 带进来的），零新增 crate。
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 
 [dev-dependencies]
 # 集成测试直连 MySQL 建库/清表/断言用（src 已不再依赖 sqlx —— 迁移后连裸 SQL

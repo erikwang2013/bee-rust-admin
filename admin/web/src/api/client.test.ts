@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { envelopeError } from './client';
+import { envelopeError, errCodeOf } from './client';
+
+describe('errCodeOf', () => {
+  it('从 axios 错误里取信封错误码（登录页靠它判断要不要亮动态验证码框）', () => {
+    expect(errCodeOf({ response: { data: { code: 400, msg: '需要动态验证码', err: 'auth.totp_required' } } }))
+      .toBe('auth.totp_required');
+  });
+
+  it('没有响应体 / 不是信封 / 没有 err 一律 undefined，不能凭空造一个码出来', () => {
+    expect(errCodeOf(new Error('网络错误'))).toBeUndefined();
+    expect(errCodeOf({ response: { data: 'plain' } })).toBeUndefined();
+    expect(errCodeOf({ response: { data: { code: 400, msg: '没有码' } } })).toBeUndefined();
+    expect(errCodeOf(null)).toBeUndefined();
+  });
+});
 
 describe('envelopeError', () => {
   it('code != 0 判为业务失败，带出后端消息', () => {

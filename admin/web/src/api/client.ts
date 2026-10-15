@@ -64,6 +64,15 @@ client.interceptors.response.use(
   },
 );
 
+/**
+ * 从请求失败里取后端信封的错误码。**只给需要按码分支的调用方用**（登录页要靠
+ * `auth.totp_required` 决定是否显示动态验证码框）；只是提示文案的话交给拦截器。
+ */
+export function errCodeOf(e: unknown): string | undefined {
+  const data = (e as { response?: { data?: ApiResult<unknown> } })?.response?.data;
+  return typeof data?.err === 'string' ? data.err : undefined;
+}
+
 async function unwrap<T>(p: Promise<{ data: ApiResult<T> }>): Promise<T> {
   const res = await p;
   return res.data.data;

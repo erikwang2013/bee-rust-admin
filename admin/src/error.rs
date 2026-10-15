@@ -85,6 +85,13 @@ impl ApiError {
 /// 免得两边各写一遍字符串、改一处漏一处（`err` 会静默消失，前端回落中文）。
 pub const CAPTCHA_FAILED: &str = "验证码错误";
 
+/// 动态验证码（项 7）的四条文案。与 `CAPTCHA_FAILED` 同理：构造点与 `ERR_TABLE`
+/// 共用这一份，免得字符串写两遍、改一处漏一处（漏了 `err` 会静默消失，前端回落中文）。
+pub const TOTP_REQUIRED: &str = "需要动态验证码";
+pub const BAD_TOTP: &str = "动态验证码错误";
+pub const TOTP_BOUND: &str = "已绑定动态验证码，先解绑再绑定";
+pub const TOTP_NOT_BOUND: &str = "未绑定动态验证码";
+
 /// 安全扫描拦截（403）的文案。`[security] scan = high/critical` 时命中达到阈值，
 /// 由 [`crate::security_scan`] 返回这个 `msg`（`ERR_TABLE` 里挂着 `security.blocked`）。
 pub const SECURITY_BLOCKED: &str = "请求被安全策略拦截";
@@ -104,6 +111,10 @@ const ERR_TABLE: &[(&str, &str)] = &[
     ("原密码错误", "auth.bad_old_password"),
     ("新密码至少 8 位，且需包含字母、数字、符号中的至少两类", "auth.weak_new_password"),
     (CAPTCHA_FAILED, "auth.captcha_failed"),
+    (TOTP_REQUIRED, "auth.totp_required"),
+    (BAD_TOTP, "auth.bad_totp"),
+    (TOTP_BOUND, "auth.totp_bound"),
+    (TOTP_NOT_BOUND, "auth.totp_not_bound"),
     // avatar
     ("头像不能超过 512 KB", "avatar.too_large"),
     // admin

@@ -103,6 +103,7 @@ pub async fn migrate(db: &Pool) -> Result<(), OrmError> {
     migrate::sync::<crate::models::Notice, _>(db).await?;
     migrate::sync::<crate::models::SysConfig, _>(db).await?;
     migrate::sync::<crate::models::ExportTask, _>(db).await?;
+    migrate::sync::<crate::models::AdminLoginDevice, _>(db).await?;
 
     // 3) 单列唯一键与索引：原先写在模型属性上（`#[bee(unique)]` / `#[bee(index)]`），
     //    上游属性里没有这两个概念，移到这儿。
@@ -110,17 +111,26 @@ pub async fn migrate(db: &Pool) -> Result<(), OrmError> {
         ensure_index(db, table, index, ddl).await?;
     }
 
-    // 4) 列宽：email / phone 落库存密文（比明文长 ≈1/3 再加 30 字节），旧库的
-    //    128 / 20 放不下。上游 migrate 只加列不改类型，只能裸 DDL 改。
+    // 4) 新增列的存量行补值：`sync` 只加列、不给默认值（新列在旧行上是 NULL），
+    //    而模型里 totp_secret / totp_enabled 都不是 Option —— 解 NULL 会直接报错。
+    //    必须先补值再改列宽：MySQL 严格模式下 `MODIFY … NOT NULL` 遇到 NULL 会拒绝。
+    db.execute("UPDATE admin SET totp_secret = '' WHERE totp_secret IS NULL", &[]).await?;
+    db.execute("UPDATE admin SET totp_enabled = 0 WHERE totp_enabled IS NULL", &[]).await?;
+
+    // 5) 列宽：email / phone / totp_secret 落库存密文（比明文长 ≈1/3 再加 30 字节），
+    //    旧库的 128 / 20 放不下。上游 migrate 只加列不改类型，只能裸 DDL 改。
     ensure_encrypted_width(db).await?;
     Ok(())
 }
 
-/// email / phone 的目标列宽 = 模型上的 `sql_type`。密文长度 = 4 × ceil((明文字节数 + 30) / 3)：
-/// 128 字节明文 → 212 字符，20 字节 → 68 字符，255 都有余量（实测值见 crypto.rs 的 COL_MAX）。
+/// 密文列（email / phone / totp_secret）的目标列宽 = 模型上的 `sql_type`。
+/// 密文长度 = 4 × ceil((明文字节数 + 30) / 3)：128 字节明文 → 212 字符，
+/// 20 字节 → 68 字符，255 都有余量（实测值见 crypto.rs 的 COL_MAX）。
 const ENCRYPTED_COLUMNS: &[(&str, &str, &str)] = &[
     ("admin", "email", "VARCHAR(255)"),
     ("admin", "phone", "VARCHAR(255)"),
+    // 动态验证码密钥：base32 明文 32 字符（项 7），落库同样是密文
+    ("admin", "totp_secret", "VARCHAR(255)"),
 ];
 
 /// 幂等改列宽：已是目标类型就跳过（每次启动都跑，不能每次 ALTER）。
@@ -269,6 +279,8 @@ const CONSTRAINTS: &[(&str, &str, &str)] = &[
     // 仪表盘的近 7 天按天窗口（项 2）每次进首页都查一遍：没有它是一次全表扫。
     // 登录记录列表的时间段筛选同样沾光。
     ("login_log", "idx_login_log_created_at", "CREATE INDEX idx_login_log_created_at ON login_log (created_at)"),
+    // 登录设备（项 7）只按账号查（列列表 / 每次登录找同 UA 的行），表很小但会很频繁
+    ("admin_login_device", "idx_admin_login_device_admin_id", "CREATE INDEX idx_admin_login_device_admin_id ON admin_login_device (admin_id)"),
     ("sys_config", "uk_sys_config_key", "CREATE UNIQUE INDEX uk_sys_config_key ON sys_config (config_key)"),
 ];
 
@@ -614,6 +626,8 @@ pub async fn seed(
         dept_id: 0,
         status: 1,
         is_super: 1,
+        totp_secret: String::new(),
+        totp_enabled: 0,
         token_version: 0,
         last_login_at: None,
         last_login_ip: String::new(),

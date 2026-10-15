@@ -233,6 +233,12 @@ fn module_action(method: &Method, path: &str) -> (String, String) {
         ("POST", ["auth", "logout-others"]) => ("auth", "退出其他设备"),
         ("PUT", ["auth", "password"]) => ("auth", "修改密码"),
         ("PUT", ["auth", "profile"]) => ("auth", "修改个人资料"),
+        // 项 7：这几条都会改库（密钥 / 开关 / 设备行），要留痕。
+        // 摘要一律为空 —— 密钥与验证码都不该进审计（密钥还是密文落库的）。
+        ("POST", ["auth", "totp", "setup"]) => ("auth", "生成动态验证码密钥"),
+        ("POST", ["auth", "totp", "enable"]) => ("auth", "绑定动态验证码"),
+        ("POST", ["auth", "totp", "disable"]) => ("auth", "解绑动态验证码"),
+        ("DELETE", ["auth", "devices", _]) => ("auth", "踢出登录设备"),
         // 头像分片上传（4b）：preprocess 与每一片 chunk 各留一条 —— 传超时/中断时
         // 「传到第几片」在日志里看得见（base64 那条老路由是一次性的，已删）
         ("POST", ["avatar", "upload", "preprocess"]) => ("auth", "上传头像"),
