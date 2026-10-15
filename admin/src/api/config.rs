@@ -36,6 +36,20 @@ fn valid_group(group: &str) -> bool {
 /// 公开读时再转 JSON 布尔 —— 库里值的形态只有一种，不用猜。
 const TYPES: [&str; 3] = ["string", "text", "bool"];
 
+/// 敏感键（值以密文形态存在、由专用页面维护）：本页**不列、不改、不删**。
+/// 列出来等于把口令键暴露给每个有 `system:config:list` 的人，改一下就能把
+/// 「落库加密」换成明文 —— `加密存` 就成了摆设。名单是显式的：加新键时记得往这儿补。
+const SECRET_KEYS: [&str; 1] = [crate::notify::KEY_SMTP_PASSWORD];
+
+fn is_secret_key(key: &str) -> bool {
+    SECRET_KEYS.contains(&key)
+}
+
+/// 命中敏感键的统一拒绝文案（改/删共用）。
+fn secret_key_rejected() -> ApiError {
+    ApiError::BadRequest("该配置项由「通知设置」页维护，不能在这里修改".into())
+}
+
 /// 公开读的值转换：`bool` → JSON 布尔（`"1"` 也认，大小写不敏感、先 trim —— 库里被
 /// 手写成 `"TRUE"` / `" true "` 时不至于被静默取反）；其余原样字符串。
 fn public_value(value_type: &str, value: &str) -> Value {
@@ -121,7 +135,8 @@ pub async fn list(
     if let Some(g) = q.group.as_deref().filter(|s| !s.trim().is_empty()) {
         qs = qs.filter_eq("group_name", g.trim()).map_err(ApiError::from)?;
     }
-    let rows = qs.order_by("config_key ASC").all(&state.db).await.map_err(ApiError::from)?;
+    let mut rows = qs.order_by("config_key ASC").all(&state.db).await.map_err(ApiError::from)?;
+    rows.retain(|c| !is_secret_key(&c.key)); // 口令键不上这一页（见 SECRET_KEYS）
     let total = rows.len();
     Ok(ok(json!({ "list": rows, "total": total })))
 }
@@ -238,6 +253,9 @@ pub async fn update(
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
+    if is_secret_key(&c.key) {
+        return Err(secret_key_rejected());
+    }
 
     if let Some(v) = body.value {
         c.value = v;
@@ -272,6 +290,18 @@ pub async fn remove(
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:config:edit")?;
     let id = hid::dec(&id)?;
+    // 先读出来判敏感键：删了它等于把口令丢了（下次启动种子会补一个空的回来）
+    let key = SysConfig::query()
+        .filter_eq("id", id)
+        .map_err(ApiError::from)?
+        .one(&state.db)
+        .await
+        .map_err(ApiError::from)?
+        .ok_or(ApiError::NotFound)?
+        .key;
+    if is_secret_key(&key) {
+        return Err(secret_key_rejected());
+    }
     let n = SysConfig::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?

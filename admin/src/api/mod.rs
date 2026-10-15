@@ -19,6 +19,7 @@ pub mod job;
 pub mod login_log;
 pub mod menu;
 pub mod notice;
+pub mod notify;
 pub mod role;
 pub mod totp;
 

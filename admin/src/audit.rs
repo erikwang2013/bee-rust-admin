@@ -226,6 +226,11 @@ fn module_action(method: &Method, path: &str) -> (String, String) {
         ("POST", ["notices", _, "read"]) => ("notice", "标记公告已读"),
         ("DELETE", ["notices", _]) => ("notice", "删除公告"),
 
+        // 通知渠道（项 6）：存配置、发测试邮件都会改库/外发，要留痕。
+        // 摘要里只有非口令字段 —— 口令走 `Diff::masked`，只记「已变更」（见 api::notify）。
+        ("PUT", ["notify", "config"]) => ("notify", "保存通知渠道配置"),
+        ("POST", ["notify", "test-email"]) => ("notify", "发送测试邮件"),
+
         ("DELETE", ["login-logs"]) => ("loginlog", "清空登录记录"),
         ("DELETE", ["audit-logs"]) => ("auditlog", "清空操作日志"),
 

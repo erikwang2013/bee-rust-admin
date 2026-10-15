@@ -12,6 +12,7 @@ mod hid;
 mod jobs;
 mod metrics;
 mod models;
+mod notify;
 mod relations;
 mod retention;
 mod seed;
@@ -358,6 +359,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .post("/{id}/read", api::notice::read)
                 .put("/{id}", api::notice::update)
                 .delete("/{id}", api::notice::remove)
+        })
+        // 通知渠道（项 6）：Webhook 出站配置 + SMTP 测试邮件。口令只进不出（见 api::notify）
+        .ns("/api/v1/notify", |ns| {
+            ns.get("/config", api::notify::get_config)
+                .put("/config", api::notify::save_config)
+                .post("/test-email", api::notify::test_email)
         })
         .ns("/api/v1/login-logs", |ns| {
             ns.get("", api::login_log::list)

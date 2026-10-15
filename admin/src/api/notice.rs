@@ -6,6 +6,7 @@ use crate::auth::Auth;
 use crate::error::{ApiError, AppJson, AppPath, AppQuery, ok};
 use crate::hid;
 use crate::models::Notice;
+use crate::notify;
 use crate::state::AppState;
 use crate::util::now;
 use axum::Json;
@@ -135,6 +136,14 @@ pub async fn create(
     };
     // id 已在上面发号，insert 就够（create 的读回是给自增主键用的）
     n.insert(&state.db).await.map_err(ApiError::from)?;
+    // 通知事件（项 6）：只有「发布」才是事件，草稿不发（异步、失败不影响本次响应）
+    if n.status == 1 {
+        notify::emit(
+            &state,
+            notify::EVENT_NOTICE_PUBLISHED,
+            json!({ "id": hid::enc(n.id), "title": n.title }),
+        );
+    }
     Ok(ok(json!({ "id": hid::enc(n.id) })))
 }
 
@@ -169,12 +178,22 @@ pub async fn update(
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
 
+    // 通知事件（项 6）只在**状态跃迁**时发：草稿→发布发一次，已发布的公告改标题
+    // 再保存不发（否则每改一个字全体 webhook 订阅者都被打一下）。
+    let was_published = n.status == 1;
     n.title = body.title.trim().to_string();
     n.content = body.content;
     n.status = body.status;
     n.published_at = publish_at(body.status, n.published_at);
     n.updated_at = now();
     n.update(&state.db).await.map_err(ApiError::from)?;
+    if !was_published && n.status == 1 {
+        notify::emit(
+            &state,
+            notify::EVENT_NOTICE_PUBLISHED,
+            json!({ "id": hid::enc(n.id), "title": n.title }),
+        );
+    }
     Ok(ok(Value::Null))
 }
 

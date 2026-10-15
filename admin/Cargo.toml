@@ -94,6 +94,20 @@ sha1 = "0.10"
 # 不必再依赖一个 base64 编码库）。**只开 svg**：默认特性会拉 image 全家桶。
 # qrcode 0.14 本来就在依赖图里（poster-rust 带进来的），零新增 crate。
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+# 出站 HTTP（项 6 的 webhook 投递）。**从 [dev-dependencies] 提上来的**：以前只有
+# 集成测试用它发请求，现在 src 也要（`src/notify.rs`）。`multipart` 只有头像分片
+# 上传的集成测试用得到，但按本仓的规矩**只声明一份**（见下面 dev-dependencies 里
+# hashids 的注释）：测试能直接用普通依赖，两个来源迟早打架。
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "multipart"] }
+# SMTP 发信（项 6 的测试邮件）。特性集按 brief 钉死，**不动一个**：
+# - 关默认特性：默认拉 native-tls（要系统 OpenSSL），本仓其他出站连接一律 rustls；
+# - `builder` 给 `Message::builder()`，`hostname` 给 EHLO 的默认域名，`pool` 给连接池；
+# - `tokio1` + `tokio1-rustls-tls` 给异步传输（`AsyncSmtpTransport`）——同步
+#   `SmtpTransport::send` 会堵住 tokio 工作线程；
+# - `smtp-transport` 不是可选项：SMTP 模块的依赖都挂在它下面。
+lettre = { version = "0.11", default-features = false, features = [
+    "smtp-transport", "builder", "pool", "hostname", "tokio1", "tokio1-rustls-tls",
+] }
 
 [dev-dependencies]
 # 集成测试直连 MySQL 建库/清表/断言用（src 已不再依赖 sqlx —— 迁移后连裸 SQL
@@ -102,9 +116,7 @@ qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 # 换成 mysql_async 之后这层特性合并就没了，测试里读 DATETIME 列会报
 # `NaiveDateTime: sqlx::Type/Decode` 未实现。
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "mysql", "tls-none", "chrono"] }
-# multipart：头像分片上传的集成测试要真的发 multipart 表单（字段名与前端逐字一致）
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "multipart"] }
 # 只被测试用：解内嵌的 PNG 夹具（src 里最后用 base64 的地方是已删掉的 base64 头像路径）
 base64 = "0.22"
-# tests/ 用的 hashids-rust 走上面 [dependencies] 那条（集成测试能直接用普通依赖，
-# 和 aetherupload/serde_json 一样），不在这里再声明一份，免得两个来源打架。
+# tests/ 用的 hashids-rust / reqwest 走上面 [dependencies] 那两条（集成测试能直接用
+# 普通依赖，和 aetherupload/serde_json 一样），不在这里再声明一份，免得两个来源打架。

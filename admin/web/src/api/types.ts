@@ -119,6 +119,15 @@ export interface SysConfig {
 /** 公开配置（`/configs/public`，免登录）：键 → 值；bool 类型已是 JSON 布尔 */
 export type PublicConfig = Record<string, string | boolean>;
 
+/** 通知渠道配置（项 6）：**没有 `smtp_password` 字段** —— 口令只进不出，只回是否已设置 */
+export interface NotifyConfig {
+  webhook_enabled: boolean; webhook_url: string;
+  smtp_enabled: boolean; smtp_host: string; smtp_port: number;
+  smtp_user: string; smtp_from: string;
+  smtp_encryption: 'starttls' | 'ssl' | 'none';
+  smtp_password_set: boolean;
+}
+
 /** 按天的登录计数（仪表盘趋势）：`date` 为 YYYY-MM-DD，旧→新 */
 export interface LoginDay { date: string; success: number; fail: number }
 export interface DashboardStats {

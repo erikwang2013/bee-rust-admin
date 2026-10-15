@@ -341,7 +341,7 @@ async fn v12_backend_features() {
     assert_eq!(st, 200);
     let mut perms = Vec::new();
     collect_perms(&v["data"], &mut perms);
-    assert_eq!(perms.len(), 36, "1 目录 + 11 菜单 + 24 按钮（v1.5 字典 4 个码、v1.6 任务 2 个码 + 公告 4 个码、项 1 系统配置 2 个码、项 4 导出中心 2 个码）: {perms:?}");
+    assert_eq!(perms.len(), 38, "1 目录 + 12 菜单 + 25 按钮（v1.5 字典 4 个码、v1.6 任务 2 个码 + 公告 4 个码、项 1 系统配置 2 个码、项 4 导出中心 2 个码、项 6 通知设置 2 个码）: {perms:?}");
     assert_eq!(
         perms.iter().filter(|p| *p == "system:auditlog:list").count(), 1,
         "审计日志菜单恰好一条"
@@ -367,7 +367,7 @@ async fn v12_backend_features() {
     assert_eq!(st, 200);
     let mut perms = Vec::new();
     collect_perms(&v["data"], &mut perms);
-    assert_eq!(perms.len(), 36, "重启后补齐到 36 行且无重复: {perms:?}");
+    assert_eq!(perms.len(), 38, "重启后补齐到 38 行且无重复: {perms:?}");
     assert_eq!(
         perms.iter().filter(|p| *p == "system:auditlog:remove").count(), 1,
         "按钮也补齐且不重复"

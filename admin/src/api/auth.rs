@@ -12,7 +12,9 @@ use axum::extract::State;
 use axum::http::HeaderMap;
 use bee_orm::Model;
 use poster::captcha::Answer;
-use security_rust::throttle::{MemoryThrottleStore, Throttle, ThrottleConfig, ThrottleDecision};
+use security_rust::throttle::{
+    MemoryThrottleStore, Throttle, ThrottleConfig, ThrottleDecision, ThrottleOutcome,
+};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -194,12 +196,22 @@ fn ip_key(ip: &str) -> Option<String> {
 fn record_login_failure(state: &AppState, username: &str, ip: &str) {
     let Some(throttle) = &state.throttle else { return };
     let now = now_unix();
-    // 达到阈值的判定由库在 record_failure 内部做（返回 Banned），这里不用再算
-    let mut keys = vec![user_key(username)];
-    keys.extend(ip_key(ip));
-    for key in keys {
-        if let Err(e) = throttle.record_failure(&key, now) {
-            tracing::error!("登录限流计数失败 ({key}): {e}");
+    // 达到阈值的判定由库在 record_failure 内部做（返回 Banned），这里不用再算。
+    // 「刚好刷爆桶」的这一次顺手发一个通知事件（项 6）——只发**账号**维度：
+    // IP 维度爆掉是「这个来源被限流」，不是某个账号被锁，拿它发「账号锁定」是误导。
+    let uk = user_key(username);
+    match throttle.record_failure(&uk, now) {
+        Ok(ThrottleOutcome::Banned { until }) => crate::notify::emit(
+            state,
+            crate::notify::EVENT_ACCOUNT_LOCKED,
+            json!({ "username": username, "ip": ip, "until": until }),
+        ),
+        Ok(_) => {}
+        Err(e) => tracing::error!("登录限流计数失败 ({uk}): {e}"),
+    }
+    if let Some(ik) = ip_key(ip) {
+        if let Err(e) = throttle.record_failure(&ik, now) {
+            tracing::error!("登录限流计数失败 ({ik}): {e}");
         }
     }
 }
