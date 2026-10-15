@@ -7,6 +7,7 @@ mod config;
 mod crypto;
 mod datascope;
 mod error;
+mod export;
 mod hid;
 mod jobs;
 mod metrics;
@@ -332,6 +333,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // CSV 导入（项 3）：种类走 query（`?kind=`），权限按种类复用各模块的 :add 码
         .ns("/api/v1/imports", |ns| {
             ns.get("/template", api::import::template).post("", api::import::import)
+        })
+        // 导出中心（项 4）：登记任务 → job 循环跑 → 取回成品。权限 = 导出中心码 +
+        // 该类型数据的列表码（见 api::export 的口径说明）
+        .ns("/api/v1/exports", |ns| {
+            ns.get("", api::export::list)
+                .post("", api::export::create)
+                .get("/{id}/download", api::export::download)
+                .delete("/{id}", api::export::remove)
         })
         .ns("/api/v1/job-logs", |ns| ns.get("", api::job::log_list))
         .ns("/api/v1/notices", |ns| {

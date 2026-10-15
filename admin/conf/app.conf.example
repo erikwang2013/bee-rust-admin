@@ -63,6 +63,12 @@ dir =
 # 保留份数：每跑完一次删掉最旧的多余备份；**必须 >= 1**，填 0/负数拒绝启动
 keep = 7
 
+[export]
+# 导出中心（异步导出）成品保留天数：发起导出后到这个天数，记录与文件一起清掉。
+# 清理由内置任务 export_clean 每天跑一次；**必须 >= 1**（0 等于文件立刻过期），
+# 文件落在 {upload_dir}/exports/，权限 0600。见 docs/usage.md「3.12 导出中心」
+retain_days = 7
+
 [security]
 # 请求安全扫描（security-rust 32 个检测器：SQLi / XSS / 命令注入 / Log4Shell …）。
 # 扫 URL、几个请求头、以及 ≤64KB 的 JSON 请求体（multipart 上传不读）。

@@ -102,6 +102,7 @@ pub async fn migrate(db: &Pool) -> Result<(), OrmError> {
     migrate::sync::<crate::models::JobLog, _>(db).await?;
     migrate::sync::<crate::models::Notice, _>(db).await?;
     migrate::sync::<crate::models::SysConfig, _>(db).await?;
+    migrate::sync::<crate::models::ExportTask, _>(db).await?;
 
     // 3) 单列唯一键与索引：原先写在模型属性上（`#[bee(unique)]` / `#[bee(index)]`），
     //    上游属性里没有这两个概念，移到这儿。
@@ -292,7 +293,7 @@ async fn ensure_index(db: &Pool, table: &str, index: &str, ddl: &str) -> Result<
 }
 
 /// 内置菜单定义：(名称, 路径, 组件, 图标, 权限码前缀, 按钮后缀列表)。
-const BUILTIN_MENUS: [(&str, &str, &str, &str, &str, &[&str]); 10] = [
+const BUILTIN_MENUS: [(&str, &str, &str, &str, &str, &[&str]); 11] = [
     (
         "管理员管理",
         "/system/admin",
@@ -375,6 +376,15 @@ const BUILTIN_MENUS: [(&str, &str, &str, &str, &str, &[&str]); 10] = [
         "ToolOutlined",
         "system:config",
         &["list", "edit"],
+    ),
+    // 导出中心（项 4）：发起/下载按各类型自己的列表码，这里只有「进得来」与「删得掉」
+    (
+        "导出中心",
+        "/system/export",
+        "system/export/index",
+        "DownloadOutlined",
+        "system:export",
+        &["list", "remove"],
     ),
 ];
 

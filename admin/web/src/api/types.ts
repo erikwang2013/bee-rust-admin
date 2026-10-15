@@ -144,3 +144,19 @@ export interface ImportReport {
   created: number;
   rows: ImportRow[];
 }
+
+/** 异步导出（项 4）：类型在**后端代码**里注册（能往库里写导出语句就是任意读库），前端只列出来。 */
+export type ExportKind = 'audit-log' | 'login-log';
+export interface ExportTask {
+  id: string; admin_id: string; username: string; kind: string;
+  /** 筛选条件 JSON 字符串：`{}` = 全量 */
+  params: string;
+  /** 0 待处理 / 1 执行中 / 2 已完成 / 3 失败 */
+  status: number;
+  row_count: number; file_size: number;
+  /** 失败原因 / 完成摘要 */
+  msg: string;
+  created_at: string; started_at: string | null; finished_at: string | null;
+  /** 过期时刻：清理任务按它连记录带文件一起删 */
+  expire_at: string;
+}

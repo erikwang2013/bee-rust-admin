@@ -315,12 +315,23 @@ async fn role_perms(db: &Pool, role_id: i64) -> Result<HashSet<String>, ApiError
 /// 解析当前用户的数据权限。规则：超管=全部；任一启用角色 scope=1 → 全部；
 /// 否则部门集合取并集（scope 2=本部门及以下、3=本部门、5=自定义），任一角色 scope=4 → 含仅本人。
 pub async fn resolve(auth: &Auth, db: &Pool) -> Result<DataScope, ApiError> {
-    let mut scope = DataScope { all: false, dept_ids: Vec::new(), self_only: false, me: auth.admin.id };
     if auth.is_super {
-        scope.all = true;
-        return Ok(scope);
+        return Ok(DataScope { all: true, me: auth.admin.id, ..Default::default() });
     }
-    let active: Vec<&crate::models::Role> = auth.roles.iter().filter(|r| r.status == 1).collect();
+    from_roles(db, auth.admin.id, auth.admin.dept_id, &auth.roles).await
+}
+
+/// 同 [`resolve`]，但只吃「谁 + 所属部门 + 角色」这三样，不要求有 `Auth`。
+/// 异步导出（项 4）的任务执行在 job 循环里、没有请求上下文，要按**发起人**重算可见面 ——
+/// 规则必须与登录用户走同一份，否则「列表看得见、导出文件里看不见」就没准了。
+pub async fn from_roles(
+    db: &Pool,
+    me: i64,
+    dept_id: i64,
+    roles: &[crate::models::Role],
+) -> Result<DataScope, ApiError> {
+    let mut scope = DataScope { all: false, dept_ids: Vec::new(), self_only: false, me };
+    let active: Vec<&crate::models::Role> = roles.iter().filter(|r| r.status == 1).collect();
     if active.is_empty() {
         return Ok(scope); // 无启用角色 → 条件为 1=0（什么都看不到）
     }
@@ -331,8 +342,8 @@ pub async fn resolve(auth: &Auth, db: &Pool) -> Result<DataScope, ApiError> {
                 scope.all = true;
                 return Ok(scope);
             }
-            2 => scope.dept_ids.extend(subtree(&all_depts, auth.admin.dept_id)),
-            3 => scope.dept_ids.push(auth.admin.dept_id),
+            2 => scope.dept_ids.extend(subtree(&all_depts, dept_id)),
+            3 => scope.dept_ids.push(dept_id),
             4 => scope.self_only = true,
             5 => {
                 let ids = db

@@ -158,6 +158,9 @@ fn module_action(method: &Method, path: &str) -> (String, String) {
         // 具体种别看审计行的 path 或报告，别为此拆三条（拆了也没法从路径分辨）
         ("POST", ["imports"]) => ("import", "导入数据"),
 
+        ("POST", ["exports"]) => ("export", "发起导出"),
+        ("DELETE", ["exports", _]) => ("export", "删除导出任务"),
+
         ("PUT", ["jobs", _]) => ("job", "编辑定时任务"),
         ("POST", ["jobs", _, "run"]) => ("job", "手动执行定时任务"),
 
@@ -229,6 +232,14 @@ mod tests {
         assert_eq!(
             module_action(&Method::POST, "/api/v1/jobs/2/run"),
             ("job".into(), "手动执行定时任务".into())
+        );
+        assert_eq!(
+            module_action(&Method::POST, "/api/v1/exports"),
+            ("export".into(), "发起导出".into())
+        );
+        assert_eq!(
+            module_action(&Method::DELETE, "/api/v1/exports/7"),
+            ("export".into(), "删除导出任务".into())
         );
         assert_eq!(
             module_action(&Method::POST, "/api/v1/notices/9/read"),

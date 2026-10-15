@@ -99,6 +99,12 @@ export const enUS: Record<I18nKey, string> = {
   'field.ended_at': 'Ended at',
   'field.duration': 'Duration',
   'field.published_at': 'Published at',
+  'field.finished_at': 'Finished at',
+  'field.expire_at': 'Expires at',
+  'field.kind': 'Type',
+  'field.params': 'Filters',
+  'field.row_count': 'Rows',
+  'field.file_size': 'File size',
   'field.ip': 'IP',
   'field.user_agent': 'User-Agent',
   'field.time': 'Time',
@@ -310,6 +316,7 @@ export const enUS: Record<I18nKey, string> = {
   'auditlog.module.loginlog': 'Login records',
   'auditlog.module.auditlog': 'Operation logs',
   'auditlog.module.import': 'Data import',
+  'auditlog.module.export': 'Export center',
   'auditlog.module.auth': 'Auth',
   'auditlog.module.other': 'Other',
 
@@ -327,6 +334,20 @@ export const enUS: Record<I18nKey, string> = {
   'import.reason': 'Reason',
   'import.ok': 'Pass',
   'import.reject': 'Fail',
+
+  // ---- Export center ----
+  'export.new': 'New export',
+  'export.download': 'Download',
+  'export.all': 'Full',
+  'export.kind.audit_log': 'Audit log',
+  'export.kind.login_log': 'Login log',
+  'export.status.pending': 'Pending',
+  'export.status.running': 'Running',
+  'export.status.done': 'Completed',
+  'export.status.failed': 'Failed',
+  'export.created': 'Queued — it usually finishes within a minute and the list refreshes itself',
+  'export.delete_confirm': 'Delete the task and its exported file?',
+  'export.hint': 'Exports run as a background job: usually done within a minute, and the list refreshes by itself. The export center always exports the full data set — for filtered exports use the Export button on the module list page. Files are cleaned up (record and file together) once they expire, so download them in time.',
 
   // ---- Error / crash pages ----
   'error.forbidden_alt': 'Ah Shou: stinger raised, this way is blocked',

@@ -111,7 +111,7 @@ pub async fn clear(
     Ok(ok(json!({ "deleted": deleted })))
 }
 
-fn header_cells() -> Vec<String> {
+pub(crate) fn headers() -> Vec<String> {
     ["ID", "时间", "用户", "模块", "动作", "方法", "路径", "结果", "详情", "耗时(ms)", "IP"]
         .map(String::from)
         .to_vec()
@@ -158,7 +158,7 @@ mod tests {
 }
 
 /// 取一批导出数据（keyset：`id < last`，首页不带该条件），行渲染与旧的一次性实现逐字段一致。
-async fn export_batch(
+pub(crate) async fn export_batch(
     state: &AppState,
     q: &AuditListQuery,
     scope: &datascope::DataScope,
@@ -216,7 +216,7 @@ pub async fn export(
 ) -> Result<Response, ApiError> {
     auth.require("system:auditlog:list")?;
     let scope = datascope::resolve(&auth, &state.db).await?;
-    csv::streamed(format!("audit-logs-{}.csv", csv::today()), header_cells(), move |last| {
+    csv::streamed(format!("audit-logs-{}.csv", csv::today()), headers(), move |last| {
         let state = state.clone();
         let q = q.clone();
         let scope = scope.clone();

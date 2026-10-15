@@ -109,7 +109,7 @@ pub async fn clear(
 }
 
 /// 取一批导出数据（keyset：`id < last`，首页不带该条件），行渲染与旧的一次性实现逐字段一致。
-async fn export_batch(
+pub(crate) async fn export_batch(
     state: &AppState,
     q: &LogListQuery,
     scope: &datascope::DataScope,
@@ -164,7 +164,7 @@ pub async fn export(
 ) -> Result<Response, ApiError> {
     auth.require("system:loginlog:list")?;
     let scope = datascope::resolve(&auth, &state.db).await?;
-    csv::streamed(format!("login-logs-{}.csv", csv::today()), header_cells(), move |last| {
+    csv::streamed(format!("login-logs-{}.csv", csv::today()), headers(), move |last| {
         let state = state.clone();
         let q = q.clone();
         let scope = scope.clone();
@@ -173,7 +173,7 @@ pub async fn export(
     .await
 }
 
-fn header_cells() -> Vec<String> {
+pub(crate) fn headers() -> Vec<String> {
     ["ID", "用户名", "IP", "User-Agent", "结果", "详情", "时间"]
         .map(String::from)
         .to_vec()

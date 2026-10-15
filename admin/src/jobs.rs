@@ -48,6 +48,20 @@ pub const JOBS: &[JobSpec] = &[
         interval_secs: 86400,
         run: |s| Box::pin(crate::backup::run(s)),
     },
+    // 异步导出（项 4）：执行体在 crate::export。每分钟一趟，发起后最迟一分钟跑完；
+    // 单独一个清理任务（每天）删过期文件与记录
+    JobSpec {
+        code: "export_run",
+        name: "导出任务执行",
+        interval_secs: 60,
+        run: |s| Box::pin(crate::export::run(s)),
+    },
+    JobSpec {
+        code: "export_clean",
+        name: "导出文件清理",
+        interval_secs: 86400,
+        run: |s| Box::pin(crate::export::clean(s)),
+    },
 ];
 
 /// 按 code 找注册项；库里残留的旧 code 找不到 = 不可手动触发（409）、调度跳过。
@@ -348,6 +362,8 @@ mod tests {
         assert!(spec("log_retention").is_some());
         assert!(spec("avatar_orphan_clean").is_some());
         assert!(spec("db_backup").is_some());
+        assert!(spec("export_run").is_some());
+        assert!(spec("export_clean").is_some());
         assert!(spec("ghost_job").is_none(), "库里残留的旧 code 找不到注册项");
         let mut codes: Vec<&str> = JOBS.iter().map(|j| j.code).collect();
         codes.sort_unstable();

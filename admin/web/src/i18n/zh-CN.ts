@@ -106,6 +106,12 @@ export const zhCN = {
   'field.ended_at': '结束时间',
   'field.duration': '耗时',
   'field.published_at': '发布时间',
+  'field.finished_at': '完成时间',
+  'field.expire_at': '过期时间',
+  'field.kind': '类型',
+  'field.params': '筛选条件',
+  'field.row_count': '行数',
+  'field.file_size': '文件大小',
   'field.ip': 'IP',
   'field.user_agent': 'User-Agent',
   'field.time': '时间',
@@ -317,6 +323,7 @@ export const zhCN = {
   'auditlog.module.loginlog': '登录记录',
   'auditlog.module.auditlog': '操作日志',
   'auditlog.module.import': '数据导入',
+  'auditlog.module.export': '导出中心',
   'auditlog.module.auth': '认证',
   'auditlog.module.other': '其他',
 
@@ -334,6 +341,20 @@ export const zhCN = {
   'import.reason': '原因',
   'import.ok': '通过',
   'import.reject': '不通过',
+
+  // ---- 导出中心（项 4）----
+  'export.new': '发起导出',
+  'export.download': '下载',
+  'export.all': '全量',
+  'export.kind.audit_log': '操作日志',
+  'export.kind.login_log': '登录记录',
+  'export.status.pending': '待处理',
+  'export.status.running': '执行中',
+  'export.status.done': '已完成',
+  'export.status.failed': '失败',
+  'export.created': '已发起，任务跑完（通常一分钟内）列表里会自动刷新',
+  'export.delete_confirm': '删除任务与导出文件？',
+  'export.hint': '导出走后台任务：发起后通常一分钟内跑完，列表自动刷新。导出中心导的是全量数据——要按条件导，去对应列表页点「导出」当场下载。成品过了保留期会被自动清理（记录与文件一起），请及时下载。',
 
   // ---- 错误页 / 崩溃页 ----
   'error.forbidden_alt': '阿守：尾针竖起，此路不通',

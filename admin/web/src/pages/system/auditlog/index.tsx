@@ -17,6 +17,7 @@ const MODULE_KEYS: Record<string, I18nKey> = {
   dict: 'auditlog.module.dict',
   config: 'auditlog.module.config',
   import: 'auditlog.module.import',
+  export: 'auditlog.module.export',
   loginlog: 'auditlog.module.loginlog',
   auditlog: 'auditlog.module.auditlog',
   auth: 'auditlog.module.auth',

@@ -50,6 +50,9 @@ pub struct AppConfig {
     /// 备份保留份数（`[backup] keep`，默认 7）。**必须 >= 1**：0 等于每跑一次就把
     /// 所有备份删光（包括刚生成的那份），几乎必然是误配，拒绝启动。
     pub backup_keep: i64,
+    /// 导出文件保留天数（`[export] retain_days`，默认 7）——过期由 export_clean 任务
+    /// 删记录 + 文件。**必须 >= 1**：0 等于刚导完就过期，导出中心什么也留不下。
+    pub export_retain_days: i64,
     /// 请求安全扫描的拦截阈值（`[security] scan`）：`None` = `off`（**默认**，只报告不拦截）。
     ///
     /// `Some(High)` / `Some(Critical)` = 扫描等级达到该值就 403 + `err = "security.blocked"`
@@ -159,6 +162,14 @@ impl AppConfig {
             ));
         }
 
+        // 导出文件保留天数：0 = 刚导完就过期（导出中心白建），是误配不是意图
+        let export_retain_days = num("export", "retain_days", 7)?;
+        if export_retain_days < 1 {
+            return Err(ConfigError::Invalid(
+                "[export] retain_days 必须 >= 1（0 等于导出文件立刻过期）".into(),
+            ));
+        }
+
         // 文档站开关 + 口令：**enabled = true 却没配口令 = 拒绝启动**。默认 false：
         // 文档站把整个接口面（含请求/响应结构）摊开，是开发/交付工具，不该跟着
         // 生产实例一起对外；真要开，就必须带口令 —— 不允许「以为有口令其实没有」。
@@ -204,6 +215,7 @@ impl AppConfig {
             job_enabled: flag("job", "enabled", true)?,
             backup_dir: opt("backup", "dir", ""),
             backup_keep,
+            export_retain_days,
             security_scan,
             hashids_salt: opt("app", "hashids_salt", ""),
             hashids_min_len: hashids_min_len as usize,
