@@ -108,6 +108,7 @@ export const enUS: Record<I18nKey, string> = {
   'field.file_size': 'File size',
   'field.ip': 'IP',
   'field.device': 'Device',
+  'field.totp_code': 'Authenticator code',
   'field.last_active_at': 'Last active',
   'field.user_agent': 'User-Agent',
   'field.time': 'Time',

@@ -115,6 +115,7 @@ export const zhCN = {
   'field.file_size': '文件大小',
   'field.ip': 'IP',
   'field.device': '设备',
+  'field.totp_code': '动态验证码',
   'field.last_active_at': '最后活跃',
   'field.user_agent': 'User-Agent',
   'field.time': '时间',

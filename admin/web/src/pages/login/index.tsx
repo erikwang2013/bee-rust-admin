@@ -112,9 +112,9 @@ export default function LoginPage() {
             <Form.Item
               name="code"
               extra={t('login.code_hint')}
-              rules={[{ required: true, message: t('validate.required', { field: t('field.code') }) }]}
+              rules={[{ required: true, message: t('validate.required', { field: t('field.totp_code') }) }]}
             >
-              <Input prefix={<SafetyOutlined />} placeholder={t('field.code')} autoComplete="one-time-code" maxLength={6} />
+              <Input prefix={<SafetyOutlined />} placeholder={t('field.totp_code')} autoComplete="one-time-code" maxLength={6} />
             </Form.Item>
           )}
           {captcha && (
