@@ -60,7 +60,7 @@ INI 配置），前端是 Vite + React 18 + Ant Design 5 单页应用，两者�
 |---|---|---|
 | 客户端 | 浏览器 SPA | React 18 + TypeScript + Ant Design 5（Vite 构建） |
 | 接入层 | nginx :8081 | 提供前端静态资源，`/api/` 反向代理到后端并透传 `X-Real-IP` |
-| 应用层 | `bee_admin` | bee_router（axum）· Auth 提取器 · 64 个 API handler · datascope 数据权限 · 统一响应信封 |
+| 应用层 | `bee_admin` | bee_router（axum）· Auth 提取器 · 65 个 API handler · datascope 数据权限 · 统一响应信封 |
 | 框架层 | bee_orm / bee_config / bee_logs | 多后端连接池、QuerySet、CRUD、M2M、migrate 迁移；INI 配置；tracing 日志 |
 | 数据层 | MySQL 8.4 | 16 张表（11 张业务表 + 4 张关系表 + 1 张明文备份表） |
 
@@ -110,7 +110,7 @@ INI 配置），前端是 Vite + React 18 + Ant Design 5 单页应用，两者�
 | **中英双语** | 界面文案中/英两套（顶栏切换，跟随浏览器语言，存 localStorage），antd 组件文案与日期格式跟着切；**后端不做多语言消息**——错误响应带稳定业务错误码 `err` + 参数 `args`，前端查表出文案，查不到回落后端中文 `msg`（任何情况都有话可说） |
 | **站点信息** | 登录页与侧边栏底部一行：版本号（构建时注入，发布产物显示真实 tag、本地构建显示 `dev`）、版权、项目地址（链到仓库）—— 报障带上版本号最省事 |
 
-接口共 64 个（63 个业务接口 + `/api/v1/health` 探活），路径与字段的完整定义见
+接口共 65 个（63 个业务接口 + `/api/v1/health` 探活 + `/api/v1/version` 版本），路径与字段的完整定义见
 [设计文档 §5.3](docs/superpowers/specs/2026-10-05-bee-rust-admin-design.md)，
 字典 / 定时任务 / 通知公告 / i18n 的契约另见 [C 组设计](docs/superpowers/plans/2026-10-06-bra-v1.5-c-modules.md)。
 
@@ -236,7 +236,8 @@ cp admin/conf/app.conf.example admin/conf/app.conf
 
 ```bash
 cargo run -p bee_admin
-curl http://127.0.0.1:8080/api/v1/health   # => OK
+curl http://127.0.0.1:8080/api/v1/health    # => OK
+curl http://127.0.0.1:8080/api/v1/version   # => {"version":"dev"}（构建时注入，见 release.sh 的 BRA_VERSION）
 ```
 
 **4. 起前端**
@@ -305,7 +306,7 @@ password = <自己定一个口令>
 
 - `enabled = true` 而 `password` 空着 → **拒绝启动**（与 `encrypt_key` 一个态度：不允许
   「以为有口令其实没有」地跑起来）；非法布尔值同样拒绝启动
-- 挂载点：`/apidoc`（UI，浏览器直接开）、`/apidoc/api.json`（原始接口清单，64 个接口）
+- 挂载点：`/apidoc`（UI，浏览器直接开）、`/apidoc/api.json`（原始接口清单，65 个接口）
 - 文档站**不在审计 / 安全扫描层的覆盖范围内**（它 merge 在全部中间件之后，读文档不是业务
   操作，记进操作日志只是噪音），整棵树也在 `/api/v1` 之外，与业务接口互不影响
 

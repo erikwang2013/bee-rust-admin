@@ -39,6 +39,10 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    # `/metrics`（Prometheus 文本）**故意不反代**：后端只监听 127.0.0.1，默认谁都不给看。
+    # 要接 Prometheus 时自己加一段（示例，注意按需限制来源 IP）：
+    #   location = /metrics { proxy_pass http://127.0.0.1:8080; allow 10.0.0.0/8; deny all; }
+
     # 前端产物带 hash 的静态资源可长缓存；index.html 不缓存
     location ~* \.(js|css|woff2?|svg|png|jpg|ico)$ {
         expires 30d;

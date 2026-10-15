@@ -156,7 +156,8 @@ fi
 #  构建
 # ══════════════════════════════════════════════════════════════════════════
 say "构建后端（这一步慢，几分钟到几十分钟；机器忙的时候更慢，别急着按 Ctrl-C）"
-( cd "$ROOT" && cargo build --release -p bee_admin ) || die "cargo 构建失败"
+# BRA_VERSION 同时给后端（admin/build.rs 注入 /api/v1/version）与前端（下面那行）
+( cd "$ROOT" && BRA_VERSION="$TAG" cargo build --release -p bee_admin ) || die "cargo 构建失败"
 [ -x "$BIN_SRC" ] || die "$BIN_SRC 没生成"
 
 say "构建前端（pnpm install --frozen-lockfile + pnpm build）"

@@ -8,6 +8,7 @@ mod datascope;
 mod error;
 mod hid;
 mod jobs;
+mod metrics;
 mod models;
 mod relations;
 mod retention;
@@ -29,6 +30,18 @@ use tracing::Level;
 #[apidoc::tag("系统")]
 async fn health() -> &'static str {
     "OK"
+}
+
+/// 版本号（项 11）：构建期由 `admin/build.rs` 从 `BRA_VERSION` 注入
+/// （release.sh 传 `$TAG`），未注入回 `dev`。与 `/health` 同级口径 ——
+/// 运维/探活类接口，不挂权限码，登录与否都放行。
+#[apidoc::title("版本信息")]
+#[apidoc::desc("构建时注入的版本号（release.sh 传 BRA_VERSION，本地/CI 构建为 dev）")]
+#[apidoc::url("/api/v1/version")]
+#[apidoc::method("GET")]
+#[apidoc::tag("系统")]
+async fn version() -> axum::Json<serde_json::Value> {
+    axum::Json(serde_json::json!({ "version": env!("BEE_ADMIN_VERSION") }))
 }
 
 /// 路由级兜底只改 `/api/v1` 树内的响应形状；树外的路径保持 axum 原样
@@ -110,6 +123,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 先读配置再起日志，log_level 才真正生效（B1）；句柄要活到进程结束
     let _log = bee_rust::bee_logs::Logger::new().level(parse_level(&cfg.log_level)).init()?;
     tracing::info!("{} 启动，配置 {}", cfg.app_name, conf_path);
+
+    // /metrics 的 process_start_time_seconds：启动即定死，别拖到第一个请求
+    metrics::init();
 
     // 对外 id 的编码参数在启动时定死（进程级 OnceLock，之后所有 serde 辅助都用它）。
     // 盐是空串也能跑（老配置没这个键），但那样短串在不同部署间可预测 —— 提醒一句。
@@ -220,7 +236,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let router = bee_rust::bee_router::Router::new()
-        .ns("/api/v1", |ns| ns.get("/health", health))
+        .ns("/api/v1", |ns| {
+            ns.get("/health", health).get("/version", version)
+        })
+        // 指标端点（项 12）：**在 /api/v1 树外、也不进 apidoc**，无鉴权 ——
+        // 服务只监听 127.0.0.1，对外转不转由 nginx 决定（见 `metrics` 模块注释）。
+        .ns("/metrics", |ns| ns.get("", metrics::endpoint))
         .ns("/api/v1/auth", |ns| {
             ns.post("/login", api::auth::login)
                 .post("/logout", api::auth::logout)
@@ -325,7 +346,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(axum::middleware::from_fn_with_state(state.clone(), audit::audit_mw))
         // 请求安全扫描（阶段 5a）挂**最外层**：后加的 layer 在更外层，于是请求先被扫、
         // 再进审计、再进业务 —— 未通过鉴权的请求也要被扫到（契约「顺序」一节）
-        .layer(axum::middleware::from_fn_with_state(state, security_scan::scan_mw));
+        .layer(axum::middleware::from_fn_with_state(state, security_scan::scan_mw))
+        // 指标统计（项 12）再往外一层：被安全扫描 403 掉的、落到兜底路由 404 的
+        // 请求也都要计数 —— 这些恰恰是运维要看的信号
+        .layer(axum::middleware::from_fn(metrics::metrics_mw));
 
     // 接口文档站（阶段 5b）：**必须 merge 在业务 router 的全部 layer 之后**。
     // axum 的 `layer` 只作用于「注册在它之前」的路由，这里后挂 —— 文档请求就不会被
