@@ -1,7 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use crate::config::AppConfig;
 use crate::crypto;
-use crate::models::{Admin, Job, Menu};
+use crate::models::{Admin, Job, Menu, SysConfig};
 use crate::util::{hash_password, now};
 use bee_orm::migrate;
 use bee_orm::pool::mysql::Pool;
@@ -101,6 +101,7 @@ pub async fn migrate(db: &Pool) -> Result<(), OrmError> {
     migrate::sync::<Job, _>(db).await?;
     migrate::sync::<crate::models::JobLog, _>(db).await?;
     migrate::sync::<crate::models::Notice, _>(db).await?;
+    migrate::sync::<crate::models::SysConfig, _>(db).await?;
 
     // 3) 单列唯一键与索引：原先写在模型属性上（`#[bee(unique)]` / `#[bee(index)]`），
     //    上游属性里没有这两个概念，移到这儿。
@@ -264,6 +265,7 @@ const CONSTRAINTS: &[(&str, &str, &str)] = &[
     ("dict_item", "idx_dict_item_type_code", "CREATE INDEX idx_dict_item_type_code ON dict_item (type_code)"),
     ("job", "uk_job_code", "CREATE UNIQUE INDEX uk_job_code ON job (code)"),
     ("job_log", "idx_job_log_job_code", "CREATE INDEX idx_job_log_job_code ON job_log (job_code)"),
+    ("sys_config", "uk_sys_config_key", "CREATE UNIQUE INDEX uk_sys_config_key ON sys_config (config_key)"),
 ];
 
 /// 幂等建索引：MySQL 没有 `CREATE INDEX IF NOT EXISTS`，先查 information_schema。
@@ -287,7 +289,7 @@ async fn ensure_index(db: &Pool, table: &str, index: &str, ddl: &str) -> Result<
 }
 
 /// 内置菜单定义：(名称, 路径, 组件, 图标, 权限码前缀, 按钮后缀列表)。
-const BUILTIN_MENUS: [(&str, &str, &str, &str, &str, &[&str]); 9] = [
+const BUILTIN_MENUS: [(&str, &str, &str, &str, &str, &[&str]); 10] = [
     (
         "管理员管理",
         "/system/admin",
@@ -360,6 +362,16 @@ const BUILTIN_MENUS: [(&str, &str, &str, &str, &str, &[&str]); 9] = [
         "BellOutlined",
         "system:notice",
         &["list", "add", "edit", "remove"],
+    ),
+    // 写动作（改值/增键/删键）都归 `system:config:edit` 一个码：页面是分组表单，
+    // 不是「行级增删改」那种按钮矩阵，拆细反而没人配得清
+    (
+        "系统配置",
+        "/system/config",
+        "system/config/index",
+        "ToolOutlined",
+        "system:config",
+        &["list", "edit"],
     ),
 ];
 
@@ -492,7 +504,58 @@ pub async fn ensure_jobs(db: &Pool, sk: &Shared) -> Result<(), bee_orm::OrmError
     Ok(())
 }
 
-/// 首次启动（admin 表空）时写入超管；内置菜单与任务由 `ensure_*` 每次启动补齐。
+/// 内置配置键的默认值：(键, 值, 类型, 分组, 备注)。v1 四个键都对应前端原先写死的值
+/// （见 `SiteInfo.tsx` / 登录页），公开读给登录页与页脚用。
+/// 版权文字里的年份是**种子时**的年份（字面量，不玩动态替换）：管理员改过一次后
+/// 启动流程绝不覆盖，跨年想换自己改。
+const DEFAULT_CONFIGS: [(&str, &str, &str, &str, &str); 4] = [
+    ("site.copyright", "", "string", "site", "页脚版权文字（原样显示，如 © 2026 erik）"),
+    (
+        "site.repo_url",
+        "https://github.com/erikwang2013/bee-rust-admin",
+        "string",
+        "site",
+        "页脚项目地址（整行链接指向它）",
+    ),
+    ("site.footer_enabled", "true", "bool", "site", "页脚是否显示（false 时登录页与侧边栏都不渲染）"),
+    ("site.login_subtitle", "", "string", "site", "登录页副标题（空 = 不显示）"),
+];
+
+/// 幂等补齐内置配置键（每次启动都跑）：缺哪个补哪个，已存在的行一律不改写
+/// （管理员改过的值不被启动流程覆盖）；库里多出来的键不删——管理页可见可删。
+pub async fn ensure_configs(db: &Pool, sk: &Shared) -> Result<(), bee_orm::OrmError> {
+    for (key, value, ty, group, remark) in DEFAULT_CONFIGS {
+        let exists = SysConfig::query()
+            .filter_eq("config_key", key)?
+            .one(db)
+            .await?
+            .is_some();
+        if exists {
+            continue;
+        }
+        // 版权默认值在种子这一刻取当前年，拼成字面量（见 `DEFAULT_CONFIGS` 注释）
+        let value = if key == "site.copyright" {
+            format!("© {} erik", chrono::Local::now().format("%Y"))
+        } else {
+            value.to_string()
+        };
+        let c = SysConfig {
+            id: next_id(sk)?,
+            key: key.to_string(),
+            value,
+            value_type: ty.to_string(),
+            group: group.to_string(),
+            is_public: 1,
+            remark: remark.to_string(),
+            created_at: now(),
+            updated_at: now(),
+        };
+        c.insert(db).await?;
+    }
+    Ok(())
+}
+
+/// 首次启动（admin 表空）时写入超管；内置菜单、任务、配置键由 `ensure_*` 每次启动补齐。
 pub async fn seed(
     db: &Pool,
     cfg: &AppConfig,
@@ -501,6 +564,7 @@ pub async fn seed(
 ) -> Result<(), bee_orm::OrmError> {
     ensure_menus(db, sk).await?;
     ensure_jobs(db, sk).await?;
+    ensure_configs(db, sk).await?;
 
     if Admin::query().count(db).await? > 0 {
         return Ok(());

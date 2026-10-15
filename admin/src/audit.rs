@@ -150,6 +150,10 @@ fn module_action(method: &Method, path: &str) -> (String, String) {
         ("PUT", ["dict-items", _]) => ("dict", "编辑字典项"),
         ("DELETE", ["dict-items", _]) => ("dict", "删除字典项"),
 
+        ("POST", ["configs"]) => ("config", "新增系统配置"),
+        ("PUT", ["configs", _]) => ("config", "编辑系统配置"),
+        ("DELETE", ["configs", _]) => ("config", "删除系统配置"),
+
         ("PUT", ["jobs", _]) => ("job", "编辑定时任务"),
         ("POST", ["jobs", _, "run"]) => ("job", "手动执行定时任务"),
 
@@ -205,6 +209,14 @@ mod tests {
         assert_eq!(
             module_action(&Method::POST, "/api/v1/dict-items"),
             ("dict".into(), "新增字典项".into())
+        );
+        assert_eq!(
+            module_action(&Method::PUT, "/api/v1/configs/5"),
+            ("config".into(), "编辑系统配置".into())
+        );
+        assert_eq!(
+            module_action(&Method::DELETE, "/api/v1/configs/5"),
+            ("config".into(), "删除系统配置".into())
         );
         assert_eq!(
             module_action(&Method::PUT, "/api/v1/jobs/2"),

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 pub mod admin;
 pub mod audit_log;
+pub mod config;
 pub mod dept;
 pub mod dict;
 pub mod job;
@@ -11,6 +12,7 @@ pub mod role;
 
 pub use admin::Admin;
 pub use audit_log::AuditLog;
+pub use config::SysConfig;
 pub use dept::Dept;
 pub use dict::{DictItem, DictType};
 pub use job::{Job, JobLog};

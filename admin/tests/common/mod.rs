@@ -146,11 +146,13 @@ mod tests {
 }
 
 /// 清库（服务启动时会 syncdb + seed 重建）。
+/// `sys_config` 也在列：集成测试会改全局配置（页脚开关、副标题），不清的话会
+/// 残留给下一个测试二进制/真跑验收（踩过：footer_enabled=false 漏进了浏览器验收）。
 pub async fn reset_db(dsn: &str) {
     let pool = sqlx::MySqlPool::connect(dsn).await.unwrap();
     for t in [
         "admin_role", "role_menu", "role_dept", "login_log", "audit_log", "menu", "role", "dept",
-        "dict_item", "dict_type", "job_log", "job", "notice_read", "notice", "admin",
+        "dict_item", "dict_type", "job_log", "job", "notice_read", "notice", "admin", "sys_config",
     ] {
         sqlx::query(&format!("DROP TABLE IF EXISTS {t}")).execute(&pool).await.unwrap();
     }

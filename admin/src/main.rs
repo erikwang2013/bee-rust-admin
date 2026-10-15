@@ -313,6 +313,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .put("/{id}", api::dict::item_update)
                 .delete("/{id}", api::dict::item_remove)
         })
+        .ns("/api/v1/configs", |ns| {
+            ns.get("", api::config::list)
+                .post("", api::config::create)
+                // 公开读（免登录，登录页/页脚用）：静态段优先于 /{id}（本 ns 没有 GET /{id}）
+                .get("/public", api::config::public_list)
+                .put("/{id}", api::config::update)
+                .delete("/{id}", api::config::remove)
+        })
+        // 仪表盘统计（项 2）：登录即可（不挂权限码，见 api::dashboard 的口径说明）
+        .ns("/api/v1/dashboard", |ns| ns.get("/stats", api::dashboard::stats))
         .ns("/api/v1/jobs", |ns| {
             ns.get("", api::job::list)
                 .put("/{id}", api::job::update)

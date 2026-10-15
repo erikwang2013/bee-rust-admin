@@ -95,6 +95,22 @@ export interface Job {
   last_run_at: string | null; last_status: number | null; last_msg: string;
   created_at: string; updated_at: string;
 }
+export interface SysConfig {
+  id: string; key: string; value: string;
+  /** string 单行 / text 多行 / bool 开关（值都存字符串，"true"/"false"） */
+  value_type: 'string' | 'text' | 'bool';
+  group: string; is_public: number; remark: string;
+  created_at: string; updated_at: string;
+}
+/** 公开配置（`/configs/public`，免登录）：键 → 值；bool 类型已是 JSON 布尔 */
+export type PublicConfig = Record<string, string | boolean>;
+
+/** 按天的登录计数（仪表盘趋势）：`date` 为 YYYY-MM-DD，旧→新 */
+export interface LoginDay { date: string; success: number; fail: number }
+export interface DashboardStats {
+  counts: { admins: number; roles: number; depts: number; notices: number };
+  logins: { success_total: number; fail_total: number; days: LoginDay[] };
+}
 export interface JobLog {
   id: string; job_code: string; started_at: string; duration_ms: number;
   status: number; msg: string;

@@ -7,6 +7,7 @@ import { ThemeToggle } from '../../theme';
 import { LanguageToggle, useI18n } from '../../i18n';
 import { TOKEN_KEY } from '../../api/client';
 import { captchaApi, loginWithCaptcha } from '../../api/captcha';
+import { fetchPublicConfig } from '../../api/config';
 import type { CaptchaAnswer, CaptchaData } from '../../api/types';
 import CaptchaBox from './CaptchaBox';
 import SiteInfo from '../../SiteInfo';
@@ -22,6 +23,14 @@ export default function LoginPage() {
   /** null = 后端没开验证码（或没取到），此时不渲染验证码区、登录体也不带凭据 */
   const [captcha, setCaptcha] = useState<CaptchaData | null>(null);
   const [answer, setAnswer] = useState<CaptchaAnswer | null>(null);
+  /** 登录页副标题（系统配置 `site.login_subtitle`）；空/读不到就不渲染（与旧版外观一致） */
+  const [subtitle, setSubtitle] = useState('');
+
+  useEffect(() => {
+    fetchPublicConfig()
+      .then((c) => setSubtitle(typeof c['site.login_subtitle'] === 'string' ? (c['site.login_subtitle'] as string) : ''))
+      .catch(() => setSubtitle(''));
+  }, []);
 
   const loadCaptcha = useCallback(async () => {
     try {
@@ -75,9 +84,14 @@ export default function LoginPage() {
         <div style={{ textAlign: 'center' }}>
           <img src="/keeper.svg" alt={t('common.mascot_alt')} width={132} height={132} />
         </div>
-        <Typography.Title level={3} style={{ textAlign: 'center', marginTop: 0, marginBottom: 24 }}>
+        <Typography.Title level={3} style={{ textAlign: 'center', marginTop: 0, marginBottom: subtitle ? 4 : 24 }}>
           {t('login.title')}
         </Typography.Title>
+        {subtitle && (
+          <Typography.Paragraph type="secondary" style={{ textAlign: 'center', marginTop: 0, marginBottom: 20 }}>
+            {subtitle}
+          </Typography.Paragraph>
+        )}
         <Form onFinish={onFinish} size="large">
           <Form.Item name="username" rules={[{ required: true, message: t('validate.required', { field: t('field.username') }) }]}>
             <Input prefix={<UserOutlined />} placeholder={t('field.username')} autoComplete="username" />

@@ -19,6 +19,7 @@ const AuditLogPage = lazy(() => import('./pages/system/auditlog/index'));
 const DictPage = lazy(() => import('./pages/system/dict/index'));
 const JobPage = lazy(() => import('./pages/system/job/index'));
 const NoticePage = lazy(() => import('./pages/system/notice/index'));
+const ConfigPage = lazy(() => import('./pages/system/config/index'));
 
 const loading = (
   <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 120 }}>
@@ -54,6 +55,7 @@ export const router = createBrowserRouter([
           { path: 'system/dict', element: <RequirePerm code="system:dict:list"><L><DictPage /></L></RequirePerm> },
           { path: 'system/job', element: <RequirePerm code="system:job:list"><L><JobPage /></L></RequirePerm> },
           { path: 'system/notice', element: <RequirePerm code="system:notice:list"><L><NoticePage /></L></RequirePerm> },
+          { path: 'system/config', element: <RequirePerm code="system:config:list"><L><ConfigPage /></L></RequirePerm> },
           { path: 'profile', element: <L><ProfilePage /></L> },
           { path: '403', element: <Forbidden /> },
           { path: '*', element: <NotFound /> },
