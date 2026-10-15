@@ -65,11 +65,13 @@ pub fn parse_dsn(dsn: &str) -> Result<Dsn, String> {
 
 /// 百分号解码。用 percent-encoding 而不是 form_urlencoded：后者把裸 `+` 解成空格，
 /// 口令里真有个 `+`（手写 conf）就静默解错了。
+/// 报错**不回显入参**：这是凭据（口令），而消息会进 `job_log` 在前端界面上展示 ——
+/// 只说第几个字节不合法，够定位 conf 里写坏的位置。
 fn decode(s: &str) -> Result<String, String> {
     percent_encoding::percent_decode_str(s)
         .decode_utf8()
         .map(|c| c.into_owned())
-        .map_err(|_| format!("DSN 凭据不是合法 UTF-8（% 编码坏了？）: {s:?}"))
+        .map_err(|e| format!("DSN 凭据不是合法 UTF-8（% 编码坏了？）：第 {} 字节处不合法", e.valid_up_to() + 1))
 }
 
 /// 备份目录：`[backup] dir` 非空用它，否则 `{upload_dir}/backups`。
@@ -216,6 +218,17 @@ mod tests {
         assert_eq!(parse_dsn("mysql://u:a+b@h/db").unwrap().password, "a+b");
         // 空口令不是错（MySQL 允许）
         assert_eq!(parse_dsn("mysql://u@h/db").unwrap().password, "");
+    }
+
+    /// 凭据解码失败的报错**不能回显凭据**：消息会进 `job_log`，在定时任务页面上展示 ——
+    /// 那正是口令所在的位置，只能指到第几个字节。
+    #[test]
+    fn decode_error_does_not_echo_the_credential() {
+        // `%FF` 是非法 UTF-8 字节：口令片段 p%FFss%FFord 全程不能被回显
+        let err = parse_dsn("mysql://u:p%FFss%FFord@h/db").err().expect("非法 UTF-8 必须报错");
+        assert!(err.contains("字节处不合法"), "要能定位到出错字节: {err}");
+        assert!(!err.contains("ss"), "报错不能带凭据片段: {err}");
+        assert!(!err.contains("%FF"), "报错不能带凭据片段: {err}");
     }
 
     #[test]

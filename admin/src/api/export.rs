@@ -17,9 +17,8 @@ use crate::models::ExportTask;
 use crate::state::AppState;
 use crate::util::now;
 use axum::Json;
-use axum::body::Body;
 use axum::extract::State;
-use axum::response::{IntoResponse, Response};
+use axum::response::Response;
 use bee_orm::Model;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -100,13 +99,18 @@ pub async fn create(
     }
     // 发起时就把筛选条件校验掉：类型不对当场 400，别等任务跑起来才失败
     (kind.check)(&params).map_err(|e| ApiError::BadRequest(format!("筛选参数不合法: {e}")))?;
+    // 列宽 1024（export_task.params）：超了别放过去让 INSERT 炸 500
+    let text = params.to_string();
+    if text.chars().count() > 1024 {
+        return Err(ApiError::too_long("params", 1024));
+    }
 
     let row = ExportTask {
         id: state.next_id()?,
         admin_id: auth.admin.id,
         username: auth.admin.username.clone(),
         kind: kind.code.into(),
-        params: params.to_string(),
+        params: text,
         status: 0,
         file_path: String::new(),
         row_count: 0,
@@ -147,11 +151,12 @@ pub async fn download(
         3 => return Err(ApiError::BadRequest(format!("导出失败，没有文件：{}", task.msg))),
         _ => return Err(ApiError::BadRequest("导出还没跑完，稍后刷新列表再看".into())),
     }
-    let bytes = tokio::fs::read(&task.file_path)
+    // 流式回文件：不再把整份导出读进内存（几十万行就是几十 MB，并发下载会把内存顶上去）
+    let file = tokio::fs::File::open(&task.file_path)
         .await
         .map_err(|_| ApiError::NotFoundMsg("文件已过期或被清理，请重新发起导出".into()))?;
     let filename = format!("{}-{}.csv", kind.file_prefix, csv::today());
-    Ok((csv::headers(&filename), Body::from(bytes)).into_response())
+    Ok(csv::stream_file(file, filename))
 }
 
 /// 删任务（连文件）。误删只是丢一份能重导的文件，不做二次确认之外的限制。

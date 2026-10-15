@@ -8,7 +8,7 @@ import { jobApi, type JobLogQuery, type JobQuery } from '../../../api/job';
 import type { Job, JobLog } from '../../../api/types';
 import Auth from '../../../auth/Auth';
 import { useI18n, type TFunc } from '../../../i18n';
-import { intervalText, runResult } from './format';
+import { intervalText } from './format';
 
 /** 表单里间隔用 InputNumber（number），提交时再转成协议要求的字符串秒数 */
 type JobFormValues = { cron: number; status: number };
@@ -73,17 +73,20 @@ function JobList() {
     void load(query);
   };
 
-  /** 手动触发：后端同步执行并把结果（含 msg）直接返回，失败时拦截器已提示 409/500 */
+  /**
+   * 手动触发：后端**后台执行**、接口立即返回（长任务不再撞 30 秒请求上限），
+   * 结果要等任务自己跑完才落 job_log —— 提示后隔几秒刷一次列表看「上次运行」。
+   * 已在执行中 / code 没注册：拦截器按 409 提示。
+   */
   const run = async (row: Job) => {
     setRunningId(row.id);
     try {
-      const { ok, text } = runResult(await jobApi.run(row.id));
-      if (ok) message.success(text);
-      else message.error(text);
-      void load(query); // 上次运行时间 / 状态 / 消息都变了
+      await jobApi.run(row.id);
+      message.success(t('job.triggered'));
     } finally {
       setRunningId(null);
     }
+    setTimeout(() => void load(query), 3000);
   };
 
   const columns: ColumnsType<Job> = [

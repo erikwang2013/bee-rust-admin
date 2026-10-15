@@ -108,16 +108,22 @@ pub async fn update(
     Ok(ok(Value::Null))
 }
 
-/// 手动触发一次：**同步执行**，结果写 `job_log` 并回写 job 行。
-/// 任务自己失败（返回 Err）不算接口失败：回 200 + `status: 0`，前端看 `msg` 提示。
+/// 手动触发一次：**后台执行**，接口立即返回（不再等任务跑完）。
+/// 跑完的结果写 `job_log` 并回写 job 行，前端刷新列表 / 执行记录看；
+/// 任务自己失败不算接口失败（执行记录里是 status: 0 + 原因）。
+///
+/// 为什么不等：全局请求超时是 30 秒（`bee_router` 的 TimeoutLayer），
+/// mysqldump、大导出这些任务跑得比它久 —— 同步执行会被掐断成 408，
+/// 而且掐断的是 handler 的 future：任务半途而废，`job_log` 无行、`.part` 孤儿。
 #[apidoc::title("手动触发一次任务")]
-#[apidoc::desc("**同步执行**：结果写 job_log 并回写任务行；任务自己失败不算接口失败（回 200 + status: 0，看 msg）")]
+#[apidoc::desc("**后台执行、立即返回**（不阻塞等跑完）：结果写 job_log 并回写任务行；已在执行中回 409")]
 #[apidoc::url("/api/v1/jobs/{id}/run")]
 #[apidoc::method("POST")]
 #[apidoc::tag("任务")]
 #[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
 #[apidoc::route_param(name = "id", ty = "string", required, desc = "任务对外 id（hashids 短串）")]
 #[apidoc::response_status("200")]
+#[apidoc::response_status("409")]
 #[apidoc::not_debug]
 pub async fn run(
     State(state): State<AppState>,
@@ -138,8 +144,14 @@ pub async fn run(
     let Some(spec) = jobs::spec(&job.code) else {
         return Err(ApiError::job_not_registered(&job.code));
     };
-    let (status, msg, duration_ms) = jobs::run(&state, job, spec).await;
-    Ok(ok(json!({ "status": status, "msg": msg, "duration_ms": duration_ms })))
+    // 已在跑就当场拒（连点/与调度撞车）：闸的权威判断在 jobs::run 里，这里只是让用户看得见
+    if jobs::is_running(spec.code) {
+        return Err(ApiError::job_running(&job.code));
+    }
+    tokio::spawn(async move {
+        jobs::run(&state, job, spec).await;
+    });
+    Ok(ok(json!({ "triggered": true })))
 }
 
 #[derive(Deserialize)]

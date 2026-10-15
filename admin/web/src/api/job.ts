@@ -11,7 +11,7 @@ export interface JobLogQuery {
 export const jobApi = {
   list: (q: JobQuery) => http.get<Page<Job>>('/jobs', q),
   update: (id: string, data: JobForm) => http.put<null>(`/jobs/${id}`, data),
-  /** 同步执行一次并写 job_log；code 不在代码注册表里时后端 409（拦截器会提示 msg） */
+  /** 后台执行一次（立即返回，不等跑完）；已在执行中 / code 没注册时后端 409（拦截器提示 msg） */
   run: (id: string) => http.post<JobRunResult>(`/jobs/${id}/run`),
   logs: (q: JobLogQuery) => http.get<Page<JobLog>>('/job-logs', q),
 };

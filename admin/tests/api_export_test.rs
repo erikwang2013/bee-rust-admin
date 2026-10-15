@@ -11,6 +11,7 @@ mod common;
 
 use reqwest::Method;
 use serde_json::{Value, json};
+use std::time::Duration;
 
 const EXP: &str = "/exports";
 /// 测试账号口令（≥8 位、字母+数字，满足复杂度下限）。
@@ -49,6 +50,23 @@ async fn sync_csv(c: &reqwest::Client, url: String, token: &str) -> Vec<u8> {
     let r = c.get(url).bearer_auth(token).send().await.expect("同步导出请求失败");
     assert_eq!(r.status(), 200, "同步导出必须仍可用（回归）");
     r.bytes().await.unwrap().to_vec()
+}
+
+/// 等导出任务到终态（2 完成 / 3 失败）。
+async fn wait_task(pool: &sqlx::MySqlPool, id: i64) -> (i8, i64, String) {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(180);
+    loop {
+        let row: (i8, i64, String) =
+            sqlx::query_as("SELECT status, row_count, msg FROM export_task WHERE id = ?")
+                .bind(id)
+                .fetch_one(pool)
+                .await
+                .expect("任务行还在");
+        if row.0 == 2 || row.0 == 3 || tokio::time::Instant::now() > deadline {
+            return row;
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
 }
 
 /// 菜单树里按权限码取菜单 id（按码找，不按名字）。
@@ -93,7 +111,9 @@ async fn export_tasks_run_download_and_expire() {
     let Some(dsn) = common::dsn() else { return };
     common::reset_db(&dsn).await;
     let pool = sqlx::MySqlPool::connect(&dsn).await.unwrap();
-    let (_srv, base) = common::start_server().await;
+    // 关掉调度循环：本用例精确控制「什么时候跑」（调度 tick 会半路抢任务，
+    // 触发还会撞上「已在执行中」的 409）；手动触发不依赖调度，照样能用
+    let (_srv, base) = common::start_server_conf(|c| format!("{c}\n[job]\nenabled = false\n")).await;
     let c = reqwest::Client::new();
     let url = |p: &str| format!("{base}/api/v1{p}");
     let admin = common::login(&base, "admin", "admin123").await.expect("超管登录");
@@ -111,6 +131,12 @@ async fn export_tasks_run_download_and_expire() {
     // 未知 kind：400（路由在不在，这条先说话）
     let (st, v) = call(&c, Method::POST, url(EXP), Some(&admin), Some(json!({"kind": "nope"}))).await;
     assert_eq!(st, 400, "未知 kind: {v}");
+
+    // 筛选参数序列化后超过列宽（params 是 varchar(1024)）：发起时 400，不能等 INSERT 炸 500
+    let huge = json!({"kind": "audit-log", "params": {"username": "x".repeat(1100)}});
+    let (st, v) = call(&c, Method::POST, url(EXP), Some(&admin), Some(huge)).await;
+    assert_eq!(st, 400, "超长 params 要当场拒: {v}");
+    assert_eq!(v["err"], "common.too_long", "错误码要能翻成「最多 1024 字符」: {v}");
 
     // ── 只挂导出中心码的角色：发不了日志类导出（数据本身还得有查看码）──
     let (st, menus) = call(&c, Method::GET, url("/menus/tree"), Some(&admin), None).await;
@@ -159,9 +185,12 @@ async fn export_tasks_run_download_and_expire() {
 
     // ── 跑导出任务（既有 job 循环 + 手动触发同一条路）──
     let run_id = job_id(&c, &base, &admin, "export_run").await;
-    let (st, v) = call(&c, Method::POST, url(&format!("/jobs/{run_id}/run")), Some(&admin), None).await;
-    assert_eq!(st, 200, "{v}");
-    assert_eq!(v["data"]["status"], 1, "导出任务执行必须成功: {v}");
+    let before = common::last_log_id(&pool, "export_run").await;
+    common::trigger(&c, &base, &run_id, &admin).await;
+    let (status, msg, _ms) = common::wait_job_log(&pool, "export_run", before).await;
+    assert_eq!(status, 1, "导出任务执行必须成功: {msg}");
+    let (status, rows, msg) = wait_task(&pool, common::dec_id(&login_task)).await;
+    assert_eq!((status, rows), (2, 2), "后台跑完：任务到完成态且行数对: {msg}");
 
     // 列表：自己的任务（超管也只列自己的）
     let (st, list) = call(&c, Method::GET, url(&format!("{EXP}?size=50")), Some(&admin), None).await;
@@ -204,8 +233,9 @@ async fn export_tasks_run_download_and_expire() {
         Some(json!({"kind": "login-log", "params": {"username": "ex4_ghost"}}))).await;
     assert_eq!(st, 200, "{mine}");
     let mine_id = common::as_id(&mine["data"]["id"]);
-    let (st, v) = call(&c, Method::POST, url(&format!("/jobs/{run_id}/run")), Some(&admin), None).await;
-    assert_eq!(st, 200, "{v}");
+    common::trigger(&c, &base, &run_id, &admin).await;
+    let (status, _, msg) = wait_task(&pool, common::dec_id(&mine_id)).await;
+    assert_eq!(status, 2, "后台跑完: {msg}");
 
     let (st, his) = download(&c, url(&format!("{EXP}/{mine_id}/download")), &center_tok).await;
     assert_eq!(st, 200, "自己的导出能下");
@@ -239,9 +269,10 @@ async fn export_tasks_run_download_and_expire() {
         .await
         .unwrap();
     let clean_id = job_id(&c, &base, &admin, "export_clean").await;
-    let (st, v) = call(&c, Method::POST, url(&format!("/jobs/{clean_id}/run")), Some(&admin), None).await;
-    assert_eq!(st, 200, "{v}");
-    assert_eq!(v["data"]["status"], 1, "清理任务必须成功: {v}");
+    let before = common::last_log_id(&pool, "export_clean").await;
+    common::trigger(&c, &base, &clean_id, &admin).await;
+    let (status, msg, _ms) = common::wait_job_log(&pool, "export_clean", before).await;
+    assert_eq!(status, 1, "清理任务必须成功: {msg}");
     let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM export_task WHERE id = ?")
         .bind(common::dec_id(&audit_task))
         .fetch_one(&pool)
@@ -261,4 +292,139 @@ async fn export_tasks_run_download_and_expire() {
         rows.iter().any(|r| r["action"].as_str().unwrap_or_default().contains("导出")),
         "导出动作要留痕: {v}"
     );
+
+    // ── 认领排他（回归）：被别的执行者**刚认领**的任务，再跑一次 export_run 必须 0 命中 ──
+    // 老实现 `WHERE id=? AND status IN (0,1)`：行被推成 1 之后第二个执行者照样命中同一个
+    // 谓词 → 同一任务两个执行者（双写 .part、双 finish 互相覆盖）。
+    let (st, t_dup) = call(&c, Method::POST, url(EXP), Some(&admin),
+        Some(json!({"kind": "login-log", "params": {"username": "ex4_ghost"}}))).await;
+    assert_eq!(st, 200, "{t_dup}");
+    let dup = common::dec_id(&common::as_id(&t_dup["data"]["id"]));
+    // 摆出「另一个执行者刚认领」的现场：status=1 + started_at 新鲜。
+    // 时戳在 Rust 侧算（与 src 的 util::now 同一个钟；MySQL NOW() 会话时区是 UTC，偏 8 小时）
+    let claimed_at = chrono::Local::now().naive_local();
+    sqlx::query("UPDATE export_task SET status = 1, started_at = ? WHERE id = ?")
+        .bind(claimed_at)
+        .bind(dup)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let before = common::last_log_id(&pool, "export_run").await;
+    common::trigger(&c, &base, &run_id, &admin).await;
+    let (status, msg, _ms) = common::wait_job_log(&pool, "export_run", before).await;
+    assert_eq!(status, 1, "{msg}");
+    assert_eq!(msg, "导出任务 0 个（成功 0 / 失败 0）",
+        "执行中（未超时）的任务第二次认领必须 0 行: {msg}");
+    let (started, status, msg): (chrono::NaiveDateTime, i8, String) =
+        sqlx::query_as("SELECT started_at, status, msg FROM export_task WHERE id = ?")
+            .bind(dup)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    // DATETIME 列不带小数秒：比到秒（真被刷新的话 status/msg 那几条断言也会炸）
+    let at = |t: &chrono::NaiveDateTime| t.format("%Y-%m-%d %H:%M:%S").to_string();
+    assert_eq!((at(&started), status), (at(&claimed_at), 1),
+        "行要原封不动：started_at 没被刷新、状态没被推走");
+    assert!(msg.is_empty(), "第二个执行者没跑它: {msg:?}");
+
+    // ── 认领**语句本身**必须排他（回归）──
+    // 上面那半钉的是「选中」语义（执行中的行不该被再选中）；这半钉认领谓词：
+    // 同一行连续认领两次，第二次必须 0 行。老实现 `WHERE id=? AND status IN (0, 1)`
+    // 在第一次把行推成 1 之后照样命中（1 ∈ (0,1)），第二个执行者拿着「还是 0」的旧
+    // 快照再认领就会真的跑第二遍。两条语句与 crate::export::claim 的分支逐字一致
+    // ——bin crate 集成测试不能 use 它的代码，与 common 里重写 hashids 同一个理由。
+    let (st, t_claim) = call(&c, Method::POST, url(EXP), Some(&admin),
+        Some(json!({"kind": "login-log", "params": {"username": "ex4_ghost"}}))).await;
+    assert_eq!(st, 200, "{t_claim}");
+    let cid = common::dec_id(&common::as_id(&t_claim["data"]["id"]));
+    let t1 = chrono::Local::now().naive_local();
+    let n1: u64 = sqlx::query("UPDATE export_task SET status = 1, started_at = ? WHERE id = ? AND status = 0")
+        .bind(t1).bind(cid).execute(&pool).await.unwrap().rows_affected();
+    assert_eq!(n1, 1, "待处理 → 第一次认领命中");
+    let n2: u64 = sqlx::query("UPDATE export_task SET status = 1, started_at = ? WHERE id = ? AND status = 0")
+        .bind(t1).bind(cid).execute(&pool).await.unwrap().rows_affected();
+    assert_eq!(n2, 0, "第二个执行者（旧快照仍以为它是待处理）必须认领不到");
+    // 超时认领同理：第一次认领会刷新 started_at，第二个执行者按老时戳再认领必须 0 行
+    let old_at = chrono::Local::now().naive_local() - chrono::Duration::seconds(601);
+    let stale_line = chrono::Local::now().naive_local() - chrono::Duration::seconds(600);
+    sqlx::query("UPDATE export_task SET started_at = ? WHERE id = ?")
+        .bind(old_at).bind(cid).execute(&pool).await.unwrap();
+    let claim_stale = "UPDATE export_task SET status = 1, started_at = ? WHERE id = ? AND status = 1 AND started_at < ?";
+    let s1: u64 = sqlx::query(claim_stale)
+        .bind(t1).bind(cid).bind(stale_line).execute(&pool).await.unwrap().rows_affected();
+    assert_eq!(s1, 1, "卡住的行第一次认领命中（恢复机制还在）");
+    let s2: u64 = sqlx::query(claim_stale)
+        .bind(t1).bind(cid).bind(stale_line).execute(&pool).await.unwrap().rows_affected();
+    assert_eq!(s2, 0, "started_at 已被刷新，第二个执行者认领不到");
+    // 不想让这一行留在库里影响后面的断言：跑掉它（status=1 + 新鲜时戳 = 认领中，无害）
+    let _ = t_claim;
+
+    // 反面：认领**超时**（进程崩过留下的行）反而要能重跑，恢复机制不能被顺手改掉
+    let long_ago = chrono::Local::now().naive_local() - chrono::Duration::seconds(601);
+    sqlx::query("UPDATE export_task SET started_at = ? WHERE id = ?")
+        .bind(long_ago)
+        .bind(dup)
+        .execute(&pool)
+        .await
+        .unwrap();
+    common::trigger(&c, &base, &run_id, &admin).await;
+    let (status, _, msg) = wait_task(&pool, dup).await;
+    assert_eq!(status, 2, "超时的认领要能重跑: {msg}");
+    let path: String = sqlx::query_scalar("SELECT file_path FROM export_task WHERE id = ?")
+        .bind(dup)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert!(std::path::Path::new(&path).exists(), "重跑要真出文件: {path}");
+    // 反面负控：这一幕的 .part 不留孤儿（后台执行跑完就改名了）
+    let part = format!("{path}.part");
+    assert!(!std::path::Path::new(&part).exists(), ".part 要收尾干净: {part}");
+
+    // ── M1 回归：**失败**路径也要清 .part ──
+    // 造一个跑到一半才失败的任务：用同名**目录**占住最终文件名，`rename(part, path)` 必失败。
+    // 失败点在 .part 已经建好、表头 + 数据全写完、只差改名那一步 —— 正是 M1 要管的窗口：
+    // 这里不清，磁盘上就留一份看起来像成果的 .csv.part。
+    let (st, t_bad) = call(&c, Method::POST, url(EXP), Some(&admin),
+        Some(json!({"kind": "login-log"}))).await;
+    assert_eq!(st, 200, "建失败任务: {t_bad}");
+    let bad_id = common::dec_id(&common::as_id(&t_bad["data"]["id"]));
+    // upload_dir 是 cwd 相对的（`target/test-uploads`），与执行器拼路径的口径一致
+    let bad_dst = format!("target/test-uploads/exports/{bad_id}.csv");
+    std::fs::create_dir_all(&bad_dst).expect("占位目录");
+    let before = common::last_log_id(&pool, "export_run").await;
+    common::trigger(&c, &base, &run_id, &admin).await;
+    let (jstatus, jmsg, _) = common::wait_job_log(&pool, "export_run", before).await;
+    assert_eq!(jstatus, 1, "执行器自身不失败，失败的是那一个任务: {jmsg}");
+    let (status, _, msg) = wait_task(&pool, bad_id).await;
+    assert_eq!(status, 3, "改名失败要让任务变失败: {msg}");
+    assert!(msg.contains("改名失败"), "失败原因要落库给界面看: {msg}");
+    let part = format!("{bad_dst}.part");
+    assert!(!std::path::Path::new(&part).exists(), "失败路径的 .part 必须清掉: {part}");
+    std::fs::remove_dir_all(&bad_dst).expect("收掉占位目录");
+
+    // ── M2 回归：**待处理**的任务过期也不能被清掉 ──
+    // 老 clean() 只按 expire_at 筛：待处理的行（文件都还没生成）会被连记录一起删，
+    // 用户的任务凭空消失。这里造一个「已过期但还没跑」的行，跑完清理后它必须还在。
+    // （放最后：这一行得留着不被 export_run 顺手跑掉，前面那些「导出任务 0 个」的
+    // 断言才不会被它打乱。）
+    let (st, t_pend) = call(&c, Method::POST, url(EXP), Some(&admin),
+        Some(json!({"kind": "login-log"}))).await;
+    assert_eq!(st, 200, "建待处理任务: {t_pend}");
+    let pend_id = common::dec_id(&common::as_id(&t_pend["data"]["id"]));
+    sqlx::query("UPDATE export_task SET expire_at = ? WHERE id = ?")
+        .bind(past)
+        .bind(pend_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let before = common::last_log_id(&pool, "export_clean").await;
+    common::trigger(&c, &base, &clean_id, &admin).await;
+    let (status, msg, _ms) = common::wait_job_log(&pool, "export_clean", before).await;
+    assert_eq!(status, 1, "{msg}");
+    let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM export_task WHERE id = ?")
+        .bind(pend_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(n, 1, "待处理的任务过期也不能清（文件还没生成，删了等于任务消失）");
 }

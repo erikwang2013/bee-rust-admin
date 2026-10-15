@@ -112,16 +112,7 @@ pub async fn run(state: AppState) -> Result<String, String> {
 
     let (mut ok, mut failed) = (0u32, 0u32);
     for task in pending.into_iter().chain(stuck) {
-        // 认领：调度循环与手动触发可能同时进来，只有一次 UPDATE 能命中
-        let claimed = state
-            .db
-            .execute(
-                "UPDATE export_task SET status = 1, started_at = ? WHERE id = ? AND status IN (0, 1)",
-                &[Value::from(now()), Value::from(task.id)],
-            )
-            .await
-            .map_err(|e| format!("认领导出任务 {} 失败: {e}", task.id))?;
-        if claimed == 0 {
+        if !claim(&state, &task).await? {
             continue;
         }
         match run_one(&state, &task).await {
@@ -141,6 +132,31 @@ pub async fn run(state: AppState) -> Result<String, String> {
     Ok(format!("导出任务 {} 个（成功 {ok} / 失败 {failed}）", ok + failed))
 }
 
+/// 认领一条任务：把行推进「执行中」的那一次 UPDATE 算认领成功，别的执行者拿到 0 行。
+/// 谓词必须**排他**：曾经写成 `status IN (0, 1)` 是错的 —— 第一次 UPDATE 把行改成 1 之后，
+/// 第二个执行者用同样的条件照样命中（1 ∈ (0,1)），同一任务就有两个执行者（双写 .part、
+/// 双 finish 互相覆盖）。所以按进入时的状态分两条：
+/// - 待处理（status=0）：`status = 0` 只在第一次命中（认领后行变成 1）；
+/// - 执行中超时（status=1 且 `started_at` 早于认领超时，见上面查 `stuck` 的口径）：
+///   认领会把 `started_at` 刷成现在，第二个执行者的 `started_at < 超时线` 不再命中。
+async fn claim(state: &AppState, task: &ExportTask) -> Result<bool, String> {
+    let sql = if task.status == 0 {
+        "UPDATE export_task SET status = 1, started_at = ? WHERE id = ? AND status = 0"
+    } else {
+        "UPDATE export_task SET status = 1, started_at = ? WHERE id = ? AND status = 1 AND started_at < ?"
+    };
+    let mut args = vec![Value::from(now()), Value::from(task.id)];
+    if task.status != 0 {
+        args.push(Value::from(now() - chrono::Duration::seconds(STALE_CLAIM_SECS)));
+    }
+    let n = state
+        .db
+        .execute(sql, &args)
+        .await
+        .map_err(|e| format!("认领导出任务 {} 失败: {e}", task.id))?;
+    Ok(n > 0)
+}
+
 /// 跑一个任务：按发起人重算数据范围 → 取数写文件（.part → 改名）。
 async fn run_one(state: &AppState, task: &ExportTask) -> Result<(i64, i64), String> {
     let kind = spec(&task.kind).ok_or_else(|| format!("未知导出类型「{}」", task.kind))?;
@@ -152,6 +168,9 @@ async fn run_one(state: &AppState, task: &ExportTask) -> Result<(i64, i64), Stri
     std::fs::create_dir_all(&dir).map_err(|e| format!("建导出目录 {} 失败: {e}", dir.display()))?;
     let path = dir.join(format!("{}.csv", task.id));
     let part = dir.join(format!("{}.csv.part", task.id));
+    // 半份文件不留：写盘/取名任何一步失败（或 panic）都清掉 .part（口径同 backup.rs）。
+    // 成功时文件已改名搬走，这里的 remove 只会拿到 NotFound —— 不用单独解除。
+    let _part_guard = PartFile(part.clone());
     // 0600：导出文件里是日志/登录信息，同机其他用户不该读得到
     let mut file = std::fs::OpenOptions::new()
         .write(true)
@@ -205,6 +224,15 @@ async fn run_one(state: &AppState, task: &ExportTask) -> Result<(i64, i64), Stri
         .await
         .map_err(|e| format!("回写导出文件失败: {e}"))?;
     Ok((rows, size))
+}
+
+/// 未完成的 `.part` 的看守：`run_one` 活着它就活着，Drop 时清掉残留。
+/// 正常路径先 rename 再返回，Drop 时文件已不在（remove 得到 NotFound，无害）。
+struct PartFile(PathBuf);
+impl Drop for PartFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
 }
 
 /// 写终态（成功/失败都走这里）。
@@ -268,8 +296,12 @@ async fn owner_scope(state: &AppState, admin_id: i64) -> Result<DataScope, Strin
 
 /// `export_clean`：删过期任务（记录 + 文件）。
 pub async fn clean(state: AppState) -> Result<String, String> {
+    // 只清**跑完的**（2 完成 / 3 失败）：待处理/执行中的行就算过期也还等着被跑，
+    // 删了等于让用户的任务凭空消失（文件都还没生成）—— 任务跑完再轮到清理
     let expired = ExportTask::query()
         .filter_lt("expire_at", now())
+        .map_err(|e| e.to_string())?
+        .filter_in("status", &[Value::from(2i8), Value::from(3i8)])
         .map_err(|e| e.to_string())?
         .all(&state.db)
         .await

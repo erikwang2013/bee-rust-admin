@@ -69,6 +69,16 @@ impl ApiError {
             args: json!({ "code": code }),
         }
     }
+
+    /// 同一任务已经在跑（手动触发改成后台执行后，连点就会叠出第二份）。
+    pub fn job_running(code: &str) -> Self {
+        Self::Coded {
+            status: StatusCode::CONFLICT,
+            err: "job.running",
+            msg: format!("任务 {code} 正在执行中，等这次跑完再触发"),
+            args: json!({ "code": code }),
+        }
+    }
 }
 
 /// 验证码校验失败的文案。`ERR_TABLE` 的键与 `api::auth` 的构造点共用这一份，

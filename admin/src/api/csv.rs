@@ -117,6 +117,37 @@ where
     Ok((headers(&filename), Body::from_stream(ReceiverStream::new(rx))).into_response())
 }
 
+/// 把一个已经落盘的文件流式回给客户端（文件本身已是完整 CSV：BOM 与表头在文件里，
+/// 这里只搬运）。理由同 `streamed`：不整读进内存 —— 迁移过来的导出文件几十 MB，
+/// 几个并发下载就能把内存顶上去。打开失败由调用方在响应前处理（那时还能回错误信封）。
+pub fn stream_file(file: tokio::fs::File, filename: String) -> Response {
+    use tokio::io::AsyncReadExt;
+    let (tx, rx) = tokio::sync::mpsc::channel::<Result<Bytes, std::io::Error>>(4);
+    tokio::spawn(async move {
+        let mut file = file;
+        // 64 KiB 一块：太小则 syscall 多，太大则白占内存
+        let mut buf = vec![0u8; 64 * 1024];
+        loop {
+            match file.read(&mut buf).await {
+                Ok(0) => return,
+                // 发送失败 = 客户端断开：收手
+                Ok(n) => {
+                    if tx.send(Ok(Bytes::copy_from_slice(&buf[..n]))).await.is_err() {
+                        return;
+                    }
+                }
+                // 状态码早已发出、改不了：中断 body 让客户端看到「传输失败」
+                Err(e) => {
+                    tracing::error!("下载中断: {e}");
+                    let _ = tx.send(Err(e)).await;
+                    return;
+                }
+            }
+        }
+    });
+    (headers(&filename), Body::from_stream(ReceiverStream::new(rx))).into_response()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

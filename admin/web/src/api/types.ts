@@ -115,8 +115,8 @@ export interface JobLog {
   id: string; job_code: string; started_at: string; duration_ms: number;
   status: number; msg: string;
 }
-/** 手动触发（同步执行）的结果：status 1 成功 / 0 失败，msg 就是写进 job_log 的那条 */
-export interface JobRunResult { status: number; msg: string; duration_ms: number }
+/** 手动触发：**后台执行**，接口只回「已触发」（跑完的结果去任务列表/执行记录看） */
+export interface JobRunResult { triggered: boolean }
 
 export interface Notice {
   id: string; title: string; content: string;

@@ -122,9 +122,44 @@ fn due(job: &Job, now: chrono::NaiveDateTime) -> bool {
     }
 }
 
+/// 同进程内的「已在跑」闸：手动触发改成**后台执行**后（api::job::run 里 spawn），
+/// 光靠 `last_run_at` 拦不住并发 —— 它只在调度 tick 内部串行有效，连点几次触发就是
+/// 几份同时跑（db_backup 叠出多份 mysqldump）。粒度是 code：同一个任务不并发，
+/// 不同任务互不影响。shortcut: 只在单进程内生效（与调度同一前提），多实例部署要换成 DB 行锁。
+static RUNNING: std::sync::Mutex<Vec<&'static str>> = std::sync::Mutex::new(Vec::new());
+
+/// 这个任务是不是正在跑（接口层用它当场拒掉重复触发）。
+pub fn is_running(code: &str) -> bool {
+    RUNNING.lock().map(|v| v.contains(&code)).unwrap_or(false)
+}
+
+/// 占位凭据：`run` 全程持有，Drop 时释放 —— 正常返回、提前 return、panic 都不会漏放。
+struct Busy(&'static str);
+impl Busy {
+    fn acquire(code: &'static str) -> Option<Self> {
+        let mut v = RUNNING.lock().ok()?;
+        if v.contains(&code) {
+            return None;
+        }
+        v.push(code);
+        Some(Self(code))
+    }
+}
+impl Drop for Busy {
+    fn drop(&mut self) {
+        if let Ok(mut v) = RUNNING.lock() {
+            v.retain(|c| *c != self.0);
+        }
+    }
+}
+
 /// 执行一个任务：抢占 → 跑 → 写 `job_log` → 回写 job 行的执行结果。
 /// 手动触发与调度循环都走这里（`last_run_at` 两边都更新：UI 的「上次运行」要如实）。
+/// 已经在跑的任务直接跳过（不写 job_log、不动 `last_run_at`：没执行就不是一次执行记录）。
 pub async fn run(state: &AppState, job: Job, spec: &JobSpec) -> (i8, String, i64) {
+    let Some(_busy) = Busy::acquire(spec.code) else {
+        return (0, format!("跳过：任务 {} 上一次还在执行中", spec.code), 0);
+    };
     let started = now();
     // 抢占：先把 last_run_at 落库，同一进程的下一 tick 不会再选它
     let mut claimed = job.clone();
@@ -355,6 +390,21 @@ mod tests {
         assert_eq!(interval_secs("3.5"), None);
         assert_eq!(interval_secs(""), None);
         assert_eq!(interval_secs("1h"), None);
+    }
+
+    /// 「已在跑」闸：同一 code 只放一个进去（连点触发不能叠出第二份任务）。
+    #[test]
+    fn busy_gate_holds_only_one_run_per_code() {
+        assert!(!is_running("log_retention"));
+        let held = Busy::acquire("log_retention").expect("第一次能占上");
+        assert!(is_running("log_retention"));
+        assert!(Busy::acquire("log_retention").is_none(), "同一 code 第二次占不上");
+        let other = Busy::acquire("export_run").expect("别的 code 不受影响");
+        drop(held);
+        assert!(!is_running("log_retention"), "释放后能再占");
+        assert!(is_running("export_run"), "释放一个不影响另一个");
+        drop(other);
+        assert!(!is_running("export_run"));
     }
 
     #[test]

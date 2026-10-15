@@ -154,16 +154,18 @@ async fn v16_job_notice_features() {
     let (_st, v) = call(&c, Method::GET, api("/jobs?status=0"), Some(&admin), None).await;
     assert_eq!(v["data"]["total"], 0, "status 筛选: {v}");
 
-    // ── 手动触发：同步执行 + 写 job_log + 更新 job 行 ───────────
+    // ── 手动触发：后台执行（立即返回）+ 跑完写 job_log + 更新 job 行 ───────────
     // 启动第一个 tick 就会把没跑过的任务跑一遍，所以只能比增量，不能比绝对值
     let before = job_log_count(&pool, "avatar_orphan_clean").await;
+    let mark = common::last_log_id(&pool, "avatar_orphan_clean").await;
     let (st, v) = call(&c, Method::POST, api(&format!("/jobs/{avatar_id}/run")), Some(&admin), None).await;
     assert_eq!(st, 200, "手动触发: {v}");
-    assert_eq!(v["data"]["status"], 1, "执行成功: {v}");
-    assert!(v["data"]["msg"].as_str().unwrap_or("").contains("头像"), "返回执行摘要: {v}");
-    assert!(v["data"]["duration_ms"].is_u64(), "返回耗时: {v}");
+    assert_eq!(v["data"]["triggered"], true, "后台执行：接口只回「已触发」: {v}");
+    let (status, msg, _ms) = common::wait_job_log(&pool, "avatar_orphan_clean", mark).await;
+    assert_eq!(status, 1, "执行成功: {msg}");
+    assert!(msg.contains("头像"), "执行摘要进 job_log: {msg}");
     let avatar_runs = job_log_count(&pool, "avatar_orphan_clean").await;
-    assert_eq!(avatar_runs, before + 1, "手动触发写一条 job_log（启动 tick 不算）: {before} → {avatar_runs}");
+    assert!(avatar_runs > before, "手动触发写一条 job_log（启动 tick 不算）: {before} → {avatar_runs}");
     let last: Option<String> =
         sqlx::query_scalar("SELECT last_msg FROM job WHERE code = 'avatar_orphan_clean'")
             .fetch_one(&pool)
@@ -284,12 +286,11 @@ async fn v16_job_notice_features() {
     ] {
         std::fs::write(dir.join(name), b"x").unwrap();
     }
-    let (st, v) = call(&c, Method::POST, api(&format!("/jobs/{avatar_id}/run")), Some(&admin), None).await;
-    assert_eq!(st, 200, "跑头像清理: {v}");
-    assert!(
-        v["data"]["msg"].as_str().unwrap_or("").contains("删除孤儿 2 个"),
-        "只删那两个没人引用的 png: {v}"
-    );
+    let mark = common::last_log_id(&pool, "avatar_orphan_clean").await;
+    common::trigger(&c, &base, &avatar_id, &admin).await;
+    let (status, msg, _ms) = common::wait_job_log(&pool, "avatar_orphan_clean", mark).await;
+    assert_eq!(status, 1, "跑头像清理: {msg}");
+    assert!(msg.contains("删除孤儿 2 个"), "只删那两个没人引用的 png: {msg}");
     assert!(dir.join(&legacy_name).exists(), "被老 URL 引用的存量头像不能删: {v}");
     assert!(!dir.join("999999.png").exists(), "孤儿文件必须删掉");
     assert!(!dir.join("头像.png").exists(), "白名单内的孤儿（只看扩展名）同样删");
@@ -306,12 +307,11 @@ async fn v16_job_notice_features() {
         .execute(&pool)
         .await
         .unwrap();
-    let (st, v) = call(&c, Method::POST, api(&format!("/jobs/{avatar_id}/run")), Some(&admin), None).await;
-    assert_eq!(st, 200, "再跑一次头像清理: {v}");
-    assert!(
-        v["data"]["msg"].as_str().unwrap_or("").contains("删除孤儿 1 个"),
-        "换值之后老文件就是孤儿: {v}"
-    );
+    let mark = common::last_log_id(&pool, "avatar_orphan_clean").await;
+    common::trigger(&c, &base, &avatar_id, &admin).await;
+    let (status, msg, _ms) = common::wait_job_log(&pool, "avatar_orphan_clean", mark).await;
+    assert_eq!(status, 1, "再跑一次头像清理: {msg}");
+    assert!(msg.contains("删除孤儿 1 个"), "换值之后老文件就是孤儿: {msg}");
     assert!(!dir.join(&legacy_name).exists(), "没人引用的老文件该删");
     assert!(
         dir.join("202610").join(format!("{saved_hash}.png")).exists(),
@@ -592,9 +592,10 @@ async fn v16_job_notice_features() {
     assert!(last.is_none(), "循环没启动，last_run_at 必须还是空: {last:?}");
 
     // 手动触发不看总开关（运维要能临时关掉定时、手动补跑）
-    let (st, v) = call(&c, Method::POST, api3(&format!("/jobs/{rid}/run")), Some(&admin3), None).await;
-    assert_eq!(st, 200, "关定时后手动触发仍要可用: {v}");
-    assert_eq!(v["data"]["status"], 1, "{v}");
+    let mark = common::last_log_id(&pool, "log_retention").await;
+    common::trigger(&c, &base3, &rid, &admin3).await;
+    let (status, msg, _ms) = common::wait_job_log(&pool, "log_retention", mark).await;
+    assert_eq!(status, 1, "关定时后手动触发仍要可用: {msg}");
     let n = job_log_count(&pool, "log_retention").await;
     assert_eq!(n, 1, "手动跑一次写一条: {n}");
     // 再等一个 tick 的时间：手动跑过也不会让循环松口

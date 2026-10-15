@@ -196,6 +196,51 @@ pub async fn start_server_conf(patch: impl FnOnce(String) -> String) -> (Server,
     }
 }
 
+/// 手动触发一次任务：现在是**后台执行**（接口立即返回「已触发」，不等任务跑完）。
+/// 结果要等任务自己跑完才落 `job_log` / 回写 job 行 —— 用 [`wait_job_log`] 等。
+pub async fn trigger(c: &reqwest::Client, base: &str, job_id: &str, token: &str) {
+    let v: serde_json::Value = c
+        .post(format!("{base}/api/v1/jobs/{job_id}/run"))
+        .bearer_auth(token)
+        .send()
+        .await
+        .expect("触发请求失败")
+        .json()
+        .await
+        .expect("触发响应不是 JSON");
+    assert_eq!(v["data"]["triggered"], true, "触发要立即返回「已触发」: {v}");
+}
+
+/// 某任务在 `job_log` 里的最大记录 id：用「比它大」判断这一趟产生了新记录。
+pub async fn last_log_id(pool: &sqlx::MySqlPool, code: &str) -> i64 {
+    sqlx::query_scalar("SELECT COALESCE(MAX(id), 0) FROM job_log WHERE job_code = ?")
+        .bind(code)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+/// 等这一趟的执行记录落地（后台执行：任务跑完才写库），返回 `(status, msg, duration_ms)`。
+/// 宽限给足：本机 I/O 吃紧时一次导出/备份可能几十秒。
+pub async fn wait_job_log(pool: &sqlx::MySqlPool, code: &str, after_id: i64) -> (i8, String, i64) {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(180);
+    loop {
+        let row: Option<(i8, String, i64)> = sqlx::query_as(
+            "SELECT status, msg, duration_ms FROM job_log WHERE job_code = ? AND id > ? ORDER BY id LIMIT 1",
+        )
+        .bind(code)
+        .bind(after_id)
+        .fetch_optional(pool)
+        .await
+        .unwrap();
+        if let Some(row) = row {
+            return row;
+        }
+        assert!(tokio::time::Instant::now() < deadline, "等 {code} 的执行记录超时");
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+}
+
 /// 登录拿 token。
 pub async fn login(base: &str, user: &str, pass: &str) -> Option<String> {
     let r = reqwest::Client::new()

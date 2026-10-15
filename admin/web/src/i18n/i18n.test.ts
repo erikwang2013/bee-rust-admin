@@ -27,7 +27,7 @@ describe('词表完整性', () => {
   });
 
   it('后端错误码表在词表里（键名 = err.<code>）', () => {
-    for (const code of ['auth.bad_credentials', 'common.too_long', 'job.not_registered']) {
+    for (const code of ['auth.bad_credentials', 'common.too_long', 'job.not_registered', 'job.running']) {
       expect(zhCN[`err.${code}` as I18nKey]).toBeTruthy();
       expect(enUS[`err.${code}` as I18nKey]).toBeTruthy();
     }
