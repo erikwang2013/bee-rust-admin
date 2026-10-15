@@ -200,6 +200,8 @@ mod tests {
             captcha_trajectory: false,
             retain_days: 90,
             job_enabled: true,
+            backup_dir: String::new(),
+            backup_keep: 7,
             security_scan: None,
             hashids_salt: "test-salt".into(),
             hashids_min_len: 8,

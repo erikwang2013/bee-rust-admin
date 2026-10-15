@@ -388,6 +388,7 @@ dependencies = [
  "hashids-rust",
  "jwt-rust",
  "linkme",
+ "percent-encoding",
  "poster-rust",
  "rand_core 0.6.4",
  "reqwest",

@@ -40,6 +40,14 @@ pub const JOBS: &[JobSpec] = &[
         interval_secs: 86400,
         run: |s| Box::pin(avatar_orphan_clean(s)),
     },
+    // 每天一份、保留 7 份（[backup] keep）：默认节奏是一周内的回滚窗口。
+    // 备份本体在 crate::backup（解析 DSN → mysqldump → 落盘 → 清理）
+    JobSpec {
+        code: "db_backup",
+        name: "数据库备份",
+        interval_secs: 86400,
+        run: |s| Box::pin(crate::backup::run(s)),
+    },
 ];
 
 /// 按 code 找注册项；库里残留的旧 code 找不到 = 不可手动触发（409）、调度跳过。
@@ -339,6 +347,7 @@ mod tests {
     fn registry_codes_are_unique_and_looked_up() {
         assert!(spec("log_retention").is_some());
         assert!(spec("avatar_orphan_clean").is_some());
+        assert!(spec("db_backup").is_some());
         assert!(spec("ghost_job").is_none(), "库里残留的旧 code 找不到注册项");
         let mut codes: Vec<&str> = JOBS.iter().map(|j| j.code).collect();
         codes.sort_unstable();

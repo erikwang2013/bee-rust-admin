@@ -55,6 +55,14 @@ retain_days = 90
 # 定时任务总开关：false = 不启动调度循环（任务不会自动跑），但「手动触发一次」仍然可用
 enabled = true
 
+[backup]
+# 数据库备份（内置任务 db_backup，走 mysqldump；恢复步骤见 docs/usage.md「5.10 备份与恢复」）
+# 备份目录：留空 = {upload_dir}/backups；放独立磁盘时填绝对路径。
+# 备份文件权限是 0600（dump 含全库数据与口令哈希），恢复靠手工 mysql < dump。
+dir =
+# 保留份数：每跑完一次删掉最旧的多余备份；**必须 >= 1**，填 0/负数拒绝启动
+keep = 7
+
 [security]
 # 请求安全扫描（security-rust 32 个检测器：SQLi / XSS / 命令注入 / Log4Shell …）。
 # 扫 URL、几个请求头、以及 ≤64KB 的 JSON 请求体（multipart 上传不读）。

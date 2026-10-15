@@ -2,6 +2,7 @@
 mod api;
 mod audit;
 mod auth;
+mod backup;
 mod config;
 mod crypto;
 mod datascope;

@@ -45,6 +45,11 @@ pub struct AppConfig {
     pub retain_days: i64,
     /// 定时任务总开关（`[job] enabled`）：false = 不启动调度循环（手动触发仍可用）
     pub job_enabled: bool,
+    /// 备份目录（`[backup] dir`）。空 = `{upload_dir}/backups`（见 `crate::backup`）。
+    pub backup_dir: String,
+    /// 备份保留份数（`[backup] keep`，默认 7）。**必须 >= 1**：0 等于每跑一次就把
+    /// 所有备份删光（包括刚生成的那份），几乎必然是误配，拒绝启动。
+    pub backup_keep: i64,
     /// 请求安全扫描的拦截阈值（`[security] scan`）：`None` = `off`（**默认**，只报告不拦截）。
     ///
     /// `Some(High)` / `Some(Critical)` = 扫描等级达到该值就 403 + `err = "security.blocked"`
@@ -146,6 +151,14 @@ impl AppConfig {
             return Err(ConfigError::Invalid("[app] hashids_min_len 必须 >= 1".into()));
         }
 
+        // 备份保留份数：0/负数 = 每轮把（含刚生成的）备份全删光，是误配不是意图
+        let backup_keep = num("backup", "keep", 7)?;
+        if backup_keep < 1 {
+            return Err(ConfigError::Invalid(
+                "[backup] keep 必须 >= 1（0 等于跑一次就把备份全删了）".into(),
+            ));
+        }
+
         // 文档站开关 + 口令：**enabled = true 却没配口令 = 拒绝启动**。默认 false：
         // 文档站把整个接口面（含请求/响应结构）摊开，是开发/交付工具，不该跟着
         // 生产实例一起对外；真要开，就必须带口令 —— 不允许「以为有口令其实没有」。
@@ -189,6 +202,8 @@ impl AppConfig {
             captcha_trajectory: flag("auth", "captcha_trajectory", false)?,
             retain_days: num("log", "retain_days", 90)?,
             job_enabled: flag("job", "enabled", true)?,
+            backup_dir: opt("backup", "dir", ""),
+            backup_keep,
             security_scan,
             hashids_salt: opt("app", "hashids_salt", ""),
             hashids_min_len: hashids_min_len as usize,
@@ -288,6 +303,36 @@ initial_admin_password = admin123
         map.get_mut("job").unwrap().insert("enabled".into(), "yes".into());
         let err = AppConfig::from_ini(&map).unwrap_err();
         assert!(format!("{err}").contains("[job] enabled"), "应报出具体键: {err}");
+    }
+
+    /// 备份保留份数：缺键默认 7；0/负数拒绝启动（跑一次就把备份全删是误配）；
+    /// `[backup] dir` 缺省空串 = 落到 `{upload_dir}/backups`。
+    #[test]
+    fn backup_keep_defaults_and_rejects_nonpositive() {
+        let cfg = AppConfig::from_ini(&parse()).unwrap();
+        assert_eq!(cfg.backup_keep, 7, "缺 [backup] = 保留 7 份");
+        assert_eq!(cfg.backup_dir, "", "缺省 = 空串（落到 upload_dir/backups）");
+
+        let mut map = parse();
+        map.insert(
+            "backup".into(),
+            [("keep".to_string(), "3".to_string()), ("dir".to_string(), "/data/bak".to_string())]
+                .into_iter()
+                .collect(),
+        );
+        let cfg = AppConfig::from_ini(&map).unwrap();
+        assert_eq!(cfg.backup_keep, 3);
+        assert_eq!(cfg.backup_dir, "/data/bak");
+
+        for bad in ["0", "-1"] {
+            let mut map = parse();
+            map.insert(
+                "backup".into(),
+                [("keep".to_string(), bad.to_string())].into_iter().collect(),
+            );
+            let err = AppConfig::from_ini(&map).unwrap_err();
+            assert!(format!("{err}").contains("[backup] keep"), "应点名 [backup] keep: {err}");
+        }
     }
 
     /// 验证码开关：老配置没这个键 = 默认开（登录是唯一无鉴权写入口）；

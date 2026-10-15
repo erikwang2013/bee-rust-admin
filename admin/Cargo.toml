@@ -77,6 +77,10 @@ linkme = "0.3"
 # 别手写 percent-decode；它本来就在依赖树里（axum → serde_urlencoded → form_urlencoded），
 # 只多一行声明，不新增编译成本。
 form_urlencoded = "1"
+# DSN 里凭据的百分号解码（备份任务把 [db] dsn 拆给 mysqldump，见 src/backup.rs）。
+# 不用 form_urlencoded：那是表单语义，会把裸 `+` 解成空格，口令会静默解错。
+# 同样本来就在依赖树里（form_urlencoded → percent-encoding），零新增编译成本。
+percent-encoding = "2"
 
 [dev-dependencies]
 # 集成测试直连 MySQL 建库/清表/断言用（src 已不再依赖 sqlx —— 迁移后连裸 SQL
