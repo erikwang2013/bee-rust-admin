@@ -206,6 +206,34 @@ sudo nginx -t && sudo systemctl reload nginx
 > `/home/wwwroot/bee-rust-admin` 和 `erik`），要按自己的改成实际值 ——
 > 或者直接用 `install.sh`，它会按实际路径 / 用户 / 端口渲染这两份文件。
 
+**没有 root / 不想 sudo 的机器用「用户级单元」**，能力与上面系统级等价：
+
+| | 系统级 | 用户级（免 root） |
+|---|---|---|
+| 单元文件 | `admin/deploy/bee-admin.service` | `admin/deploy/bee-admin.user.service` |
+| 安装 | `sudo cp` 到 `/etc/systemd/system/` | `cp` 到 `~/.config/systemd/user/`，不用 sudo |
+| 开机自启 | 直接支持 | 需要一次性 `sudo loginctl enable-linger <用户>`（`loginctl show-user <用户> -p Linger` 查；没开就等该用户登录后才起） |
+| 管理 / 日志 | `systemctl status/restart bee-admin`、`journalctl -u bee-admin` | 同样命令**全部带 `--user`**（root 的 `systemctl status` 看不到用户级单元） |
+| 崩溃重启 | `Restart=on-failure`，3 秒重试 | 同左 |
+
+```bash
+# 用户级安装（免 root；路径示例即本机实际值）
+mkdir -p ~/.config/systemd/user
+cp admin/deploy/bee-admin.user.service ~/.config/systemd/user/bee-admin.service
+systemctl --user daemon-reload && systemctl --user enable --now bee-admin
+```
+
+日常（升级 = 重建二进制后重启即生效）：
+
+```bash
+systemctl --user status bee-admin          # 系统级就去掉 --user
+systemctl --user restart bee-admin
+journalctl --user -u bee-admin -f          # 跟日志
+```
+
+> ⚠️ 两份单元模板的 `WorkingDirectory` 不同（系统级示例是 `<仓库>/admin`，用户级是**仓库根**）——
+> `uploads` 是**相对 WorkingDirectory** 落盘的，**迁移已有部署时保持原 cwd**，换了头像就 404。
+
 ---
 
 ## 3. 装完自检

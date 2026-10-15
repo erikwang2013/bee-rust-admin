@@ -410,6 +410,11 @@ sudo nginx -t && sudo systemctl reload nginx
 
 文件内的注释写了各自的安装位置与前置条件；设计文档 §7 有部署方案的完整说明。
 
+> 没有 root 的机器可换用**用户级单元** `admin/deploy/bee-admin.user.service`：装到
+> `~/.config/systemd/user/`、命令全带 `--user`，能力与系统级等价；开机自启需该用户开过
+> linger（`loginctl show-user <用户> -p Linger`）——安装与管理细节见
+> [安装文档 (c)](docs/install.md#c-手工部署)。
+
 > 这两份文件是**手工路径的示例**，里面的路径与用户名写死成本机的
 > （`/home/wwwroot/bee-rust-admin`、`erik`），照着用要自己改。
 > **想省掉抄改就用 [`install.sh`](install.sh)**：它按实际的 `--prefix` / 用户 / 端口

@@ -1,0 +1,33 @@
+# bee-rust 管理后台 —— **用户级** systemd 单元（装到 ~/.config/systemd/user/，全程免 root）
+#
+# 安装（下面路径按实际改；示例里就是 /home/wwwroot/bee-rust-admin 和 erik）：
+#   mkdir -p ~/.config/systemd/user
+#   cp admin/deploy/bee-admin.user.service ~/.config/systemd/user/bee-admin.service
+#   systemctl --user daemon-reload && systemctl --user enable --now bee-admin
+#
+# 与系统级 admin/deploy/bee-admin.service 能力等价（Restart=on-failure、journal 日志），
+# 差异与前提：
+#   1. **开机自启需要 linger**：`loginctl show-user <用户> -p Linger` 是 yes 才会开机就起
+#      （不登录也跑）；不是 yes 就一次性 `sudo loginctl enable-linger <用户>`，
+#      否则只在该用户登录后才启动。
+#   2. 管理命令**全部带 --user**（status / restart / stop / journalctl）；
+#      root 的 `systemctl status bee-admin` 看不到用户级单元。
+#   3. 不带 After/Wants=mysql.service —— 用户级单元跨不到系统服务的顺序，靠
+#      Restart=on-failure 兜「开机时 DB 还没就绪」的窗口（3 秒重试）。
+#   4. WorkingDirectory 用**仓库根**（系统级模板用的是 <仓库>/admin）—— uploads 是相对
+#      WorkingDirectory 落盘的，**迁移已有部署时保持原 cwd**，换了头像就 404。
+[Unit]
+Description=bee-rust admin backend (bee_admin)
+
+[Service]
+Type=simple
+WorkingDirectory=/home/wwwroot/bee-rust-admin
+Environment=BEE_ADMIN_CONF=/home/wwwroot/bee-rust-admin/admin/conf/app.conf
+ExecStart=/home/wwwroot/bee-rust-admin/target/release/bee_admin
+Restart=on-failure
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
