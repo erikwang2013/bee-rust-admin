@@ -14,6 +14,16 @@ function str(v: string | boolean | undefined): string | null {
 }
 
 /**
+ * 项目地址只认 http(s)：这个值直接进 `<a href>`，而链接渲染在**未登录**的登录页上 ——
+ * `javascript:` / `data:` 之类的 scheme 是配置编辑者（system:config:edit 可单独授予）
+ * 打访客与超管的存储型 XSS 面。非 http(s) 一律回落内置地址（仓库没有 CSP，不能靠它兜底）。
+ */
+function safeRepoUrl(v: string | boolean | undefined): string {
+  const s = str(v);
+  return s && /^https?:\/\//i.test(s) ? s : FALLBACK_REPO;
+}
+
+/**
  * 站点信息：版本 · 版权 · 项目地址，登录页底部与侧边栏底部共用，整行链到项目地址。
  * 版权文字与项目地址读 `/configs/public` 的 `site.copyright` / `site.repo_url`（改配置刷新即变），
  * 读不到就回落内置值；`site.footer_enabled = false` 时整块不渲染。
@@ -32,7 +42,7 @@ export default function SiteInfo({ compact = false }: { compact?: boolean }) {
   // 只有**显式**配置为 false 才隐藏；读不到（null/接口失败）不隐藏
   if (cfg?.['site.footer_enabled'] === false) return null;
 
-  const repo = str(cfg?.['site.repo_url']) ?? FALLBACK_REPO;
+  const repo = safeRepoUrl(cfg?.['site.repo_url']);
   const copyright = str(cfg?.['site.copyright']) ?? `© ${new Date().getFullYear()} erik`;
 
   return (

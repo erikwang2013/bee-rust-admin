@@ -122,6 +122,20 @@ async fn sys_config_and_public() {
     let (_, v) = call(&c, Method::GET, format!("{base}{CONFIGS}/public"), None, None).await;
     assert!(v["data"]["site.internal_note"].is_null(), "非公开键绝不能出现在 public 里: {v}");
 
+    // 显式公开（is_public=1 整数 —— 前端 Switch 的布尔在提交时归一成 0/1，见配置页）：
+    // 建完要立刻出现在 public 里，这是「新增公开键」这条 UI 路径的线上契约
+    let (st, v) = call(
+        &c, Method::POST, format!("{base}{CONFIGS}"), Some(&admin),
+        Some(json!({"key": "site.public_marker", "value": "on", "is_public": 1})),
+    )
+    .await;
+    assert_eq!(st, 200, "显式公开键: {v}");
+    let marker_id = common::as_id(&v["data"]["id"]);
+    let (_, v) = call(&c, Method::GET, format!("{base}{CONFIGS}/public"), None, None).await;
+    assert_eq!(v["data"]["site.public_marker"], "on", "显式公开的键要出现在 public: {v}");
+    let (st, _) = call(&c, Method::DELETE, format!("{base}{CONFIGS}/{marker_id}"), Some(&admin), None).await;
+    assert_eq!(st, 200, "清理公开标记键");
+
     // 校验：坏 key / 太短 key / 坏类型 / 重复 key 全 400
     for body in [
         json!({"key": "Bad Key", "value": "x"}),

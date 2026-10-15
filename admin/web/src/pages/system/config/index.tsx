@@ -22,6 +22,13 @@ function groupLabel(name: string, t: TFunc): string {
 /** 表单里 bool 键用真布尔（Switch），其余字符串 */
 type ConfigFormValues = Record<string, string | boolean>;
 
+/**
+ * 新增弹窗的表单值：`is_public` 是 Switch，表单里必须是 **boolean**；
+ * 提交时归一成后端的 0/1 整数。类型上就与线上的 `ConfigForm.is_public: number` 错开，
+ * 漏了归一化会直接编译不过（之前用 number 谎报，布尔塞进 i8 必 400）。
+ */
+type ConfigCreateValues = Omit<ConfigForm, 'is_public'> & { is_public: boolean };
+
 const toControl = (it: SysConfig): string | boolean =>
   it.value_type === 'bool' ? it.value === 'true' || it.value === '1' : it.value;
 
@@ -35,7 +42,7 @@ export default function ConfigPage() {
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [form] = Form.useForm<ConfigForm>();
+  const [form] = Form.useForm<ConfigCreateValues>();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,7 +74,7 @@ export default function ConfigPage() {
 
   const openCreate = () => {
     form.resetFields();
-    form.setFieldsValue({ value_type: 'string', value: '', group: '', is_public: 0, remark: '' });
+    form.setFieldsValue({ value_type: 'string', value: '', group: '', is_public: false, remark: '' });
     setOpen(true);
   };
 
@@ -75,7 +82,8 @@ export default function ConfigPage() {
     const v = await form.validateFields();
     setCreating(true);
     try {
-      await configApi.create(v);
+      // Switch 的布尔归一成后端要的 0/1 整数（类型上 ConfigCreateValues 已强制这一步）
+      await configApi.create({ ...v, is_public: v.is_public ? 1 : 0 });
       message.success(t('common.created'));
       setOpen(false);
       void load();
