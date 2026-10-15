@@ -31,3 +31,6 @@ uploads/
 .agents/
 AGENTS.md
 CLAUDE.md
+
+# SDD 执行台账（superpowers executing-plans 的 scratch 区）
+.superpowers/
