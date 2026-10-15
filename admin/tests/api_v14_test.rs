@@ -228,8 +228,9 @@ async fn v14_backend_features() {
     .await
     .unwrap();
     sqlx::query(
-        "INSERT INTO audit_log (id, admin_id, username, module, action, method, path, status, msg, duration_ms, ip, created_at) \
-         VALUES (?, 1, 'admin', 'other', '老记录', 'POST', '/api/v1/x', 0, '', 1, '1.1.1.1', '2000-01-01 00:00:00')",
+        // changes 是 TEXT 列（MySQL 的 TEXT 不能带 DEFAULT），裸 INSERT 必须显式带上
+        "INSERT INTO audit_log (id, admin_id, username, module, action, method, path, status, msg, changes, duration_ms, ip, created_at) \
+         VALUES (?, 1, 'admin', 'other', '老记录', 'POST', '/api/v1/x', 0, '', '', 1, '1.1.1.1', '2000-01-01 00:00:00')",
     )
     .bind(common::new_row_id())
     .execute(&pool)

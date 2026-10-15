@@ -118,6 +118,7 @@ export const zhCN = {
   'field.module': '模块',
   'field.action': '动作',
   'field.request': '请求',
+  'field.changes': '变更',
 
   // ---- 登录页 ----
   'login.title': 'BRA · 管理后台',
@@ -324,6 +325,7 @@ export const zhCN = {
   'auditlog.module.export': '导出中心',
   'auditlog.module.auth': '认证',
   'auditlog.module.other': '其他',
+  'auditlog.changed': '已变更',
 
   // ---- 数据导入（项 3）----
   'import.title': '导入数据',

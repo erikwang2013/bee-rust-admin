@@ -165,6 +165,7 @@ pub async fn scan_mw(State(state): State<AppState>, req: Request, next: Next) ->
                 status: if blocked { 0 } else { 1 },
                 // 只记等级与检测器名：审计日志长期保留，原始 payload 不进库
                 msg: hit.detail().chars().take(255).collect(),
+                changes: String::new(),
                 duration_ms: 0,
                 ip: crate::api::auth::client_ip(req.headers()),
                 created_at: now(),

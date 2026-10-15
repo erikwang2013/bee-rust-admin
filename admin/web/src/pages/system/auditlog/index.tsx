@@ -6,6 +6,7 @@ import { auditLogApi, type AuditLogQuery } from '../../../api/auditLog';
 import { downloadCsv } from '../../../api/download';
 import type { AuditLog } from '../../../api/types';
 import Auth from '../../../auth/Auth';
+import { changesText } from '../../../auditdiff';
 import { useI18n, type I18nKey } from '../../../i18n';
 
 /** 与后端 audit.rs 的 module_action 取值一一对应（未列出的路径归 other）。 */
@@ -67,6 +68,11 @@ export default function AuditLogPage() {
       ),
     },
     { title: t('field.desc'), dataIndex: 'msg' },
+    {
+      // 变更摘要（项 8）：一行「字段: 旧 → 新」，点开看全文（表格里塞 JSON 会撑爆行高）
+      title: t('field.changes'), dataIndex: 'changes', width: 240, ellipsis: true,
+      render: (_, row) => <span>{changesText(row.changes, t)}</span>,
+    },
     {
       title: t('field.duration'), dataIndex: 'duration_ms', width: 90,
       render: (v: number) => `${v} ms`,

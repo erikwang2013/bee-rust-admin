@@ -1,5 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use crate::api::{check_len, would_cycle};
+use crate::audit::{AuditDetail, Diff};
 use crate::auth::Auth;
 use crate::error::{ApiError, AppJson, AppPath, ok};
 use crate::hid;
@@ -176,7 +177,7 @@ pub async fn update(
     auth: Auth,
     AppPath(id): AppPath<String>,
     AppJson(body): AppJson<DeptBody>,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<(AuditDetail, Json<Value>), ApiError> {
     auth.require("system:dept:edit")?;
     let id = hid::dec(&id)?;
     validate_body(&body)?;
@@ -194,6 +195,7 @@ pub async fn update(
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
+    let old = d.clone(); // 变更摘要的旧值（下面就地改 d）
 
     d.parent_id = body.parent_id;
     d.name = body.name.trim().to_string();
@@ -202,8 +204,17 @@ pub async fn update(
     d.phone = body.phone;
     d.status = body.status;
     d.updated_at = now();
+    // 变更摘要（项 8）：dept.phone 是明文列（只有 admin 的 email/phone 落库加密），照实记
+    let changes = Diff::default()
+        .field("parent_id", hid::enc(old.parent_id.max(0)), hid::enc(d.parent_id.max(0)))
+        .field("name", old.name, d.name.clone())
+        .field("sort", old.sort, d.sort)
+        .field("leader", old.leader, d.leader.clone())
+        .field("phone", old.phone, d.phone.clone())
+        .field("status", old.status, d.status)
+        .done();
     d.update(&state.db).await.map_err(ApiError::from)?;
-    Ok(ok(Value::Null))
+    Ok((changes, ok(Value::Null)))
 }
 
 #[apidoc::title("删除部门")]

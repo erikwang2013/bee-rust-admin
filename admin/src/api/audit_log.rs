@@ -112,7 +112,7 @@ pub async fn clear(
 }
 
 pub(crate) fn headers() -> Vec<String> {
-    ["ID", "时间", "用户", "模块", "动作", "方法", "路径", "结果", "详情", "耗时(ms)", "IP"]
+    ["ID", "时间", "用户", "模块", "动作", "方法", "路径", "结果", "详情", "变更", "耗时(ms)", "IP"]
         .map(String::from)
         .to_vec()
 }
@@ -186,6 +186,7 @@ pub(crate) async fn export_batch(
                     r.path,
                     if r.status == 1 { "成功".into() } else { "失败".into() },
                     r.msg,
+                    r.changes,
                     r.duration_ms.to_string(),
                     r.ip,
                 ]),

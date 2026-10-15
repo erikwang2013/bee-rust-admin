@@ -1,5 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use crate::api::{PagingExt, check_len, csv, dedup_ids, page_size};
+use crate::audit::{AuditDetail, Diff, masked_changed};
 use crate::auth::Auth;
 use crate::datascope;
 use crate::hid;
@@ -496,7 +497,7 @@ pub async fn update(
     auth: Auth,
     AppPath(id): AppPath<String>,
     AppJson(body): AppJson<AdminUpdateBody>,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<(AuditDetail, Json<Value>), ApiError> {
     auth.require("system:admin:edit")?;
     let id = hid::dec(&id)?;
     validate_profile(&body.nickname, &body.email, &body.phone, &body.remark)?;
@@ -507,6 +508,7 @@ pub async fn update(
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
+    let old = a.clone(); // 变更摘要的旧值（下面就地改 a）
 
     // 本接口同样能改状态，必须走 set_status 的保护，否则可以绕过它禁用超管/自己
     let new_status = if body.status == 0 { 0 } else { 1 };
@@ -544,7 +546,17 @@ pub async fn update(
         .await
         .map_err(ApiError::from)?;
 
-    Ok(ok(Value::Null))
+    // 变更摘要（项 8）：email / phone 是密文列，只记「改过」（比较明文），值不进摘要
+    let changes = Diff::default()
+        .field("nickname", old.nickname, a.nickname.clone())
+        .masked("email", masked_changed(&state.crypto, &old.email, &body.email))
+        .masked("phone", masked_changed(&state.crypto, &old.phone, &body.phone))
+        .field("sex", old.sex, a.sex)
+        .field("dept_id", hid::enc(old.dept_id.max(0)), hid::enc(a.dept_id.max(0)))
+        .field("status", old.status, a.status)
+        .field("remark", old.remark, a.remark.clone())
+        .done();
+    Ok((changes, ok(Value::Null)))
 }
 
 #[apidoc::title("删除管理员")]

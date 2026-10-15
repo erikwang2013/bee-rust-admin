@@ -111,6 +111,7 @@ export const enUS: Record<I18nKey, string> = {
   'field.module': 'Module',
   'field.action': 'Action',
   'field.request': 'Request',
+  'field.changes': 'Changes',
 
   // ---- Login ----
   'login.title': 'BRA · Admin',
@@ -317,6 +318,7 @@ export const enUS: Record<I18nKey, string> = {
   'auditlog.module.export': 'Export center',
   'auditlog.module.auth': 'Auth',
   'auditlog.module.other': 'Other',
+  'auditlog.changed': 'changed',
 
   // ---- CSV import (item 3) ----
   'import.title': 'Import data',

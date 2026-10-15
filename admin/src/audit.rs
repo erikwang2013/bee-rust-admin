@@ -12,11 +12,61 @@ use axum::extract::{Request, State};
 use axum::http::Method;
 use axum::middleware::Next;
 use axum::response::Response;
-use serde_json::Value;
+use axum::response::{IntoResponseParts, ResponseParts};
+use serde_json::{Value, json};
+use std::convert::Infallible;
 use std::time::Instant;
 
 /// 失败响应体上限：错误信封都是几百字节，超出说明不是我们的信封，不读。
 const ERR_BODY_LIMIT: usize = 64 * 1024;
+
+/// 变更摘要（项 8）：handler 把它塞进响应扩展（`(diff.done(), ok(…))`），
+/// 中间件在 `next.run()` 之后取出来落进 `audit_log.changes`。
+/// 走扩展而不是让 handler 自己写审计行：那种做法同一请求会落两行。
+#[derive(Clone, Debug)]
+pub struct AuditDetail(pub Value);
+
+impl IntoResponseParts for AuditDetail {
+    type Error = Infallible;
+    fn into_response_parts(self, mut res: ResponseParts) -> Result<ResponseParts, Self::Error> {
+        res.extensions_mut().insert(self);
+        Ok(res)
+    }
+}
+
+/// 变更摘要收集器：`field()` 只收真的变了的字段，`masked()` 给密文列用。
+/// 用法：`Diff::default().field("nickname", old.nickname, a.nickname.clone()).done()`。
+#[derive(Default)]
+pub struct Diff(serde_json::Map<String, Value>);
+
+impl Diff {
+    pub fn field(mut self, name: &'static str, old: impl Into<Value>, new: impl Into<Value>) -> Self {
+        let (old, new): (Value, Value) = (old.into(), new.into());
+        if old != new {
+            self.0.insert(name.into(), json!({ "old": old, "new": new }));
+        }
+        self
+    }
+
+    /// 密文列（email / phone）：只记「改过」，值（明文与密文）都不进摘要 ——
+    /// 记明文等于抵消落库加密，记密文每次重加密都不同、没有可比性。
+    pub fn masked(mut self, name: &'static str, changed: bool) -> Self {
+        if changed {
+            self.0.insert(name.into(), json!({ "changed": true }));
+        }
+        self
+    }
+
+    pub fn done(self) -> AuditDetail {
+        AuditDetail(Value::Object(self.0))
+    }
+}
+
+/// 密文列改动判定：比对**明文**（新值来自请求体，旧值在库里是密文，先解出来）。
+/// 解不开（存量脏数据）当改过 —— 宁可多记一次「已变更」。
+pub fn masked_changed(guard: &encryptable::guard::Guard, old_cipher: &str, new_plain: &str) -> bool {
+    crate::crypto::plain(guard, old_cipher).map(|p| p != new_plain).unwrap_or(true)
+}
 
 pub async fn audit_mw(State(state): State<AppState>, req: Request, next: Next) -> Response {
     let method = req.method().clone();
@@ -36,6 +86,12 @@ pub async fn audit_mw(State(state): State<AppState>, req: Request, next: Next) -
     let mut resp = next.run(req).await;
     let duration_ms = started.elapsed().as_millis() as i64;
     let status = resp.status().is_success();
+    // 变更摘要：handler 挂了才有（失败路径本来也不会挂）。趁 body 还没被读走先取出来。
+    let changes = resp
+        .extensions()
+        .get::<AuditDetail>()
+        .map(|d| d.0.to_string())
+        .unwrap_or_default();
 
     // 失败时取出信封里的 msg 留档。成功响应（含 CSV 大附件）不碰 body。
     let mut msg = String::new();
@@ -71,6 +127,7 @@ pub async fn audit_mw(State(state): State<AppState>, req: Request, next: Next) -
                 path: path.chars().take(255).collect(),
                 status: if status { 1 } else { 0 },
                 msg: msg.chars().take(255).collect(),
+                changes,
                 duration_ms,
                 ip,
                 created_at: now(),
@@ -249,6 +306,39 @@ mod tests {
             module_action(&Method::DELETE, "/api/v1/notices/9"),
             ("notice".into(), "删除公告".into())
         );
+    }
+
+    /// 摘要只收真的变了的字段；密文列只记 `{"changed":true}`。
+    #[test]
+    fn diff_keeps_only_changed_fields() {
+        let d = Diff::default()
+            .field("same", "a", "a")
+            .field("nickname", "旧", "新")
+            .field("sort", 1, 2)
+            .masked("email", false)
+            .masked("phone", true)
+            .done();
+        assert_eq!(
+            d.0,
+            json!({
+                "nickname": {"old": "旧", "new": "新"},
+                "sort": {"old": 1, "new": 2},
+                "phone": {"changed": true},
+            })
+        );
+    }
+
+    /// 密文列判定比的是**明文**：同一明文重新加密（密文不同）不算改过。
+    #[test]
+    fn masked_changed_compares_plaintext_not_ciphertext() {
+        // 与 conf/app.conf.test 同源的固定密钥（32 字节）
+        let g = crate::crypto::build_guard("base64:YmVlLWFkbWluLXRlc3Qta2V5LTMyLWJ5dGVzLW9rISE=").unwrap();
+        let cipher = crate::crypto::write(&g, "a@b.c").unwrap();
+        // 随机 nonce：同一明文两次加密密文不同 —— 所以判定只能比明文
+        assert_ne!(cipher, crate::crypto::write(&g, "a@b.c").unwrap(), "密文每次都不一样");
+        assert!(!masked_changed(&g, &cipher, "a@b.c"), "明文没变就不算改过");
+        assert!(masked_changed(&g, &cipher, "c@d.e"), "明文变了要记「已变更」");
+        assert!(masked_changed(&g, "不是密文", "x"), "解不开当改过（宁可多记）");
     }
 
     #[test]

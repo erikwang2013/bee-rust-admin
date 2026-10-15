@@ -78,6 +78,8 @@ export interface LoginLog {
 export interface AuditLog {
   id: string; admin_id: string; username: string; module: string; action: string;
   method: string; path: string; status: number; msg: string;
+  /** 变更摘要 JSON 串（项 8）：`{"字段":{"old":…,"new":…}}`；没有登记摘要的路径为空串 */
+  changes: string;
   duration_ms: number; ip: string; created_at: string;
 }
 export interface DictType {

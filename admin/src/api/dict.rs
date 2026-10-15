@@ -2,6 +2,7 @@
 //! 字典管理（v1.5.0）：字典类型 + 字典项。
 //! 除 `GET /dicts/{code}/items`（下拉数据源，登录即可）外都要权限码。
 use crate::api::{PagingExt, check_len, csv, page_size};
+use crate::audit::{AuditDetail, Diff};
 use crate::auth::Auth;
 use crate::error::{ApiError, AppJson, AppPath, AppQuery, ok};
 use crate::hid;
@@ -184,7 +185,7 @@ pub async fn type_update(
     auth: Auth,
     AppPath(id): AppPath<String>,
     AppJson(body): AppJson<DictTypeUpdate>,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<(AuditDetail, Json<Value>), ApiError> {
     auth.require("system:dict:edit")?;
     let id = hid::dec(&id)?;
     check_name(&body.name)?;
@@ -197,13 +198,20 @@ pub async fn type_update(
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
+    let old = t.clone(); // 变更摘要的旧值（下面就地改 t）
 
     t.name = body.name.trim().to_string();
     t.status = body.status;
     t.remark = body.remark;
     t.updated_at = now();
+    // 变更摘要（项 8）：code 是关联键、更新体里就没有，天然不会出现在摘要里
+    let changes = Diff::default()
+        .field("name", old.name, t.name.clone())
+        .field("status", old.status, t.status)
+        .field("remark", old.remark, t.remark.clone())
+        .done();
     t.update(&state.db).await.map_err(code_taken)?;
-    Ok(ok(Value::Null))
+    Ok((changes, ok(Value::Null)))
 }
 
 /// 删类型连带删它的字典项，同一事务：中途失败回滚，不留「类型没了项还在」的孤儿行。
@@ -462,7 +470,7 @@ pub async fn item_update(
     auth: Auth,
     AppPath(id): AppPath<String>,
     AppJson(body): AppJson<DictItemUpdate>,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<(AuditDetail, Json<Value>), ApiError> {
     auth.require("system:dict:edit")?;
     let id = hid::dec(&id)?;
     check_label(&body.label)?;
@@ -476,6 +484,7 @@ pub async fn item_update(
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
+    let old = it.clone(); // 变更摘要的旧值（下面就地改 it）
 
     it.label = body.label.trim().to_string();
     it.value = body.value.trim().to_string();
@@ -483,8 +492,16 @@ pub async fn item_update(
     it.status = body.status;
     it.remark = body.remark;
     it.updated_at = now();
+    // 变更摘要（项 8）：type_code 是关联键、更新体里就没有，天然不会出现在摘要里
+    let changes = Diff::default()
+        .field("label", old.label, it.label.clone())
+        .field("value", old.value, it.value.clone())
+        .field("sort", old.sort, it.sort)
+        .field("status", old.status, it.status)
+        .field("remark", old.remark, it.remark.clone())
+        .done();
     it.update(&state.db).await.map_err(value_taken)?;
-    Ok(ok(Value::Null))
+    Ok((changes, ok(Value::Null)))
 }
 
 #[apidoc::title("删除字典项")]

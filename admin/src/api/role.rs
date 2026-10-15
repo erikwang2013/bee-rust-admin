@@ -6,6 +6,7 @@
 // 曾经这里写反过（2/4/5 三档张冠李戴），而文档站是对外可见的 —— 单测
 // `api_doc_data_scope_matches_the_mapping` 现在钉着它。
 use crate::api::{PagingExt, check_len, dedup_ids, page_size};
+use crate::audit::{AuditDetail, Diff};
 use crate::auth::Auth;
 use crate::datascope;
 use crate::error::{ApiError, AppJson, AppPath, AppQuery, ok};
@@ -275,7 +276,7 @@ pub async fn update(
     auth: Auth,
     AppPath(id): AppPath<String>,
     AppJson(body): AppJson<RoleBody>,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<(AuditDetail, Json<Value>), ApiError> {
     auth.require("system:role:edit")?;
     let id = hid::dec(&id)?;
     validate_body(&body)?;
@@ -287,6 +288,7 @@ pub async fn update(
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
+    let old = r.clone(); // 变更摘要的旧值（下面就地改 r）
     // B5 写路径闸（非超管）：角色得是自己能动的那类（启用、scope 3/4、权限码子集），
     // 新范围也只能落在 3/4 —— 否则把自己的角色改成 scope=1 就是自我提权。
     datascope::ensure_role_writable(&auth, &state.db, &r, Some(body.data_scope)).await?;
@@ -298,8 +300,17 @@ pub async fn update(
     r.status = body.status;
     r.remark = body.remark;
     r.updated_at = now();
+    // 变更摘要（项 8）：字段级旧→新（没变的字段不收）
+    let changes = Diff::default()
+        .field("name", old.name, r.name.clone())
+        .field("code", old.code, r.code.clone())
+        .field("sort", old.sort, r.sort)
+        .field("data_scope", old.data_scope, r.data_scope)
+        .field("status", old.status, r.status)
+        .field("remark", old.remark, r.remark.clone())
+        .done();
     r.update(&state.db).await.map_err(code_taken)?;
-    Ok(ok(Value::Null))
+    Ok((changes, ok(Value::Null)))
 }
 
 #[apidoc::title("删除角色")]

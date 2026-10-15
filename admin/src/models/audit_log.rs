@@ -30,6 +30,10 @@ pub struct AuditLog {
     /// 失败原因摘要；成功为空
     #[bee(sql_type = "VARCHAR(255)")]
     pub msg: String,
+    /// 变更摘要（项 8）：JSON 串 `{"字段":{"old":…,"new":…}}`，密文列用 `{"changed":true}`；
+    /// 只有 handler 显式登记的路径才有，其余为空串。
+    #[bee(sql_type = "TEXT")]
+    pub changes: String,
     pub duration_ms: i64,
     #[bee(sql_type = "VARCHAR(45)")]
     pub ip: String,
