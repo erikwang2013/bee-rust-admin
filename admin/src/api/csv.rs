@@ -50,7 +50,7 @@ pub fn jcell(v: &Value) -> String {
 pub const BOM: &str = "\u{feff}";
 
 /// 附件响应头：`text/csv; charset=utf-8` + `Content-Disposition`。
-fn headers(filename: &str) -> HeaderMap {
+pub(crate) fn headers(filename: &str) -> HeaderMap {
     let mut headers = HeaderMap::new();
     headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/csv; charset=utf-8"));
     headers.insert(

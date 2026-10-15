@@ -9,6 +9,7 @@ import type { Dept } from '../../../api/types';
 import Auth from '../../../auth/Auth';
 import { useI18n } from '../../../i18n';
 import { allIds, subtreeIds, toTreeData } from '../../../tree';
+import ImportButton from '../import/ImportButton';
 
 export default function DeptPage() {
   const { message } = App.useApp();
@@ -99,6 +100,7 @@ export default function DeptPage() {
     <>
       <Space style={{ marginBottom: 16 }} wrap>
         <Button icon={<ReloadOutlined />} onClick={() => void load()}>{t('common.refresh')}</Button>
+        <ImportButton kind="dept" perm="system:dept:add" onDone={() => void load()} />
         <Auth code="system:dept:add">
           <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate()}>{t('common.add')}</Button>
         </Auth>

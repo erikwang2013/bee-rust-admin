@@ -11,6 +11,7 @@ import {
 import type { DictItem, DictType } from '../../../api/types';
 import { dictCache } from '../../../hooks/useDict';
 import Auth from '../../../auth/Auth';
+import ImportButton from '../import/ImportButton';
 import { useI18n } from '../../../i18n';
 
 export default function DictPage() {
@@ -275,6 +276,7 @@ export default function DictPage() {
               >
                 {t('common.export')}
               </Button>
+              <ImportButton kind="dict-item" perm="system:dict:add" onDone={() => void loadItems(itemQuery)} />
             </Space>
 
             <Table<DictItem>

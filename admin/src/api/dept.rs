@@ -40,7 +40,7 @@ fn validate_name(name: &str) -> Result<(), ApiError> {
 }
 
 /// 长度上限与模型 `#[bee(len)]`、设计文档 §5.1 列宽一致（name 落库前会 trim）。
-fn validate_body(b: &DeptBody) -> Result<(), ApiError> {
+pub(crate) fn validate_body(b: &DeptBody) -> Result<(), ApiError> {
     validate_name(&b.name)?;
     check_len("name", b.name.trim(), 64)?;
     check_len("leader", &b.leader, 64)?;

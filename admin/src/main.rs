@@ -329,6 +329,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .put("/{id}", api::job::update)
                 .post("/{id}/run", api::job::run)
         })
+        // CSV 导入（项 3）：种类走 query（`?kind=`），权限按种类复用各模块的 :add 码
+        .ns("/api/v1/imports", |ns| {
+            ns.get("/template", api::import::template).post("", api::import::import)
+        })
         .ns("/api/v1/job-logs", |ns| ns.get("", api::job::log_list))
         .ns("/api/v1/notices", |ns| {
             ns.get("", api::notice::list)

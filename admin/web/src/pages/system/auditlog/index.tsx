@@ -16,6 +16,7 @@ const MODULE_KEYS: Record<string, I18nKey> = {
   dept: 'auditlog.module.dept',
   dict: 'auditlog.module.dict',
   config: 'auditlog.module.config',
+  import: 'auditlog.module.import',
   loginlog: 'auditlog.module.loginlog',
   auditlog: 'auditlog.module.auditlog',
   auth: 'auditlog.module.auth',

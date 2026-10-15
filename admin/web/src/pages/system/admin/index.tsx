@@ -9,6 +9,7 @@ import { downloadCsv } from '../../../api/download';
 import { roleApi } from '../../../api/role';
 import type { Admin, Role } from '../../../api/types';
 import { deptApi } from '../../../api/dept';
+import ImportButton from '../import/ImportButton';
 import type { Dept } from '../../../api/types';
 import Auth from '../../../auth/Auth';
 import { useAuth } from '../../../auth/AuthContext';
@@ -189,6 +190,7 @@ export default function AdminPage() {
         <Button icon={<DownloadOutlined />} onClick={() => void downloadCsv('/admins/export', query, 'admins')}>
           {t('common.export')}
         </Button>
+        <ImportButton kind="admin" perm="system:admin:add" onDone={() => void load(query)} />
         <Auth code="system:admin:add">
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{t('common.add')}</Button>
         </Auth>

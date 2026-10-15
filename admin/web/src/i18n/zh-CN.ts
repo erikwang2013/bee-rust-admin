@@ -27,6 +27,7 @@ export const zhCN = {
   'common.delete': '删除',
   'common.refresh': '刷新',
   'common.export': '导出',
+  'common.import': '导入',
   'common.enabled': '启用',
   'common.disabled': '禁用',
   'common.success': '成功',
@@ -315,8 +316,24 @@ export const zhCN = {
   'auditlog.module.config': '系统配置',
   'auditlog.module.loginlog': '登录记录',
   'auditlog.module.auditlog': '操作日志',
+  'auditlog.module.import': '数据导入',
   'auditlog.module.auth': '认证',
   'auditlog.module.other': '其他',
+
+  // ---- 数据导入（项 3）----
+  'import.title': '导入数据',
+  'import.template': '下载模板',
+  'import.choose': '选择 CSV 文件',
+  'import.upload': '开始导入',
+  'import.hint': '先下载模板、按列填好再上传。只要有一行不合规，整批都不会写入（报告里逐行说明）。角色列多个角色用 | 分隔；部门 / 角色按名称填，必须已存在。',
+  'import.done': '已导入 {n} 条',
+  'import.empty': '文件里没有数据行（只有表头）',
+  'import.bad': '{n} 行不合规，整批未写入',
+  'import.line': '行号',
+  'import.result': '结果',
+  'import.reason': '原因',
+  'import.ok': '通过',
+  'import.reject': '不通过',
 
   // ---- 错误页 / 崩溃页 ----
   'error.forbidden_alt': '阿守：尾针竖起，此路不通',

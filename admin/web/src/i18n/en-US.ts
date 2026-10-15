@@ -20,6 +20,7 @@ export const enUS: Record<I18nKey, string> = {
   'common.delete': 'Delete',
   'common.refresh': 'Refresh',
   'common.export': 'Export',
+  'common.import': 'Import',
   'common.enabled': 'Enabled',
   'common.disabled': 'Disabled',
   'common.success': 'Success',
@@ -308,8 +309,24 @@ export const enUS: Record<I18nKey, string> = {
   'auditlog.module.config': 'System config',
   'auditlog.module.loginlog': 'Login records',
   'auditlog.module.auditlog': 'Operation logs',
+  'auditlog.module.import': 'Data import',
   'auditlog.module.auth': 'Auth',
   'auditlog.module.other': 'Other',
+
+  // ---- CSV import (item 3) ----
+  'import.title': 'Import data',
+  'import.template': 'Download template',
+  'import.choose': 'Choose a CSV file',
+  'import.upload': 'Import',
+  'import.hint': 'Download the template, fill it in column by column, then upload. If a single row is invalid nothing is written (the report explains row by row). Separate multiple role names with |; departments and roles are matched by name and must already exist.',
+  'import.done': 'Imported {n} row(s)',
+  'import.empty': 'No data rows in the file (header only)',
+  'import.bad': '{n} row(s) invalid, nothing was written',
+  'import.line': 'Line',
+  'import.result': 'Result',
+  'import.reason': 'Reason',
+  'import.ok': 'Pass',
+  'import.reject': 'Fail',
 
   // ---- Error / crash pages ----
   'error.forbidden_alt': 'Ah Shou: stinger raised, this way is blocked',

@@ -126,3 +126,21 @@ export interface Notice {
 }
 /** 未读接口：total 是未读总数（铃铛角标用它），list 只给最近 50 条 */
 export interface NoticeUnread { total: number; list: Notice[] }
+
+/** CSV 导入（项 3）：三种导入共用一套逐行报告。 */
+export type ImportKind = 'admin' | 'dept' | 'dict-item';
+export interface ImportRow {
+  /** 文件行号（表头是第 1 行） */
+  line: number;
+  ok: boolean;
+  /** 不通过的原因；通过时为空串 */
+  msg: string;
+}
+export interface ImportReport {
+  kind: ImportKind;
+  /** 数据行数（不含表头与空行） */
+  total: number;
+  /** 实际写入条数：全对 = total，有坏行 = 0 */
+  created: number;
+  rows: ImportRow[];
+}

@@ -52,7 +52,7 @@ fn check_name(name: &str) -> Result<(), ApiError> {
     check_len("name", name.trim(), 64)
 }
 
-fn check_value(value: &str) -> Result<(), ApiError> {
+pub(crate) fn check_value(value: &str) -> Result<(), ApiError> {
     if value.trim().is_empty() {
         return Err(ApiError::BadRequest("字典值不能为空".into()));
     }
@@ -351,7 +351,7 @@ pub struct DictItemUpdate {
     pub remark: String,
 }
 
-fn check_label(label: &str) -> Result<(), ApiError> {
+pub(crate) fn check_label(label: &str) -> Result<(), ApiError> {
     if label.trim().is_empty() {
         return Err(ApiError::BadRequest("字典标签不能为空".into()));
     }

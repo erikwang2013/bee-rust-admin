@@ -88,7 +88,7 @@ fn status_default() -> i8 {
     1
 }
 
-fn validate_username(u: &str) -> Result<(), ApiError> {
+pub(crate) fn validate_username(u: &str) -> Result<(), ApiError> {
     let u = u.trim();
     if u.chars().count() < 3 || u.chars().count() > 64 {
         return Err(ApiError::BadRequest("用户名长度需 3-64 个字符".into()));
@@ -128,7 +128,7 @@ pub(crate) fn validate_password(p: &str, label: &str) -> Result<(), ApiError> {
 /// 长度上限是**明文**的业务上限（设计文档 §5.1），与列宽无关：email/phone 落库是
 /// 密文，列宽按密文取（模型上的 `sql_type`）。明文上限是字符数，密文长度按**字节数**
 /// 算，多字节字符会在 [`sealed`] 里被拦下（400），不会把明文截断着存。
-fn validate_profile(
+pub(crate) fn validate_profile(
     nickname: &str,
     email: &str,
     phone: &str,
@@ -141,7 +141,7 @@ fn validate_profile(
 }
 
 /// 明文 → 落库密文（`crate::crypto`）。写 email/phone 的地方统一走它，别处不许直接赋值。
-fn sealed(guard: &encryptable::guard::Guard, plain: &str) -> Result<String, ApiError> {
+pub(crate) fn sealed(guard: &encryptable::guard::Guard, plain: &str) -> Result<String, ApiError> {
     crate::crypto::write(guard, plain).map_err(ApiError::BadRequest)
 }
 

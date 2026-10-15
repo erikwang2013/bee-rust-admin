@@ -154,6 +154,10 @@ fn module_action(method: &Method, path: &str) -> (String, String) {
         ("PUT", ["configs", _]) => ("config", "编辑系统配置"),
         ("DELETE", ["configs", _]) => ("config", "删除系统配置"),
 
+        // CSV 导入（项 3）：kind 在 query 上（这里只看路径），三种导入同一条动作名 ——
+        // 具体种别看审计行的 path 或报告，别为此拆三条（拆了也没法从路径分辨）
+        ("POST", ["imports"]) => ("import", "导入数据"),
+
         ("PUT", ["jobs", _]) => ("job", "编辑定时任务"),
         ("POST", ["jobs", _, "run"]) => ("job", "手动执行定时任务"),
 

@@ -11,6 +11,7 @@ pub mod avatar;
 pub mod config;
 pub mod csv;
 pub mod dashboard;
+pub mod import;
 pub mod dept;
 pub mod dict;
 pub mod job;
