@@ -9,7 +9,7 @@ use crate::models::{Admin, Dept, Notice, Role};
 use crate::state::AppState;
 use axum::Json;
 use axum::extract::State;
-use bee_orm::{Model, Value as DbValue};
+use bee_orm::Value as DbValue;
 use chrono::{Duration, NaiveDate};
 use serde_json::{Value, json};
 use std::collections::HashMap;
