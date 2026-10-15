@@ -327,12 +327,14 @@ async fn export_tasks_run_download_and_expire() {
         "行要原封不动：started_at 没被刷新、状态没被推走");
     assert!(msg.is_empty(), "第二个执行者没跑它: {msg:?}");
 
-    // ── 认领**语句本身**必须排他（回归）──
-    // 上面那半钉的是「选中」语义（执行中的行不该被再选中）；这半钉认领谓词：
+    // ── 认领**语义**必须排他（回归）──
+    // 上面那半钉的是「选中」语义（执行中的行不该被再选中）；这半钉库级语义：
     // 同一行连续认领两次，第二次必须 0 行。老实现 `WHERE id=? AND status IN (0, 1)`
     // 在第一次把行推成 1 之后照样命中（1 ∈ (0,1)），第二个执行者拿着「还是 0」的旧
-    // 快照再认领就会真的跑第二遍。两条语句与 crate::export::claim 的分支逐字一致
-    // ——bin crate 集成测试不能 use 它的代码，与 common 里重写 hashids 同一个理由。
+    // 快照再认领就会真的跑第二遍。这里的两条语句是 crate::export::claim_sql 的**副本**
+    //（bin crate 集成测试不能 use 它的代码，与 common 里重写 hashids 同一个理由）——
+    // 副本钉不住 src（谓词回退时它照样绿），所以谓词本身的排他性由 export.rs 里
+    // `claim_predicates_are_exclusive` 那条无库单测钉；这段负责证明「按这谓词跑，第二次真是 0 行」。
     let (st, t_claim) = call(&c, Method::POST, url(EXP), Some(&admin),
         Some(json!({"kind": "login-log", "params": {"username": "ex4_ghost"}}))).await;
     assert_eq!(st, 200, "{t_claim}");
@@ -427,4 +429,35 @@ async fn export_tasks_run_download_and_expire() {
         .await
         .unwrap();
     assert_eq!(n, 1, "待处理的任务过期也不能清（文件还没生成，删了等于任务消失）");
+
+    // ── N5 回归：行里 file_path 为空也要删掉按约定落下的文件 ──
+    // 现场：改名成功、回写 file_path 之前进程死掉 —— 行里路径空着，文件已经叫 {id}.csv 了。
+    // 只信行里的 path 的话，这行被清掉时文件会永久留在磁盘上（再没人知道它叫什么）。
+    let (st, t5) = call(&c, Method::POST, url(EXP), Some(&admin),
+        Some(json!({"kind": "login-log"}))).await;
+    assert_eq!(st, 200, "建用于 N5 的任务: {t5}");
+    let id5 = common::dec_id(&common::as_id(&t5["data"]["id"]));
+    let before = common::last_log_id(&pool, "export_run").await;
+    common::trigger(&c, &base, &run_id, &admin).await;
+    let (status, _, msg) = wait_task(&pool, id5).await;
+    assert_eq!(status, 2, "先正常跑完一份: {msg}");
+    let path5 = format!("target/test-uploads/exports/{id5}.csv");
+    assert!(std::path::Path::new(&path5).exists(), "文件按约定落下: {path5}");
+    sqlx::query("UPDATE export_task SET file_path = '', expire_at = ? WHERE id = ?")
+        .bind(past)
+        .bind(id5)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let before = common::last_log_id(&pool, "export_clean").await;
+    common::trigger(&c, &base, &clean_id, &admin).await;
+    let (status, msg, _ms) = common::wait_job_log(&pool, "export_clean", before).await;
+    assert_eq!(status, 1, "{msg}");
+    assert!(!std::path::Path::new(&path5).exists(), "路径空也要按 {{id}}.csv 兜底删掉: {path5}");
+    let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM export_task WHERE id = ?")
+        .bind(id5)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(n, 0, "记录也清了");
 }

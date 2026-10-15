@@ -140,11 +140,7 @@ pub async fn run(state: AppState) -> Result<String, String> {
 /// - 执行中超时（status=1 且 `started_at` 早于认领超时，见上面查 `stuck` 的口径）：
 ///   认领会把 `started_at` 刷成现在，第二个执行者的 `started_at < 超时线` 不再命中。
 async fn claim(state: &AppState, task: &ExportTask) -> Result<bool, String> {
-    let sql = if task.status == 0 {
-        "UPDATE export_task SET status = 1, started_at = ? WHERE id = ? AND status = 0"
-    } else {
-        "UPDATE export_task SET status = 1, started_at = ? WHERE id = ? AND status = 1 AND started_at < ?"
-    };
+    let sql = claim_sql(task.status);
     let mut args = vec![Value::from(now()), Value::from(task.id)];
     if task.status != 0 {
         args.push(Value::from(now() - chrono::Duration::seconds(STALE_CLAIM_SECS)));
@@ -155,6 +151,17 @@ async fn claim(state: &AppState, task: &ExportTask) -> Result<bool, String> {
         .await
         .map_err(|e| format!("认领导出任务 {} 失败: {e}", task.id))?;
     Ok(n > 0)
+}
+
+/// 认领用的两条语句。单独成函数是为了能被**无库单测**钉住谓词：集成测试在另一个 crate
+/// 里只能复制 SQL（bin crate 不能 use 自己的代码），复制品对 src 不可证伪（老谓词回退时
+/// 它照样绿），所以谓词本身的排他性在这里钉。
+fn claim_sql(status: i8) -> &'static str {
+    if status == 0 {
+        "UPDATE export_task SET status = 1, started_at = ? WHERE id = ? AND status = 0"
+    } else {
+        "UPDATE export_task SET status = 1, started_at = ? WHERE id = ? AND status = 1 AND started_at < ?"
+    }
 }
 
 /// 跑一个任务：按发起人重算数据范围 → 取数写文件（.part → 改名）。
@@ -309,15 +316,20 @@ pub async fn clean(state: AppState) -> Result<String, String> {
 
     let (mut files, mut rows) = (0u32, 0u32);
     for task in expired {
-        if !task.file_path.is_empty() {
-            match std::fs::remove_file(&task.file_path) {
-                Ok(_) => files += 1,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => {
-                    // 文件删不掉就**留着这行**：记录先删了，文件就再没人负责清了
-                    tracing::warn!("删导出文件 {} 失败，保留记录下次再试: {e}", task.file_path);
-                    continue;
-                }
+        // 行里没有路径也要按约定兜底删一次：改名成功、回写 file_path 之前进程死掉的话，
+        // 文件已经以 `{id}.csv` 落在盘上了，只信行里的 path 会把孤儿永久留在磁盘上
+        let path = if task.file_path.is_empty() {
+            dir(&state).join(format!("{}.csv", task.id)).to_string_lossy().into_owned()
+        } else {
+            task.file_path.clone()
+        };
+        match std::fs::remove_file(&path) {
+            Ok(_) => files += 1,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                // 文件删不掉就**留着这行**：记录先删了，文件就再没人负责清了
+                tracing::warn!("删导出文件 {} 失败，保留记录下次再试: {e}", path);
+                continue;
             }
         }
         state
@@ -344,6 +356,22 @@ mod tests {
         let n = codes.len();
         codes.dedup();
         assert_eq!(codes.len(), n, "注册表里的 code 不能重复");
+    }
+
+    /// 认领谓词必须**排他**（I1）：老写法 `status IN (0, 1)` 在第一次把行推成 1 之后
+    /// 第二个执行者照样命中（同一任务两个执行者：双写 .part、双 finish）。
+    #[test]
+    fn claim_predicates_are_exclusive() {
+        let pending = claim_sql(0);
+        assert!(pending.ends_with("AND status = 0"), "待处理分支按 status = 0: {pending}");
+        let stale = claim_sql(1);
+        assert!(
+            stale.ends_with("AND status = 1 AND started_at < ?"),
+            "超时分支要带时戳条件（认领会刷 started_at，第二次不命中）: {stale}"
+        );
+        for sql in [pending, stale] {
+            assert!(!sql.contains("IN (0, 1)"), "老谓词会让认领变成非排他: {sql}");
+        }
     }
 
     /// 表头必须是**同步导出那份**（同一个函数），否则异步文件与同步导出会悄悄漂移。
