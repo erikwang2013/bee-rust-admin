@@ -1,27 +1,10 @@
 import { useEffect, useState } from 'react';
 import { theme } from 'antd';
 import { fetchPublicConfig, type PublicConfig } from './api/config';
+import { copyrightText, safeRepoUrl } from './siteinfo';
 
 /** 构建时注入（vite define，见 vite.config.ts）：发布包 = git tag，本地 / CI 构建 = dev。 */
 declare const __APP_VERSION__: string;
-
-/** 接口挂了 / 键被删时的内置兜底（站点信息不能空着）。 */
-const FALLBACK_REPO = 'https://github.com/erikwang2013/bee-rust-admin';
-
-/** 取公开配置里的字符串值：非字符串或空白视同没配（走兜底）。 */
-function str(v: string | boolean | undefined): string | null {
-  return typeof v === 'string' && v.trim() !== '' ? v : null;
-}
-
-/**
- * 项目地址只认 http(s)：这个值直接进 `<a href>`，而链接渲染在**未登录**的登录页上 ——
- * `javascript:` / `data:` 之类的 scheme 是配置编辑者（system:config:edit 可单独授予）
- * 打访客与超管的存储型 XSS 面。非 http(s) 一律回落内置地址（仓库没有 CSP，不能靠它兜底）。
- */
-function safeRepoUrl(v: string | boolean | undefined): string {
-  const s = str(v);
-  return s && /^https?:\/\//i.test(s) ? s : FALLBACK_REPO;
-}
 
 /**
  * 站点信息：版本 · 版权 · 项目地址，登录页底部与侧边栏底部共用，整行链到项目地址。
@@ -43,7 +26,7 @@ export default function SiteInfo({ compact = false }: { compact?: boolean }) {
   if (cfg?.['site.footer_enabled'] === false) return null;
 
   const repo = safeRepoUrl(cfg?.['site.repo_url']);
-  const copyright = str(cfg?.['site.copyright']) ?? `© ${new Date().getFullYear()} erik`;
+  const copyright = copyrightText(cfg?.['site.copyright']);
 
   return (
     <div

@@ -36,10 +36,14 @@ fn valid_group(group: &str) -> bool {
 /// 公开读时再转 JSON 布尔 —— 库里值的形态只有一种，不用猜。
 const TYPES: [&str; 3] = ["string", "text", "bool"];
 
-/// 公开读的值转换：`bool` → JSON 布尔（`"1"` 也认）；其余原样字符串。
+/// 公开读的值转换：`bool` → JSON 布尔（`"1"` 也认，大小写不敏感、先 trim —— 库里被
+/// 手写成 `"TRUE"` / `" true "` 时不至于被静默取反）；其余原样字符串。
 fn public_value(value_type: &str, value: &str) -> Value {
     match value_type {
-        "bool" => json!(matches!(value, "true" | "1")),
+        "bool" => {
+            let v = value.trim();
+            json!(v == "1" || v.eq_ignore_ascii_case("true"))
+        }
         _ => json!(value),
     }
 }
@@ -253,7 +257,7 @@ pub async fn update(
 }
 
 #[apidoc::title("删除系统配置")]
-#[apidoc::desc("不存在回 404。删公开键等于从登录页/页脚撤下（前端回落内置默认值）")]
+#[apidoc::desc("不存在回 404。删公开键等于从登录页/页脚撤下（前端回落内置默认值）；内置键被删掉后，**下次启动服务时会被种子流程补回来**（补的是种子默认值，不是删前的值）")]
 #[apidoc::url("/api/v1/configs/{id}")]
 #[apidoc::method("DELETE")]
 #[apidoc::tag("系统配置")]
@@ -313,6 +317,8 @@ mod tests {
     fn bool_values_cast_to_json_bool() {
         assert_eq!(public_value("bool", "true"), json!(true));
         assert_eq!(public_value("bool", "1"), json!(true));
+        assert_eq!(public_value("bool", "TRUE"), json!(true), "大小写不敏感");
+        assert_eq!(public_value("bool", " true "), json!(true), "先 trim（手写库值时常见）");
         assert_eq!(public_value("bool", "false"), json!(false));
         assert_eq!(public_value("bool", ""), json!(false), "空值按 false —— 绝不因解析失败回 true");
         assert_eq!(public_value("bool", "yes"), json!(false));

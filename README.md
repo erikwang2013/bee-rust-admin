@@ -62,7 +62,7 @@ INI 配置），前端是 Vite + React 18 + Ant Design 5 单页应用，两者�
 | 接入层 | nginx :8081 | 提供前端静态资源，`/api/` 反向代理到后端并透传 `X-Real-IP` |
 | 应用层 | `bee_admin` | bee_router（axum）· Auth 提取器 · 71 个 API handler · datascope 数据权限 · 统一响应信封 |
 | 框架层 | bee_orm / bee_config / bee_logs | 多后端连接池、QuerySet、CRUD、M2M、migrate 迁移；INI 配置；tracing 日志 |
-| 数据层 | MySQL 8.4 | 16 张表（11 张业务表 + 4 张关系表 + 1 张明文备份表） |
+| 数据层 | MySQL 8.4 | 17 张表（12 张业务表 + 4 张关系表 + 1 张明文备份表） |
 
 ## 功能设计
 

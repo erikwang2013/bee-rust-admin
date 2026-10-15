@@ -300,7 +300,7 @@ export const zhCN = {
   'config.remark_placeholder': '说明文字（显示在配置项标题上）',
   'config.no_change': '没有改动',
   'config.delete_confirm': '确认删除配置「{key}」？',
-  'config.delete_desc': '删除公开键后，登录页/页脚会回落内置默认值。',
+  'config.delete_desc': '删除公开键后，登录页/页脚会回落内置默认值；内置键被删掉后，重启服务时会被种子流程补回来。',
   'config.group_default': '未分组',
   'config.group_site': '站点',
 

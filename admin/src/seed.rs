@@ -265,6 +265,9 @@ const CONSTRAINTS: &[(&str, &str, &str)] = &[
     ("dict_item", "idx_dict_item_type_code", "CREATE INDEX idx_dict_item_type_code ON dict_item (type_code)"),
     ("job", "uk_job_code", "CREATE UNIQUE INDEX uk_job_code ON job (code)"),
     ("job_log", "idx_job_log_job_code", "CREATE INDEX idx_job_log_job_code ON job_log (job_code)"),
+    // 仪表盘的近 7 天按天窗口（项 2）每次进首页都查一遍：没有它是一次全表扫。
+    // 登录记录列表的时间段筛选同样沾光。
+    ("login_log", "idx_login_log_created_at", "CREATE INDEX idx_login_log_created_at ON login_log (created_at)"),
     ("sys_config", "uk_sys_config_key", "CREATE UNIQUE INDEX uk_sys_config_key ON sys_config (config_key)"),
 ];
 

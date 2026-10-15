@@ -134,7 +134,8 @@ export default function ConfigPage() {
                 pattern: /^[a-z0-9_]+(\.[a-z0-9_]+)*$/,
                 message: t('config.key_rule'),
               },
-              { max: 128, message: t('config.key_rule') },
+              // 与后端 valid_key 的 2..=128 对齐：前端放过 1 位键只会换来一次 400
+              { min: 2, max: 128, message: t('config.key_rule') },
             ]}
           >
             <Input placeholder={t('config.key_example')} />

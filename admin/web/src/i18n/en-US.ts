@@ -293,7 +293,7 @@ export const enUS: Record<I18nKey, string> = {
   'config.remark_placeholder': 'Description shown as the item title',
   'config.no_change': 'Nothing changed',
   'config.delete_confirm': 'Delete config "{key}"?',
-  'config.delete_desc': 'Deleting a public key makes the login page / footer fall back to built-in defaults.',
+  'config.delete_desc': 'Deleting a public key makes the login page / footer fall back to built-in defaults; built-in keys are re-created by the seed on the next service restart.',
   'config.group_default': 'Ungrouped',
   'config.group_site': 'Site',
 
