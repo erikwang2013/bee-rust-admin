@@ -99,14 +99,14 @@ fn build_snowflake(cfg: &AppConfig) -> Result<Shared, Box<dyn std::error::Error>
 /// 文档站配置（只在 `[apidoc] enabled = true` 时构建，见 `main` 里的 merge）。
 ///
 /// 口令鉴权走插件自带的 `AuthConfig`：`/apidoc/api.json` 等**数据路由**要带 token
-/// （`/apidoc/auth?password=<md5>` 换 token），UI 页本身不设守卫。
+/// （`POST /apidoc/auth` 用口令换，口令走请求体），UI 页本身不设守卫。
 ///
-/// ⚠️ token 由 md5(口令) 派生、放在 query 上，等价于可重放的通行证 —— 只开在可信网络。
+/// ⚠️ token 放在 query 上（默认 24 小时有效），等价于可重放的通行证 —— 只开在可信网络。
 fn apidoc_config(cfg: &AppConfig) -> apidoc::ApidocConfig {
     apidoc::ApidocConfig {
         title: format!("{} 接口文档", cfg.app_name),
         description: Some(
-            "bee-rust-admin 后台接口（/api/v1）。数据路由需带 token：先 GET /apidoc/auth?password=<md5(口令)> 换 token，再以 ?token=… 访问。".into(),
+            "bee-rust-admin 后台接口（/api/v1）。数据路由需带 token：先 POST /apidoc/auth（body {\"password\":\"…\"}）换 token，再以 ?token=… 访问。".into(),
         ),
         auth: Some(apidoc::auth::AuthConfig {
             enable: true,

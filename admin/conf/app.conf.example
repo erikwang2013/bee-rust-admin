@@ -85,8 +85,9 @@ scan = off
 # 挂载点是 /apidoc（UI）与 /apidoc/api.json（数据）。
 enabled = false
 # enabled = true 时**必填**：文档站口令（缺了/空着直接拒绝启动，理由同 encrypt_key）。
-# ⚠️ 插件那套口令的凭据是 md5(口令) 放在 query 上 —— 等价于一个**可重放的通行证**
-#    （抓到一次就能一直用）。所以只在可信网络（内网 / 跳板机）里开，别对着公网。
+# 换 token 是 POST /apidoc/auth（口令走请求体）；token 带在 query 上、默认 24 小时有效
+# —— 等价于一个**可重放的通行证**（抓到一次到期前都能用）。所以只在可信网络
+# （内网 / 跳板机）里开，别对着公网。
 password =
 
 [seed]

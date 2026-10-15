@@ -132,7 +132,7 @@ async fn v16_job_notice_features() {
     // ── 任务列表：来自代码注册表的幂等补齐 ─────────────────────
     let (st, v) = call(&c, Method::GET, api("/jobs"), Some(&admin), None).await;
     assert_eq!(st, 200, "任务列表: {v}");
-    assert_eq!(v["data"]["total"], 2, "内置两个任务: {v}");
+    assert_eq!(v["data"]["total"], 5, "内置任务（代码注册表补齐）: {v}");
     let jobs = v["data"]["list"].as_array().unwrap();
     let job_by_code = |code: &str| {
         jobs.iter()
@@ -561,7 +561,7 @@ async fn v16_job_notice_features() {
     assert!(menu(&v["data"], "system:job:list").is_some(), "重启后菜单还在: {v}");
     let (st, v) = call(&c, Method::GET, format!("{base2}/api/v1/jobs"), Some(&admin2), None).await;
     assert_eq!(st, 200, "{v}");
-    assert_eq!(v["data"]["total"], 3, "补的是缺的：库里原有的 ghost_job 不被删（也不重复补内置的）: {v}");
+    assert_eq!(v["data"]["total"], 6, "补的是缺的：5 个内置 + 库里原有的 ghost_job，不被删也不重复补: {v}");
     let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM job WHERE code = 'log_retention'")
         .fetch_one(&pool)
         .await
@@ -576,7 +576,7 @@ async fn v16_job_notice_features() {
     let api3 = |p: &str| format!("{base3}/api/v1{p}");
     let (st, v) = call(&c, Method::GET, api3("/jobs"), Some(&admin3), None).await;
     assert_eq!(st, 200, "{v}");
-    assert_eq!(v["data"]["total"], 2, "补齐不受开关影响（运维要能看到任务）: {v}");
+    assert_eq!(v["data"]["total"], 5, "补齐不受开关影响（运维要能看到任务）: {v}");
     let rid = common::as_id(
         &v["data"]["list"].as_array().unwrap().iter()
             .find(|j| j["code"] == "log_retention").unwrap()["id"],
