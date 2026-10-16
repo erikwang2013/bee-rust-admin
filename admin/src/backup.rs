@@ -9,7 +9,7 @@
 //! - 先写 `.part` 再改名：中断的 dump 不会以「备份文件」的身份留在目录里被当成好备份；
 //! - 备份文件建的时候就 0600：dump 里是全库数据（含口令哈希），不给同机其他用户读。
 //!
-//! 恢复是手工动作（停服 → `mysql < dump`），步骤见 docs/usage.md「备份与恢复」。
+//! 恢复是手工动作（停服 → `mysql < dump`），步骤见 docs/faq.md「备份与恢复」。
 use crate::state::AppState;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};

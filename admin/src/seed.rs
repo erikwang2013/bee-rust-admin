@@ -258,7 +258,7 @@ pub async fn encrypt_legacy(db: &Pool, guard: &encryptable::guard::Guard) -> Res
             let n = rows.first().and_then(|r| r.get("n")).and_then(|v| v.as_i64()).unwrap_or(0);
             if n > 0 {
                 tracing::warn!(
-                    "admin_email_phone_backup 仍有 {n} 行明文备份：确认新密钥下 email/phone 解密正常（登录后看个人资料的邮箱/手机号原文）后，可按 docs/usage.md 的「运维 · 清理明文备份」清理"
+                    "admin_email_phone_backup 仍有 {n} 行明文备份：确认新密钥下 email/phone 解密正常（登录后看个人资料的邮箱/手机号原文）后，可按 docs/faq.md 的「运维 · 清理明文备份」清理"
                 );
             }
         }

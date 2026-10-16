@@ -1,7 +1,7 @@
 # BRA 安装说明
 
 Bee Rust Admin —— Rust 后端 `bee_admin` + React 前端 dist + MySQL 8 + nginx。
-本文给部署者：讲清怎么装。装好之后怎么用，见 [使用手册](usage.md)。
+本文给部署者：讲清怎么装。装好之后怎么用，见 [使用手册](usage.md)；排障与运维见 [常见问题与运维](faq.md)。
 
 ---
 
