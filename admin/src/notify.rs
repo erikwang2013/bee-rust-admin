@@ -165,12 +165,21 @@ pub async fn save(state: &AppState, cfg: &NotifyConfig) -> Result<(), ApiError> 
 
 /// 存之前的校验：只拦「一定发不出去」的配置，别拦「配了但对方不认」的（那要看失败原因）。
 pub fn validate(cfg: &NotifyConfig) -> Result<(), ApiError> {
-    // 长度与开关无关：关着也拦。地址整条进审计摘要（`changes`），存个超长值会让
-    // 那行摘要写不进去 —— 少一条审计比少一条通知严重（负控：audit_diff 的摘要列）。
-    // 长度与开关无关：关着也拦。地址整条进审计摘要（`changes`），存个超长值会让
+    // 长度与开关无关：关着也拦。这些值整条进审计摘要（`changes`），存个超长值会让
     // 那行摘要写不进去 —— 少一条审计比少一条通知严重（负控：audit_diff 的摘要列）。
     if cfg.webhook_url.chars().count() > 512 {
         return Err(ApiError::BadRequest("Webhook 地址过长（≤ 512 字符）".into()));
+    }
+    // 同上，SMTP 的三个字符串字段也关着拦。255 = 主机名 / 邮箱地址的 RFC 上限量级
+    // （这三个字段此前没有限值，这里取 255 而不是另拟一套）。
+    for (label, v) in [
+        ("SMTP 服务器", &cfg.smtp_host),
+        ("SMTP 用户名", &cfg.smtp_user),
+        ("发件人", &cfg.smtp_from),
+    ] {
+        if v.chars().count() > 255 {
+            return Err(ApiError::BadRequest(format!("{label}过长（≤ 255 字符）")));
+        }
     }
     if cfg.webhook_enabled {
         if cfg.webhook_url.is_empty() {
@@ -318,6 +327,34 @@ mod tests {
         c.webhook_url = format!("https://x.com/{}", "a".repeat(460));
         assert_eq!(c.webhook_url.chars().count(), 474, "别把断言写超 512");
         assert!(validate(&c).is_ok(), "512 以内的地址关着可以存");
+
+        // SMTP 的三个字符串字段同口径（与 webhook 同类）：关着也不许存超长值。
+        // 这三个字段此前一处都没校验过，没有「沿用现有限值」可循 —— 取 255：
+        // 主机名与邮箱地址的 RFC 上限都在这个量级以内。
+        for (label, mut c) in [
+            ("smtp_host", {
+                let mut c = cfg();
+                c.smtp_host = "h".repeat(300);
+                c
+            }),
+            ("smtp_user", {
+                let mut c = cfg();
+                c.smtp_user = "u".repeat(300);
+                c
+            }),
+            ("smtp_from", {
+                let mut c = cfg();
+                c.smtp_from = "f".repeat(300);
+                c
+            }),
+        ] {
+            assert!(validate(&c).is_err(), "SMTP 关着也不许存超长 {label}");
+        }
+        let mut c = cfg();
+        c.smtp_host = "h".repeat(255);
+        c.smtp_user = "u".repeat(255);
+        c.smtp_from = "f".repeat(255);
+        assert!(validate(&c).is_ok(), "255 以内的三个字段关着可以存（关闭时也不要求可发）");
 
         let mut c = cfg();
         c.webhook_enabled = true;

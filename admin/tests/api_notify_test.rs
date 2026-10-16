@@ -303,6 +303,20 @@ async fn notify_webhook_events_and_smtp_test_mail() {
     assert!(!msg.contains("列宽"), "口令报错不能甩「列宽」（它落在 TEXT 列）: {msg}");
     assert!(msg.contains("255"), "要报出上限是多少: {msg}");
 
+    // SMTP 关着也要拦长度（与 webhook 同类：值整条进审计摘要，超长 = 丢一条审计）；
+    // 其余字段照抄 §2，万一没拦住（RED）也不让后续段落跟着塌
+    let (st, v) = call(&c, Method::PUT, api("/notify/config"), Some(&token), Some(json!({
+        "webhook_enabled": true,
+        "webhook_url": format!("http://127.0.0.1:{hook_port}/hook"),
+        "smtp_enabled": false,
+        "smtp_host": "h".repeat(300),
+        "smtp_port": smtp_port,
+        "smtp_user": "notify-user@test.local",
+        "smtp_from": "",
+        "smtp_encryption": "none",
+    }))).await;
+    assert_eq!(st, 400, "SMTP 关着也要拦超长服务器地址: {v}");
+
     // ── 4. 公告发布 → webhook 收到事件体 ──────────────────────
     let (st, v) = publish(&c, &base, &token, "通知渠道验收公告", 1).await;
     assert_eq!(st, 200, "发公告: {v}");
