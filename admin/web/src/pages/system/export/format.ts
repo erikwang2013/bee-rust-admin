@@ -11,3 +11,10 @@ export function sizeText(n: number): string {
   }
   return `${i === 0 ? v : v.toFixed(1)} ${units[i]}`;
 }
+
+/** 导出类型的选择：选中项不在可见列表里（或还没选）就回落第一个可见的。
+ * 只有登录记录权限的账号默认项是 audit-log —— 不回落到这里，整块发起区会被
+ * 「没有可导出的类型」顶掉，有权限也导不出（修复轮 1：U2 引入的回归）。 */
+export function visibleKind<T extends { value: string }>(allowed: T[], kind: string): T | undefined {
+  return allowed.find((k) => k.value === kind) ?? allowed[0];
+}

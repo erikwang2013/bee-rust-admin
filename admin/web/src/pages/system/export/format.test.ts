@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sizeText } from './format';
+import { sizeText, visibleKind } from './format';
 
 describe('sizeText', () => {
   it('按 1024 进制换单位，只有非整字节才带小数', () => {
@@ -18,5 +18,23 @@ describe('sizeText', () => {
     expect(sizeText(0)).toBe('-');
     expect(sizeText(-1)).toBe('-');
     expect(sizeText(Number.NaN)).toBe('-');
+  });
+});
+
+describe('visibleKind（发起类型的选择，修复轮 1）', () => {
+  const both = [{ value: 'audit-log' }, { value: 'login-log' }];
+  const onlyLogin = [{ value: 'login-log' }];
+
+  it('选中项有查看码时原样返回', () => {
+    expect(visibleKind(both, 'login-log')?.value).toBe('login-log');
+    expect(visibleKind(both, 'audit-log')?.value).toBe('audit-log');
+  });
+
+  it('只有登录记录权限（默认选中 audit-log）回落第一个可见类型，不是没得导', () => {
+    expect(visibleKind(onlyLogin, 'audit-log')?.value).toBe('login-log');
+  });
+
+  it('一个可见类型都没有才 undefined（页面显示「没有可导出的类型」）', () => {
+    expect(visibleKind([], 'audit-log')).toBeUndefined();
   });
 });

@@ -40,10 +40,12 @@ pub const JOBS: &[JobSpec] = &[
         interval_secs: 86400,
         run: |s| Box::pin(avatar_orphan_clean(s)),
     },
+    // 附件孤儿清理：每小时一趟 —— 配额是**行级**口径（删行立刻还配额），磁盘回收只靠它，
+    // 收早也不怕：保护期 300s（ATTACH_MIN_AGE_SECS）远小于一小时，不会误收「先落盘后入库」的成品
     JobSpec {
         code: "attach_orphan_clean",
         name: "附件孤儿清理",
-        interval_secs: 86400,
+        interval_secs: 3600,
         run: |s| Box::pin(attach_orphan_clean(s)),
     },
     // 每天一份、保留 7 份（[backup] keep）：默认节奏是一周内的回滚窗口。

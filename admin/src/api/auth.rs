@@ -535,9 +535,12 @@ pub async fn login(
     updated.updated_at = now();
     // 上面是整行 update（会把内存里的全部字段写回去）：账本是刚 CAS 写的，这里同步
     // 一份，否则这行会拿登录开始时的旧值（NULL）把账本盖掉，重放就又通了。
-    // 已知窄口：两次登录**并发**且用了不同步号时，晚到的整行 update 可能把账本压低
-    // 一步（都需要先拿到有效码，且互相就差这一步）；真要堵死得让 update 带 CAS 条件，
-    // shortcut: 接受这个窄口，等出现多设备同窗并发登录的真实场景再上 CAS 行锁。
+    // 已知窄口（范围=**所有**「读整行 → 改几列 → 整行 update」的写路径，不只是登录：
+    // 注销、个人资料 / 头像修改、TOTP 绑定与解绑、超管编辑管理员，都可能拿读时的旧快照
+    // 把账本压回那一刻 —— 并发时窗口是「读行到写回」的毫秒级，压回的是更早的步号，而那
+    // 一步的时间窗基本已过，实际可利用性很低）；真要堵死得让每条整行写路径都带 CAS 条件
+    // （`WHERE id=? AND (totp_last_step IS NULL OR totp_last_step < ?)` 写回读值），
+    // shortcut: 接受这个毫秒窗，等出现多设备同窗并发登录的真实场景再上 CAS 行锁。
     if let Some(step) = used_step {
         updated.totp_last_step = Some(step);
     }

@@ -283,8 +283,9 @@ const CONSTRAINTS: &[(&str, &str, &str)] = &[
     // 登录设备（项 7）只按账号查（列列表 / 每次登录找同 UA 的行），表很小但会很频繁
     ("admin_login_device", "idx_admin_login_device_admin_id", "CREATE INDEX idx_admin_login_device_admin_id ON admin_login_device (admin_id)"),
     ("sys_config", "uk_sys_config_key", "CREATE UNIQUE INDEX uk_sys_config_key ON sys_config (config_key)"),
-    // 附件（项 5）：列表按上传人收窄、删除按 stored_path 查引用计数、多态关联按
-    // (entity_type, entity_id) 取「某个对象的配图」，各配一条
+    // 附件（项 5）：列表按上传人收窄、多态关联按 (entity_type, entity_id) 取「某个对象的
+    // 配图」，各配一条。`stored_path` 那条**已无查询用它**（S2 后删除只删行、不再数引用），
+    // 留着不删：索引删了要重建，但不该再按旧注释当成热路径
     ("attachment", "idx_attachment_admin_id", "CREATE INDEX idx_attachment_admin_id ON attachment (admin_id)"),
     ("attachment", "idx_attachment_stored_path", "CREATE INDEX idx_attachment_stored_path ON attachment (stored_path)"),
     ("attachment", "idx_attachment_entity", "CREATE INDEX idx_attachment_entity ON attachment (entity_type, entity_id)"),

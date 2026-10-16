@@ -8,7 +8,7 @@ import Auth from '../../../auth/Auth';
 import { useAuth } from '../../../auth/AuthContext';
 import { useI18n, type I18nKey } from '../../../i18n';
 import { AUDIT_MODULES } from '../auditlog/modules';
-import { sizeText } from './format';
+import { sizeText, visibleKind } from './format';
 
 /** 类型是后端代码注册的，这里只列出来（名字走 i18n，认不出的 kind 直接显示 code）。
  * `perm` = 该 kind 的查看码：**没有这个码就不该看到这个类型**（后端也按同一个码 403） */
@@ -38,8 +38,9 @@ export default function ExportPage() {
   // 只看得到自己有查看码的类型（后端也按同一个码 403，这里是不给点）
   const allowed = KIND_KEYS.filter((k) => has(k.perm));
   const [kind, setKind] = useState<ExportKind>('audit-log');
-  // 选中的类型不在「有查看码」的那几个里 = 看不到（连下拉带按钮都不给）
-  const pick = allowed.find((k) => k.value === kind);
+  // 选中项不在「有查看码」的那几个里就回落到第一个可见类型（只有登录记录权限的账号
+  // 默认的 audit-log 是看不到的，不能因此把整块发起区关掉）；都不可见才是 undefined
+  const pick = visibleKind(allowed, kind);
   const pickKind = (k: ExportKind) => {
     setKind(k);
     setParams({}); // 换类型清筛选：条件不通用（模块只有操作日志有）
@@ -109,7 +110,7 @@ export default function ExportPage() {
     },
     {
       title: t('field.params'), dataIndex: 'params', width: 140, ellipsis: true,
-      // 导出中心只发全量，`{}` 显示成「全量」比一串空括号好读
+      // 参数为空（`{}` / 空串）= 发起时没设条件，即全量；显示成「全量」比一串空括号好读
       render: (v: string) => (v === '' || v === '{}' ? t('export.all') : v),
     },
     { title: t('field.row_count'), dataIndex: 'row_count', width: 90, render: (v: number) => (v > 0 ? v : '-') },
