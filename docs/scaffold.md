@@ -13,8 +13,8 @@ scripts/scaffold-module.sh message system:message name:string:64 status:bool sor
 | --- | --- |
 | `<模块名>` | 小写字母/数字/下划线，字母开头；也是表名、文件名、路由段名 |
 | `<权限前缀>` | 形如 `system:message`，脚本按它发 `:list` `:add` `:edit` `:remove` 四个权限码 |
-| 字段 | `<名>:<类型>[:<长度>]`，可给多个；第一个 `string` 字段自动当**名称字段** |
-| `--label` | 中文名，用在后端 400 文案、apidoc 标题、菜单种子、页面注释（默认用模块名） |
+| 字段 | `<名>:<类型>[:<长度>]`，可给多个；第一个 `string` 字段自动当**名称字段**。`id`/`created_at`/`updated_at`/`page`/`size` 是保留名（模型固定列与分页参数），字段也不能重名——会在写盘前拒掉 |
+| `--label` | 中文名，只用在 apidoc 标题/标签、菜单种子名、生成物注释与 i18n 提示里（默认用模块名）；**校验回包的 400 文案与新建接口的 apidoc 描述取的是「名称字段」的中文**（命中现有 `field.*` 词表就用它的标签，没命中退回字段名），与 `--label` 无关 |
 | `--path` | 菜单/前端路由路径，默认 `/system/<模块名>` |
 | `--api-path` | 接口前缀，默认 `/<模块名>s`（模块名本身带 s 时要显式给，比如 `address` → `--api-path /addresses`） |
 | `--out DIR` | 写到仓库外的目录，**跳过 mod.rs 与自检**；只用来对照/试跑，别拿它上线 |

@@ -14,7 +14,8 @@
 # 三条硬规则：
 # 1. 生成物**必须自己先编译过**：跑完原地执行 `cargo check -p bee_admin --all-targets` +
 #    `pnpm -C admin/web exec tsc -b`；编译不过 = 脚本的 bug，修脚本别改生成物糊过去
-#    （`--out` 跳过自检：那只是把骨架写到仓库外对照用，不参与编译）。
+#    （`--out` 跳过自检：那只是把骨架写到仓库外对照用，不参与编译）。自检不过就**整体回滚**
+#    （两个 mod.rs 还原、本次生成物删掉），工作树回到跑脚本之前。
 # 2. **不覆盖任何已有文件**：任一目标已存在就整体退出（一次误跑会清掉线上模块）。
 # 3. 只追加 `api/mod.rs` 与 `models/mod.rs` 各一行 `pub mod`（不加，生成物不参与编译，
 #    自检就是假绿）；路由/菜单种子/前端路由/i18n 只**打印可粘贴片段** —— 结构化编辑
@@ -135,6 +136,8 @@ I18N_EN=""
 DEFAULTS=""
 NAME_FIELD=""
 NAME_MAX=128
+# 见过的字段名，带竖线包裹（"|a|b|"）：查重比数组省事，也不吃 set -u 的亏
+SEEN_FIELDS="|"
 # 页面按需 import：字段里没有数字/布尔时引 InputNumber/Select 会是没用到的导入
 HAS_NUM=0
 HAS_BOOL=0
@@ -143,6 +146,16 @@ for spec in "${FIELDS[@]}"; do
     IFS=':' read -r fname ftype flen <<<"$spec"
     ftype=${ftype:-string}
     [[ $fname =~ ^[a-z][a-z0-9_]*$ ]] || die "字段名只能是小写字母/数字/下划线且字母开头：$spec"
+    # 保留名：id/created_at/updated_at 模型固定生成，page/size 是分页参数（Rust Query 结构体与
+    # TS 查询接口里都已有同名成员）—— 让它们进来就是重复列 / 重复字段，生成物必然编译不过
+    case "$fname" in
+        id | created_at | updated_at | page | size)
+            die "字段名是保留名：$fname（id/created_at/updated_at 由模型固定生成，page/size 是分页参数）" ;;
+    esac
+    case "$SEEN_FIELDS" in
+        *"|$fname|"*) die "字段名重复：$fname（同一个字段写两遍 = 重复列）" ;;
+    esac
+    SEEN_FIELDS="$SEEN_FIELDS$fname|"
     case "$ftype" in
         string | text | int | i64 | bool) ;;
         *) die "字段类型只认 string/text/int/i64/bool：$spec" ;;
@@ -391,6 +404,10 @@ printf '%s\n' "$WEB_TSX_SRC" | write_one "$WEB_TSX"
 # mod.rs 各追加一行：不加，上面两个 .rs 根本不参与编译，自检就是假绿。
 # 插在最后一条同类语句之后（保持「声明聚成一块」的形状，不打断现有排序）。
 if [ -z "$OUT" ]; then
+    # 自检失败要能整体回退：先给两个 mod.rs 留底（放临时目录，别在仓库里留垃圾）
+    BAKDIR=$(mktemp -d) || die "建不了临时目录"
+    cp "$ROOT/$API_MOD" "$BAKDIR/api_mod.rs"
+    cp "$ROOT/$MODELS_MOD" "$BAKDIR/models_mod.rs"
     awk -v line="pub mod $MODULE;" -v use_line="pub use $MODULE::$CAMEL;" '
         { buf[NR] = $0 }
         /^pub mod / { last_mod = NR }
@@ -418,6 +435,17 @@ if [ -z "$OUT" ]; then
     echo "  追加 $API_MOD → pub mod $MODULE;" >&2
     echo "  追加 $MODELS_MOD → pub mod $MODULE; / pub use $MODULE::$CAMEL;" >&2
 fi
+
+# 自检失败 = 脚本的 bug：把这次写的东西全撤掉，工作树回到跑脚本之前。
+# 半截生成物比重跑一次贵得多 —— 它会占着落点，下次跑被「已存在，拒绝覆盖」挡住，还得手工清。
+rollback() {
+    cp "$BAKDIR/api_mod.rs" "$ROOT/$API_MOD"
+    cp "$BAKDIR/models_mod.rs" "$ROOT/$MODELS_MOD"
+    rm -f "$ROOT/$API_RS" "$ROOT/$MODEL_RS" "$ROOT/$TEST_RS" "$ROOT/$WEB_TS" "$ROOT/$WEB_TSX"
+    rmdir "$ROOT/admin/web/src/pages/system/$MODULE" 2>/dev/null || true
+    rm -rf "$BAKDIR"
+    echo "scaffold: 已回滚本次生成（两个 mod.rs 还原、5 个生成物已删）" >&2
+}
 
 # ── 打印「剩下的手工接线」──────────────────────────────────
 cat <<EOF
@@ -491,8 +519,9 @@ fi
 cd "$ROOT"
 echo "── 自检 1/2：cargo check -p bee_admin --all-targets（前台跑，几分钟）" >&2
 cargo check -p bee_admin --all-targets --manifest-path "$ROOT/Cargo.toml" ||
-    die "生成物编译不过 = 脚本的 bug。修 scripts/scaffold-module.sh，别手改生成物。"
+    { rollback; die "生成物编译不过 = 脚本的 bug。修 scripts/scaffold-module.sh，别手改生成物。"; }
 echo "── 自检 2/2：pnpm -C admin/web exec tsc -b" >&2
 pnpm -C "$ROOT/admin/web" exec tsc -b ||
-    die "生成的前端编译不过 = 脚本的 bug。修 scripts/scaffold-module.sh，别手改生成物。"
+    { rollback; die "生成的前端编译不过 = 脚本的 bug。修 scripts/scaffold-module.sh，别手改生成物。"; }
+rm -rf "$BAKDIR"
 echo "── 自检通过：$MODULE 骨架已就位（上面 ①③ 两条粘完就能调接口）"
