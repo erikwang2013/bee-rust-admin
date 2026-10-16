@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  App, Button, Card, Divider, Form, Input, InputNumber, Select, Space, Switch, Typography,
+  App, Button, Card, Divider, Form, Input, InputNumber, Popconfirm, Select, Space, Switch, Typography,
 } from 'antd';
 import { MailOutlined, ReloadOutlined } from '@ant-design/icons';
 import { notifyApi, type NotifyForm } from '../../../api/notify';
@@ -29,6 +29,7 @@ export default function NotifyPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -53,6 +54,21 @@ export default function NotifyPage() {
       await load();
     } finally {
       setSaving(false);
+    }
+  };
+
+  /** 清空口令：显式提交空串（后端的清空语义）。拼体用的是**已保存**的配置，
+   * 不拿表单草稿 —— 这个按钮只该清口令，不该顺手把没保存的改动一起存了。 */
+  const clearPassword = async () => {
+    if (!cfg) return;
+    setClearing(true);
+    try {
+      const body: NotifyForm = { ...cfg, smtp_password: '' };
+      await notifyApi.save(body);
+      message.success(t('common.saved'));
+      await load();
+    } finally {
+      setClearing(false);
     }
   };
 
@@ -117,6 +133,9 @@ export default function NotifyPage() {
           label={t('notify.smtp_host')}
           dependencies={['smtp_enabled']}
           rules={[
+            // 255：与后端 notify::validate 同一口径（关着也拦 —— 超长值整条进审计摘要，
+            // 写不进去就丢一条审计）
+            { max: 255, message: t('validate.max', { max: 255 }) },
             ({ getFieldValue }) => ({
               validator: (_, v: string) =>
                 !getFieldValue('smtp_enabled') || v
@@ -138,7 +157,11 @@ export default function NotifyPage() {
             />
           </Form.Item>
         </Space>
-        <Form.Item name="smtp_user" label={t('notify.smtp_user')}>
+        <Form.Item
+          name="smtp_user"
+          label={t('notify.smtp_user')}
+          rules={[{ max: 255, message: t('validate.max', { max: 255 }) }]}
+        >
           <Input placeholder={t('notify.smtp_user_placeholder')} allowClear autoComplete="off" />
         </Form.Item>
         <Form.Item
@@ -148,7 +171,29 @@ export default function NotifyPage() {
         >
           <Input.Password autoComplete="new-password" />
         </Form.Item>
-        <Form.Item name="smtp_from" label={t('notify.smtp_from')} rules={[{ type: 'email', message: t('validate.email') }]}>
+        {/* 口令框留空 = 不改（字段语义见文件头），所以「清空」得是**单独一个动作**：
+            显式提交空串 + 二次确认，别让人靠猜怎么把口令删掉 */}
+        <Auth code="system:notify:edit">
+          {cfg?.smtp_password_set ? (
+            <Form.Item>
+              <Popconfirm
+                title={t('notify.clear_password_confirm')}
+                okButtonProps={{ danger: true }}
+                onConfirm={() => void clearPassword()}
+              >
+                <Button danger size="small" loading={clearing}>{t('notify.clear_password')}</Button>
+              </Popconfirm>
+            </Form.Item>
+          ) : null}
+        </Auth>
+        <Form.Item
+          name="smtp_from"
+          label={t('notify.smtp_from')}
+          rules={[
+            { max: 255, message: t('validate.max', { max: 255 }) },
+            { type: 'email', message: t('validate.email') },
+          ]}
+        >
           <Input placeholder={t('notify.smtp_from_placeholder')} allowClear />
         </Form.Item>
 

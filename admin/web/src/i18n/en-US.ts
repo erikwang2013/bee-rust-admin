@@ -40,6 +40,7 @@ export const enUS: Record<I18nKey, string> = {
   'validate.required': '{field} is required',
   'validate.required_max': '{field} is required (max {max} characters)',
   'validate.min_len': '{field} must be at least {n} characters',
+  'validate.max': 'At most {max} characters',
   // same rule as the backend validate_password
   'validate.weak_password': 'Password must be at least 8 characters and contain at least two of: letters, digits, symbols',
   'validate.email': 'Invalid email address',
@@ -238,7 +239,7 @@ export const enUS: Record<I18nKey, string> = {
   'attach.entity_notice': 'Notice images',
   'attach.public': 'Public',
   'attach.delete_confirm': 'Delete "{name}"?',
-  'attach.hint': 'Up to 10 MB per file. Allowed: images (png/jpg/gif/webp/bmp), pdf, txt, csv, docx/xlsx/pptx, zip. Uploads beyond your quota are rejected. Uploading the same file twice within the same month keeps one copy on disk (named by content MD5, in a per-month subdirectory); every upload gets its own row, and the file is deleted only with the last row.',
+  'attach.hint': 'Up to 10 MB per file. Allowed: images (png/jpg/gif/webp/bmp), pdf, txt, csv, docx/xlsx/pptx, zip. Uploads beyond your quota are rejected. Uploading the same file twice within the same month keeps one copy on disk (named by content MD5, in a per-month subdirectory); every upload gets its own row, and deleting a row does not delete the file — unreferenced files are reclaimed by the attachment orphan cleanup after a protection window.',
 
   // ---- Admins ----
   'admin.super': 'Super admin',
@@ -372,6 +373,8 @@ export const enUS: Record<I18nKey, string> = {
   'notify.smtp_password': 'Password',
   'notify.password_set_hint': 'Already set; leave empty to keep it, type to replace',
   'notify.password_unset_hint': 'No password set yet',
+  'notify.clear_password': 'Clear password',
+  'notify.clear_password_confirm': 'Clear the saved SMTP password? You will have to set it again before mail can be sent.',
   'notify.smtp_from': 'From address',
   'notify.smtp_from_placeholder': 'Empty = use the username',
   'notify.test': 'Send a test email to me',
@@ -426,7 +429,8 @@ export const enUS: Record<I18nKey, string> = {
   'export.status.failed': 'Failed',
   'export.created': 'Queued — it usually finishes within a minute and the list refreshes itself',
   'export.delete_confirm': 'Delete the task and its exported file?',
-  'export.hint': 'Exports run as a background job: usually done within a minute, and the list refreshes by itself. The export center always exports the full data set — for filtered exports use the Export button on the module list page. Files are cleaned up (record and file together) once they expire, so download them in time.',
+  'export.hint': 'Exports run as a background job: usually done within a minute, and the list refreshes by itself. The filters above depend on the kind (audit log also filters by module); leave them empty for the full data set. Files are cleaned up (record and file together) once they expire, so download them in time.',
+  'export.no_kinds': 'No exportable types: each kind needs the view permission of its module (audit log / login log)',
 
   // ---- Error / crash pages ----
   'error.forbidden_alt': 'Ah Shou: stinger raised, this way is blocked',
@@ -450,6 +454,7 @@ export const enUS: Record<I18nKey, string> = {
   'err.auth.bad_totp': 'Incorrect verification code',
   'err.auth.totp_bound': 'Two-factor is already enabled; disable it before binding again',
   'err.auth.totp_not_bound': 'Two-factor is not enabled',
+  'err.auth.totp_replayed': 'This verification code has already been used — wait for the next one (a code signs you in only once)',
   'err.auth.unauthorized': 'Your session has expired, please sign in again',
   'err.auth.forbidden': 'Permission denied',
   'err.avatar.too_large': 'Avatar must not exceed 512 KB',

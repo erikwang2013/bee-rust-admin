@@ -47,6 +47,7 @@ export const zhCN = {
   'validate.required': '请输入{field}',
   'validate.required_max': '请输入{field}（最多 {max} 字）',
   'validate.min_len': '{field}至少 {n} 位',
+  'validate.max': '最多 {max} 字',
   // 与后端 validate_password 同口径（正则写在 password.ts，规则只有一份）
   'validate.weak_password': '密码至少 8 位，且需包含字母、数字、符号中的至少两类',
   'validate.email': '邮箱格式不正确',
@@ -245,7 +246,7 @@ export const zhCN = {
   'attach.entity_notice': '公告配图',
   'attach.public': '公开',
   'attach.delete_confirm': '删除「{name}」？',
-  'attach.hint': '单文件上限 10 MB，白名单：图片（png/jpg/gif/webp/bmp）、pdf、txt、csv、docx/xlsx/pptx、zip；超配额会拒绝。同一个文件在同一月内重复上传，磁盘上只留一份（文件名取内容 MD5、子目录按月），每次上传各一行记录，删到最后一行时才删文件。',
+  'attach.hint': '单文件上限 10 MB，白名单：图片（png/jpg/gif/webp/bmp）、pdf、txt、csv、docx/xlsx/pptx、zip；超配额会拒绝。同一个文件在同一月内重复上传，磁盘上只留一份（文件名取内容 MD5、子目录按月），每次上传各一行记录；删行不删文件，没人引用的成品由「附件孤儿清理」按保护期收走。',
 
   // ---- 管理员 ----
   'admin.super': '超级管理员',
@@ -379,6 +380,8 @@ export const zhCN = {
   'notify.smtp_password': '口令',
   'notify.password_set_hint': '已设置；留空 = 不改，填了就是换新',
   'notify.password_unset_hint': '还没设置口令',
+  'notify.clear_password': '清空口令',
+  'notify.clear_password_confirm': '清空已保存的 SMTP 口令？清空后要重新设置口令才能发信。',
   'notify.smtp_from': '发件人',
   'notify.smtp_from_placeholder': '空 = 用用户名',
   'notify.test': '发测试邮件到我邮箱',
@@ -433,7 +436,8 @@ export const zhCN = {
   'export.status.failed': '失败',
   'export.created': '已发起，任务跑完（通常一分钟内）列表里会自动刷新',
   'export.delete_confirm': '删除任务与导出文件？',
-  'export.hint': '导出走后台任务：发起后通常一分钟内跑完，列表自动刷新。导出中心导的是全量数据——要按条件导，去对应列表页点「导出」当场下载。成品过了保留期会被自动清理（记录与文件一起），请及时下载。',
+  'export.hint': '导出走后台任务：发起后通常一分钟内跑完，列表自动刷新。筛选条件按类型给（操作日志可筛模块），不填就是全量。成品过了保留期会被自动清理（记录与文件一起），请及时下载。',
+  'export.no_kinds': '没有可导出的类型：每个类型都要它所在模块的查看权限（操作日志 / 登录记录）',
 
   // ---- 错误页 / 崩溃页 ----
   'error.forbidden_alt': '阿守：尾针竖起，此路不通',
@@ -457,6 +461,7 @@ export const zhCN = {
   'err.auth.bad_totp': '动态验证码错误',
   'err.auth.totp_bound': '已绑定动态验证码，先解绑再绑定',
   'err.auth.totp_not_bound': '未绑定动态验证码',
+  'err.auth.totp_replayed': '动态验证码已使用，请等下一枚（同一枚码只能登录一次）',
   'err.auth.unauthorized': '登录已失效，请重新登录',
   'err.auth.forbidden': '没有权限',
   'err.avatar.too_large': '头像不能超过 512 KB',

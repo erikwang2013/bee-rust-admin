@@ -189,6 +189,18 @@ fn tree_files() -> Vec<std::path::PathBuf> {
     out
 }
 
+/// 把文件的 mtime 拨回 `mins` 分钟前（S2 的保护期只看 mtime：新的不碰、老的才收，
+/// 所以「最终会被收走」这半条得先把文件拨老才测得出来）。
+fn backdate(path: &std::path::Path, mins: u64) {
+    let t = std::time::SystemTime::now() - std::time::Duration::from_secs(mins * 60);
+    std::fs::File::options()
+        .write(true)
+        .open(path)
+        .unwrap_or_else(|e| panic!("拨 mtime 打不开 {}: {e}", path.display()))
+        .set_modified(t)
+        .unwrap_or_else(|e| panic!("拨 mtime 失败 {}: {e}", path.display()));
+}
+
 /// 菜单树里某个权限码对应的 id（造受限角色用）。
 fn find_perm(tree: &Value, perm: &str) -> String {
     // `tree` 是顶层节点**数组**：从这里展开，别把整个数组当一个节点找（它没有 perm 字段）
@@ -569,7 +581,10 @@ async fn v19_attachment_center() {
 
     let (st, v) = call(&c, Method::DELETE, api(&format!("/attachments/{copy_id}")), Some(&admin), None).await;
     assert_eq!(st, 200, "删最后一份引用: {v}");
-    assert!(!attach_file(&saved).exists(), "没人引用后文件才删（引用计数）");
+    // 批次 E S2：删行**不再顺手删文件**。接口里删文件与「数还有没有别的行引用」分开跑，
+    // 两条之间有人秒传重传同一份内容（同 md5 → 同一个成品路径）就会把新行指着的文件删掉。
+    // 文件改由孤儿清理收（第 9 节的断言），代价是磁盘要到下一轮清理才回收。
+    assert!(attach_file(&saved).exists(), "S2：删行不删文件（竞态窗口），文件交给孤儿清理");
 
     // ── 7. 类型 / 大小 / 配额闸门 ──────────────────────────────────
     for bad in ["evil.php", "shell.exe", "page.svg"] {
@@ -671,7 +686,11 @@ async fn v19_attachment_center() {
     }
 
     // ── 9. 孤儿清理（attach_orphan_clean）：没人引用的成品要清掉，活着的不能误删 ──
-    let live = upload_attach(&c, &base, &admin, "clean.png", &png, &[]).await;
+    // 内容多一个字节：附件是按 md5 内容寻址的，直接用 `png` 会落在第 6 节那个已经
+    // 没人引用的成品路径上（那份文件本轮要被收走，两边的断言就打架了）。
+    let mut live_bytes = png_bytes();
+    live_bytes.extend_from_slice(b"live");
+    let live = upload_attach(&c, &base, &admin, "clean.png", &live_bytes, &[]).await;
     let live_saved = live["saved_path"].as_str().expect("成品 saved_path").to_string();
     assert!(attach_file(&live_saved).exists(), "刚传的附件在盘上: {live}");
     let dir = std::path::Path::new("target/test-uploads/attach/202610");
@@ -699,9 +718,30 @@ async fn v19_attachment_center() {
     assert_eq!(st, 200, "手动触发清理: {v}");
     let (status, msg, _) = common::wait_job_log(&pool, "attach_orphan_clean", mark).await;
     assert_eq!(status, 1, "清理任务执行成功: {msg}");
+    // 第一轮：这三个都是**刚写下**的（S2 保护期内）—— 清理任务必须一个都不碰。
+    // 保护期挡的是「上传末片落盘 → INSERT 之间」那条缝：撞进去就是删活文件。
+    assert!(orphan.exists(), "保护期内的新孤儿这轮不碰（下一轮才收）: {msg}");
+    assert!(sneaky.exists(), "同上（被配额拒掉的成品也只是晚一轮收）: {msg}");
+    assert!(attach_file(&saved).exists(), "第 6 节删掉的那份同理，晚一轮: {msg}");
+    assert!(part.exists(), "非白名单扩展名（插件临时文件）不碰: {msg}");
+    assert!(attach_file(&live_saved).exists(), "库里有引用的文件绝不能删（误删=丢数据）: {msg}");
+
+    // 第二轮：把它们拨老到保护期外（6 分钟 > 5 分钟），该收的这次都要收走
+    backdate(&orphan, 6);
+    backdate(&sneaky, 6);
+    backdate(&attach_file(&saved), 6);
+    let mark = common::last_log_id(&pool, "attach_orphan_clean").await;
+    let (st, v) = call(&c, Method::POST, api(&format!("/jobs/{job_id}/run")), Some(&admin), None).await;
+    assert_eq!(st, 200, "手动触发清理（第二轮）: {v}");
+    let (status, msg, _) = common::wait_job_log(&pool, "attach_orphan_clean", mark).await;
+    assert_eq!(status, 1, "清理任务执行成功: {msg}");
     assert!(!orphan.exists(), "没人引用的成品被清掉: {msg}");
     assert!(!sneaky.exists(), "被配额拒掉的成品同样收走（I1 的兜底路径真的接得住）: {msg}");
-    assert!(part.exists(), "非白名单扩展名（插件临时文件）不碰: {msg}");
+    assert!(
+        !attach_file(&saved).exists(),
+        "S2 的落点：接口删行之后，文件最终被孤儿任务收走: {msg}"
+    );
+    assert!(part.exists(), "非白名单扩展名（插件临时文件）还是不碰: {msg}");
     assert!(attach_file(&live_saved).exists(), "库里有引用的文件绝不能删（误删=丢数据）: {msg}");
 
     let _ = std::fs::remove_dir_all("target/test-uploads/attach");

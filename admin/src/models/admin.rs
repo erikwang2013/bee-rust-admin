@@ -41,6 +41,11 @@ pub struct Admin {
     pub totp_secret: String,
     /// 0 未启用 / 1 已启用。密钥有值但这里是 0 = 生成了还没验证过（登录不要码）
     pub totp_enabled: i8,
+    /// 登录侧的一次性账本（批次 E S1）：最后一次**登录**消费过的步号，NULL = 没用过。
+    /// 只有 `步号 > totp_last_step` 的码能过 —— 同一个 30 秒窗里的第二台设备得等新码。
+    /// `skip_serializing`：内部账本，任何接口都不该带出去。
+    #[serde(skip_serializing, default)]
+    pub totp_last_step: Option<i64>,
     pub token_version: i32,
     #[serde(serialize_with = "crate::util::ser_opt_dt")]
     pub last_login_at: Option<NaiveDateTime>,

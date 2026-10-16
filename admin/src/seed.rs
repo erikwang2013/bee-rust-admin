@@ -288,6 +288,10 @@ const CONSTRAINTS: &[(&str, &str, &str)] = &[
     ("attachment", "idx_attachment_admin_id", "CREATE INDEX idx_attachment_admin_id ON attachment (admin_id)"),
     ("attachment", "idx_attachment_stored_path", "CREATE INDEX idx_attachment_stored_path ON attachment (stored_path)"),
     ("attachment", "idx_attachment_entity", "CREATE INDEX idx_attachment_entity ON attachment (entity_type, entity_id)"),
+    // 导出中心（批次 E T4）：`export_run` 每分钟按 status 扫待处理/卡住的行，
+    // `export_clean` 每天按 expire_at 扫过期的行 —— 两条各有索引，量大了才不会是全表扫
+    ("export_task", "idx_export_task_status", "CREATE INDEX idx_export_task_status ON export_task (status)"),
+    ("export_task", "idx_export_task_expire_at", "CREATE INDEX idx_export_task_expire_at ON export_task (expire_at)"),
 ];
 
 /// 幂等建索引：MySQL 没有 `CREATE INDEX IF NOT EXISTS`，先查 information_schema。
@@ -675,6 +679,7 @@ pub async fn seed(
         is_super: 1,
         totp_secret: String::new(),
         totp_enabled: 0,
+        totp_last_step: None,
         token_version: 0,
         last_login_at: None,
         last_login_ip: String::new(),

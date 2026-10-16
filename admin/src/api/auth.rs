@@ -489,6 +489,8 @@ pub async fn login(
 
     // 动态验证码闸门（项 7）：绑定了才要。放在密码之后 —— 码是第二因子，
     // 先要码等于让不知道密码的人也能把这条路径走一遍。
+    // S1：一枚码只换一次登录（同一 30 秒窗里的第二台设备得等下一枚）。
+    let mut used_step: Option<i64> = None;
     if admin.totp_enabled == 1 {
         let code = body.code.as_deref().unwrap_or("");
         if code.trim().is_empty() {
@@ -497,10 +499,23 @@ pub async fn login(
             write_login_log(&state, admin.id, &admin.username, &headers, 0, "需要动态验证码").await;
             return Err(ApiError::BadRequest(crate::error::TOTP_REQUIRED.into()));
         }
-        if !crate::api::totp::verify_code(&state, &admin, code)? {
-            write_login_log(&state, admin.id, &admin.username, &headers, 0, "动态验证码错误").await;
-            record_login_failure(&state, username, &ip);
-            return Err(ApiError::BadRequest(crate::error::BAD_TOTP.into()));
+        match crate::api::totp::verify_code_step(&state, &admin, code)? {
+            None => {
+                write_login_log(&state, admin.id, &admin.username, &headers, 0, "动态验证码错误").await;
+                record_login_failure(&state, username, &ip);
+                return Err(ApiError::BadRequest(crate::error::BAD_TOTP.into()));
+            }
+            Some(step) => {
+                // 记账与放行是同一条 UPDATE（`步号 > last_step` 才成立），并发登录只有一个
+                // 赢家。放在这里而不是整行 update 之后：被拒的重放不许碰 last_login_at，
+                // 也不许落设备行/发 token —— 输了就直接在这条路径上返回。
+                if !crate::api::totp::consume_step(&state, admin.id, step).await? {
+                    write_login_log(&state, admin.id, &admin.username, &headers, 0, "动态验证码已使用").await;
+                    record_login_failure(&state, username, &ip);
+                    return Err(ApiError::BadRequest(crate::error::TOTP_REPLAYED.into()));
+                }
+                used_step = Some(step);
+            }
         }
     }
 
@@ -518,6 +533,14 @@ pub async fn login(
     updated.last_login_at = Some(now());
     updated.last_login_ip = client_ip(&headers);
     updated.updated_at = now();
+    // 上面是整行 update（会把内存里的全部字段写回去）：账本是刚 CAS 写的，这里同步
+    // 一份，否则这行会拿登录开始时的旧值（NULL）把账本盖掉，重放就又通了。
+    // 已知窄口：两次登录**并发**且用了不同步号时，晚到的整行 update 可能把账本压低
+    // 一步（都需要先拿到有效码，且互相就差这一步）；真要堵死得让 update 带 CAS 条件，
+    // shortcut: 接受这个窄口，等出现多设备同窗并发登录的真实场景再上 CAS 行锁。
+    if let Some(step) = used_step {
+        updated.totp_last_step = Some(step);
+    }
     updated.update(&state.db).await.map_err(ApiError::from)?;
 
     // 成功即清掉该账号的失败计数（修复①：4 次失败 + 1 次成功 + 1 次失败不该锁死）。

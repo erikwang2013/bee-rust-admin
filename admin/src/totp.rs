@@ -32,18 +32,24 @@ pub fn hotp(secret: &[u8], counter: u64, digits: u32) -> String {
     format!("{:0width$}", bin % 10u32.pow(digits), width = digits as usize)
 }
 
-/// 校验：与当前步、前后各 [`WINDOW`] 步比。这里不做恒定时间比较 —— 验证码是用户
-/// 自己输进来的公开材料，比对耗时差不构成侧信道（泄漏的只是「这一步有没有这个码」）。
-pub fn verify(secret: &[u8], code: &str, unix: u64, window: i64) -> bool {
+/// 校验：与当前步、前后各 [`WINDOW`] 步比，命中就回传**步号**（批次 E S1：调用方拿它
+/// 记「这枚码用过了」；只关心过不过的用 `.is_some()`）。这里不做恒定时间比较 —— 验证码
+/// 是用户自己输进来的公开材料，比对耗时差不构成侧信道（泄漏的只是「这一步有没有这个码」）。
+/// 从高到低试，多步同时命中（6 位码撞车，概率 1e-6 量级）时取最大的 —— 记的步号宁可
+/// 超前不落后，落后会让已经作废的码重新可用。
+pub fn verify_step(secret: &[u8], code: &str, unix: u64, window: i64) -> Option<i64> {
     let code = code.trim();
     if code.is_empty() || secret.is_empty() {
-        return false;
+        return None;
     }
     let counter = (unix / STEP) as i64;
-    (-window..=window).any(|i| {
-        let c = counter + i;
-        c >= 0 && hotp(secret, c as u64, DIGITS) == code
-    })
+    (-window..=window)
+        .rev()
+        .filter_map(|i| {
+            let c = counter + i;
+            (c >= 0).then_some(c)
+        })
+        .find(|&c| hotp(secret, c as u64, DIGITS) == code)
 }
 
 /// 随机密钥（20 字节）。与口令哈希同源：rand_core 的 OsRng。
@@ -185,13 +191,33 @@ mod tests {
         let secret = b"12345678901234567890";
         let t = 1_111_111_111u64;
         let now = hotp(secret, t / STEP, DIGITS);
-        assert!(verify(secret, &now, t, 1), "当前步");
-        assert!(verify(secret, &now, t + STEP, 1), "晚一步（时钟慢）");
-        assert!(verify(secret, &now, t - STEP, 1), "早一步（时钟快）");
-        assert!(!verify(secret, &now, t + 2 * STEP, 1), "两步之外不行");
-        assert!(!verify(secret, "000000", t, 1) || now == "000000");
-        assert!(!verify(secret, "", t, 1), "空码直接拒（别把空串当合法码）");
-        assert!(!verify(b"", "123456", t, 1), "空密钥直接拒（没绑就不该能过）");
+        let ok = |code: &str, at: u64| verify_step(secret, code, at, 1).is_some();
+        assert!(ok(&now, t), "当前步");
+        assert!(ok(&now, t + STEP), "晚一步（时钟慢）");
+        assert!(ok(&now, t - STEP), "早一步（时钟快）");
+        assert!(!ok(&now, t + 2 * STEP), "两步之外不行");
+        assert!(!ok("000000", t) || now == "000000");
+        assert!(!ok("", t), "空码直接拒（别把空串当合法码）");
+        assert!(
+            verify_step(b"", "123456", t, 1).is_none(),
+            "空密钥直接拒（没绑就不该能过）"
+        );
+    }
+
+    /// S1：校验要回传**命中的步号**（登录侧的一次性账本就认这个值）。
+    #[test]
+    fn verify_step_reports_the_matched_counter() {
+        let secret = b"12345678901234567890";
+        let t = 1_111_111_111u64;
+        let cur = t / STEP;
+        for off in [-1i64, 0, 1] {
+            let c = (cur as i64 + off) as u64;
+            let code = hotp(secret, c, DIGITS);
+            assert_eq!(verify_step(secret, &code, t, 1), Some(c as i64), "偏移 {off} 的码");
+        }
+        assert_eq!(verify_step(secret, "000000", t, 1).filter(|&c| c == cur as i64), None);
+        assert_eq!(verify_step(secret, "", t, 1), None, "空码");
+        assert_eq!(verify_step(b"", "123456", t, 1), None, "空密钥");
     }
 
     #[test]

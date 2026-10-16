@@ -339,7 +339,59 @@ pub async fn clean(state: AppState) -> Result<String, String> {
             .map_err(|e| format!("删过期导出 {} 失败: {e}", task.id))?;
         rows += 1;
     }
-    Ok(format!("清理过期导出 {rows} 个（删文件 {files} 个）"))
+
+    // 半份文件的收尾（批次 E T5）：`{id}.csv.part` 的两条正常归宿（改名成 `.csv`、
+    // 或 `PartFile` 看守在 drop 时清掉）都兜不住「进程被 SIGKILL」和「运行中的行被
+    // 管理员删掉」——那样的半份从此没人认领。按**行的现状**决定收不收：
+    // 行没了 / 行已终态 / 行卡在执行中且过期又超时（与 `export_run` 的认领超时同一口径）
+    // 才收；待处理与正在跑的一律不碰 —— 碰了就是把手上的活拆了。
+    let stale = now() - chrono::Duration::seconds(STALE_CLAIM_SECS);
+    let mut parts = 0u32;
+    let export_dir = dir(&state);
+    for (id, path) in part_files(&export_dir).map_err(|e| format!("读导出目录失败: {e}"))? {
+        let row = ExportTask::query()
+            .filter_eq("id", id)
+            .map_err(|e| e.to_string())?
+            .one(&state.db)
+            .await
+            .map_err(|e| format!("查导出任务 {id} 失败: {e}"))?;
+        let collectable = match &row {
+            None => true, // 行已经没了（运行中被删）
+            Some(t) if t.status == 2 || t.status == 3 => true, // 终态还留着半份
+            // 执行中：过期又超时 = 那条「进程崩过」的行
+            Some(t) if t.status == 1 => t.expire_at < now() && t.started_at.map_or(true, |s| s < stale),
+            Some(_) => false, // 0 待处理：马上要跑，它自己会 truncate 重写这份文件
+        };
+        if !collectable {
+            continue;
+        }
+        match std::fs::remove_file(&path) {
+            Ok(_) => parts += 1,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => tracing::warn!("删残留半份文件 {} 失败: {e}", path.display()),
+        }
+    }
+    Ok(format!("清理过期导出 {rows} 个（删文件 {files} 个），收走残留 .part {parts} 个"))
+}
+
+/// 扫出目录里所有 `{id}.csv.part`。名字对不上的一律不看 —— 目录里还有运维手放的、
+/// 别的进程写的文件，名字约定是唯一的认领凭据。目录不存在 = 从没导出过，空手而归
+/// （不是错误：清理任务是卫生工作，不该因为「还没有导出过」整轮失败）。
+fn part_files(dir: &Path) -> std::io::Result<Vec<(i64, PathBuf)>> {
+    let mut out = Vec::new();
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(out),
+        Err(e) => return Err(e),
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
+        let Some(stem) = name.strip_suffix(".csv.part") else { continue };
+        let Ok(id) = stem.parse::<i64>() else { continue };
+        out.push((id, path));
+    }
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -356,6 +408,22 @@ mod tests {
         let n = codes.len();
         codes.dedup();
         assert_eq!(codes.len(), n, "注册表里的 code 不能重复");
+    }
+
+    /// 名字约定：`{id}.csv.part` 才是回收对象，别的名字（运维手放的、别的进程写的、
+    /// id 不是数字的）一律不看；目录不存在 = 空手而归而不是报错。
+    #[test]
+    fn part_files_only_matches_the_naming_convention() {
+        let dir = std::env::temp_dir().join(format!("bee-parts-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in ["7.csv.part", "abc.csv.part", "readme.txt", "9.csv"] {
+            std::fs::write(dir.join(name), b"x").unwrap();
+        }
+        let mut got: Vec<i64> = part_files(&dir).unwrap().into_iter().map(|(id, _)| id).collect();
+        got.sort_unstable();
+        assert_eq!(got, vec![7], "只认 {{id}}.csv.part");
+        assert!(part_files(&dir.join("nope")).unwrap().is_empty(), "目录不存在 = 空手而归");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// 认领谓词必须**排他**（I1）：老写法 `status IN (0, 1)` 在第一次把行推成 1 之后

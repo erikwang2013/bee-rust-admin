@@ -62,6 +62,16 @@ fn code(secret: &str) -> String {
     code_at(secret, now_unix())
 }
 
+/// S1（一枚码只能换一次登录）之后：本测试要拿同一个 secret 的码连登好几次，图的是
+/// 绑定/设备/踢人这些行为，不是重放（重放有 api_totp_replay_test 专门钉住），所以每回
+/// 要再登一次之前把登录账本清掉，免得被当重放拒了。
+async fn forget_step(pool: &sqlx::MySqlPool) {
+    sqlx::query("UPDATE admin SET totp_last_step = NULL WHERE username = 'admin'")
+        .execute(pool)
+        .await
+        .unwrap();
+}
+
 async fn call(
     c: &reqwest::Client,
     method: Method,
@@ -264,6 +274,7 @@ async fn totp_bind_login_and_kick_devices() {
         assert_eq!(st, 400, "第 {i} 次缺码应 400 而不是 429（缺码不计失败）: {v}");
         assert_eq!(v["err"], "auth.totp_required", "第 {i} 次缺码: {v}");
     }
+    forget_step(&pool).await;
     let (st, v) = login(&b, &base, "admin", "admin123", Some(&code(&secret))).await;
     assert_eq!(st, 200, "6 次缺码之后对码仍能登录（缺码没把账号刷进封禁）: {v}");
 
@@ -330,6 +341,7 @@ async fn totp_bind_login_and_kick_devices() {
     assert_eq!(list.len(), 1, "被踢的不再出现在列表: {list:?}");
 
     // ── 9. 踢出 ≠ 封禁：同一 UA 再登录（带对码）能拿到新设备行 ──
+    forget_step(&pool).await;
     let (st, v) = login(&a, &base, "admin", "admin123", Some(&code(&secret))).await;
     assert_eq!(st, 200, "被踢的设备重新登录: {v}");
     let token_a2 = v["data"]["token"].as_str().unwrap().to_string();

@@ -325,7 +325,7 @@ async fn attach_orphan_clean(state: AppState) -> Result<String, String> {
         }
     }
 
-    let (mut seen, mut removed) = (0u64, 0u64);
+    let (mut seen, mut removed, mut fresh) = (0u64, 0u64, 0u64);
     for path in files {
         seen += 1;
         if !is_attach_file(&path) {
@@ -333,6 +333,13 @@ async fn attach_orphan_clean(state: AppState) -> Result<String, String> {
         }
         let Ok(rel) = path.strip_prefix(&dir) else { continue };
         if kept.contains(rel) {
+            continue;
+        }
+        // 保护期（批次 E S2）：刚写下的文件先不碰 —— 上传是「先落盘、后 INSERT」，
+        // 清理撞进这个窗口就会删掉一份马上要落库的成品（也顺带让「删行不删文件」的
+        // 延迟回收有个确定的下限：文件至少活到下一轮清理）。
+        if too_fresh(&path) {
+            fresh += 1;
             continue;
         }
         match std::fs::remove_file(&path) {
@@ -343,7 +350,7 @@ async fn attach_orphan_clean(state: AppState) -> Result<String, String> {
             Err(e) => tracing::warn!("删孤儿附件 {} 失败: {e}", path.display()),
         }
     }
-    Ok(format!("附件 {seen} 个，删除孤儿 {removed} 个"))
+    Ok(format!("附件 {seen} 个，删除孤儿 {removed} 个，保护期内跳过 {fresh} 个"))
 }
 
 /// 递归收集目录下的所有文件（用显式栈：用户手放的深层目录不该让清理任务爆栈）。
@@ -403,6 +410,24 @@ fn is_avatar_file(path: &std::path::Path) -> bool {
 /// 附件同理：只有 `ATTACH_EXTS` 里的扩展名才可能是上传成品。
 fn is_attach_file(path: &std::path::Path) -> bool {
     in_ext_whitelist(path, &crate::api::attach::ATTACH_EXTS)
+}
+
+/// 孤儿文件的保护期（批次 E S2）。上传是「先落盘、后 INSERT」，两者之间有毫秒级窗口；
+/// 附件删除也改成「只删行、文件交给清理」（延迟回收）—— 有这条下限，刚写下的文件不会被
+/// 任何一轮清理误收。5 分钟：比任何一次上传耗时都长得多，又短到磁盘不会被垃圾拖住。
+const ATTACH_MIN_AGE_SECS: u64 = 300;
+
+/// 文件「太新」= 保护期内，清理不碰。读不到 mtime（个别文件系统 / 文件刚被并发删掉）
+/// 一律按太新处理：宁可晚一轮收（最多多留一天），不可删错。
+fn too_fresh(path: &std::path::Path) -> bool {
+    match std::fs::metadata(path).and_then(|m| m.modified()) {
+        Ok(mtime) => mtime
+            .elapsed()
+            .map(|age| age.as_secs() < ATTACH_MIN_AGE_SECS)
+            // mtime 在「未来」（时钟回拨/漂移）：同样当太新，等下一轮
+            .unwrap_or(true),
+        Err(_) => true,
+    }
 }
 
 fn in_ext_whitelist(path: &std::path::Path, exts: &[&str]) -> bool {
@@ -475,6 +500,34 @@ mod tests {
         assert!(is_running("export_run"), "释放一个不影响另一个");
         drop(other);
         assert!(!is_running("export_run"));
+    }
+
+    /// S2 保护期：新文件（含读不到 mtime 的）不碰，过了保护期的才收 —— 这条测试钉的是
+    /// 「上传落盘 → INSERT」窗口与「删行后延迟回收」两处都靠它兜底。
+    #[test]
+    fn orphan_guard_only_collects_settled_files() {
+        let dir = std::env::temp_dir().join(format!("bee-guard-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let fresh = dir.join("fresh.png");
+        std::fs::write(&fresh, b"x").unwrap();
+        assert!(too_fresh(&fresh), "刚写下的文件在保护期内");
+
+        let old = dir.join("old.png");
+        std::fs::write(&old, b"x").unwrap();
+        let aged = std::time::SystemTime::now()
+            - std::time::Duration::from_secs(ATTACH_MIN_AGE_SECS + 60);
+        std::fs::File::options()
+            .write(true)
+            .open(&old)
+            .unwrap()
+            .set_modified(aged)
+            .unwrap();
+        assert!(!too_fresh(&old), "过了保护期就是可收的孤儿");
+
+        assert!(too_fresh(&dir.join("gone.png")), "读不到 mtime 一律当新（不删）");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -458,6 +458,7 @@ pub async fn create(
         is_super: 0,
         totp_secret: String::new(),
         totp_enabled: 0,
+        totp_last_step: None,
         token_version: 0,
         last_login_at: None,
         last_login_ip: String::new(),

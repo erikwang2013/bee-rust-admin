@@ -7,24 +7,8 @@ import { downloadCsv } from '../../../api/download';
 import type { AuditLog } from '../../../api/types';
 import Auth from '../../../auth/Auth';
 import { changesText } from '../../../auditdiff';
-import { useI18n, type I18nKey } from '../../../i18n';
-
-/** 与后端 audit.rs 的 module_action 取值一一对应（未列出的路径归 other）。 */
-const MODULE_KEYS: Record<string, I18nKey> = {
-  admin: 'auditlog.module.admin',
-  role: 'auditlog.module.role',
-  menu: 'auditlog.module.menu',
-  dept: 'auditlog.module.dept',
-  dict: 'auditlog.module.dict',
-  config: 'auditlog.module.config',
-  import: 'auditlog.module.import',
-  export: 'auditlog.module.export',
-  loginlog: 'auditlog.module.loginlog',
-  auditlog: 'auditlog.module.auditlog',
-  attach: 'auditlog.module.attach',
-  auth: 'auditlog.module.auth',
-  other: 'auditlog.module.other',
-};
+import { useI18n } from '../../../i18n';
+import { AUDIT_MODULES as MODULE_KEYS } from './modules';
 
 export default function AuditLogPage() {
   const { message } = App.useApp();

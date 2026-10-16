@@ -6,9 +6,9 @@ export interface ExportQuery { page?: number; size?: number; kind?: string; stat
 
 export const exportApi = {
   list: (q: ExportQuery) => http.get<Page<ExportTask>>('/exports', q),
-  /** params 省略 = 全量：带条件的导出在各自列表页同步下就行（导出中心不做筛选表单） */
-  create: (kind: ExportKind) =>
-    http.post<{ id: string; kind: string; status: number }>('/exports', { kind }),
+  /** 筛选条件与同步导出的 query 同名字段（`{}` = 全量），后端直接复用各自的取数结构 */
+  create: (kind: ExportKind, params?: Record<string, unknown>) =>
+    http.post<{ id: string; kind: string; status: number }>('/exports', { kind, params }),
   remove: (id: string) => http.del<{ deleted: number }>(`/exports/${id}`),
   /** 成品走 blob（要带 Bearer）；文件名用 kind 当前缀，和类型对得上就行 */
   download: (row: ExportTask) =>

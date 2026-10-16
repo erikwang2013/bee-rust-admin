@@ -31,8 +31,29 @@ pub fn secret_of(state: &AppState, admin: &Admin) -> Result<String, ApiError> {
 
 /// 校验一枚验证码（登录、绑定、解绑三处共用）。密钥为空恒 false。
 pub fn verify_code(state: &AppState, admin: &Admin, code: &str) -> Result<bool, ApiError> {
+    Ok(verify_code_step(state, admin, code)?.is_some())
+}
+
+/// 同上，并把命中的步号带出来（S1：登录侧要拿它记账）。
+pub fn verify_code_step(state: &AppState, admin: &Admin, code: &str) -> Result<Option<i64>, ApiError> {
     let b32 = secret_of(state, admin)?;
-    Ok(totp::verify(&totp::base32_decode(&b32), code, now_unix(), totp::WINDOW))
+    Ok(totp::verify_step(&totp::base32_decode(&b32), code, now_unix(), totp::WINDOW))
+}
+
+/// 登录账本的一次性消费（S1）：`步号 > totp_last_step`（或账本为空）才放行，并在**同一条
+/// 语句**里把账本推到该步号 —— 并发登录只有一个赢家，输的那个拿到 `false`。
+/// 只有登录走这里：绑定/解绑是已登录会话里的动作，不消费登录账本（但解绑会清空它）。
+pub async fn consume_step(state: &AppState, admin_id: i64, step: i64) -> Result<bool, ApiError> {
+    let n = state
+        .db
+        .execute(
+            "UPDATE admin SET totp_last_step = ? \
+             WHERE id = ? AND (totp_last_step IS NULL OR totp_last_step < ?)",
+            &[bee_orm::Value::from(step), bee_orm::Value::from(admin_id), bee_orm::Value::from(step)],
+        )
+        .await
+        .map_err(ApiError::from)?;
+    Ok(n > 0)
 }
 
 #[apidoc::title("生成动态验证码密钥")]
@@ -118,6 +139,9 @@ pub async fn disable(
     let mut admin = auth.admin.clone();
     admin.totp_enabled = 0;
     admin.totp_secret = String::new();
+    // 一次性账本跟着密钥一起清（S1）：留着的话，重新绑定后旧步号的高水位还在，
+    // 会把新密钥早期的码误判成重放
+    admin.totp_last_step = None;
     admin.updated_at = now();
     admin.update(&state.db).await.map_err(ApiError::from)?;
     Ok(ok(Value::Null))

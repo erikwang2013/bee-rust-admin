@@ -91,6 +91,8 @@ pub const TOTP_REQUIRED: &str = "需要动态验证码";
 pub const BAD_TOTP: &str = "动态验证码错误";
 pub const TOTP_BOUND: &str = "已绑定动态验证码，先解绑再绑定";
 pub const TOTP_NOT_BOUND: &str = "未绑定动态验证码";
+/// 同一枚（或更早步的）动态验证码已经用过（S1 步内一次性）。
+pub const TOTP_REPLAYED: &str = "动态验证码已使用，请等下一枚";
 
 /// 安全扫描拦截（403）的文案。`[security] scan = high/critical` 时命中达到阈值，
 /// 由 [`crate::security_scan`] 返回这个 `msg`（`ERR_TABLE` 里挂着 `security.blocked`）。
@@ -115,6 +117,7 @@ const ERR_TABLE: &[(&str, &str)] = &[
     (BAD_TOTP, "auth.bad_totp"),
     (TOTP_BOUND, "auth.totp_bound"),
     (TOTP_NOT_BOUND, "auth.totp_not_bound"),
+    (TOTP_REPLAYED, "auth.totp_replayed"),
     // avatar
     ("头像不能超过 512 KB", "avatar.too_large"),
     // attach（项 5）：超限文案与构造点共用一份常量，改文案只改一处

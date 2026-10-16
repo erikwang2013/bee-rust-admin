@@ -640,7 +640,7 @@ async fn ensure_writable(state: &AppState, auth: &Auth, row: &Attachment) -> Res
 // ── 删除 ────────────────────────────────────────────────────
 
 #[apidoc::title("删除附件")]
-#[apidoc::desc("需要 `system:attach:remove` + 上传人在你的数据权限内（绑定公开公告也不放宽）。**引用计数**：同一份内容被别的附件行引用时只删行，文件留到最后一份删掉时才清理")]
+#[apidoc::desc("需要 `system:attach:remove` + 上传人在你的数据权限内（绑定公开公告也不放宽）。**只删记录行，文件不立即删**（S2 竞态硬化）：成品文件统一由内置任务「附件孤儿清理」在保护期（5 分钟）后收走，避免与「上传末片落盘 → 落库」的窗口打架")]
 #[apidoc::url("/api/v1/attachments/{id}")]
 #[apidoc::method("DELETE")]
 #[apidoc::tag("附件")]
@@ -660,24 +660,12 @@ pub async fn remove(
 
     crate::api::delete_by_ids(&state, "attachment", &[row.id]).await?;
 
-    // 引用计数：内容相同的附件共用同一个成品文件（同 md5 落同一个路径 + 秒传索引），
-    // 还有别的行指着它就只删行。本行已删，剩下匹配的都是别人。
-    let others: i64 = Attachment::query()
-        .filter_eq("stored_path", row.stored_path.clone())
-        .map_err(ApiError::from)?
-        .count(&state.db)
-        .await
-        .map_err(ApiError::from)?;
-    if others == 0 {
-        // 交给插件删：文件 + 秒传索引一起清（索引留在那儿，下次重传同一份内容会
-        // 「秒传命中」一个已经不存在的路径）。清索引单独再走一遍，理由同 avatar::finish
-        if !state.aether.delete_resource(&row.stored_path) {
-            tracing::debug!("删附件文件 {} 未成功（可能已被删或路径非法）", row.stored_path);
-        }
-        if !state.aether.delete_instant_path(&row.stored_path) {
-            tracing::warn!("清附件的秒传索引 {} 未成功（重传同一份内容可能命中死链）", row.stored_path);
-        }
-    }
+    // S2（批次 E）：这里**只删行，不删文件**。原先的「数一遍还有没有别的行引用、没人引用
+    // 就立刻删文件」有个窗口：删行与删文件之间，同一份内容正在被别的会话重传/引用
+    // （内容寻址：同 md5 落同一路径），或者插件刚写完文件还没 INSERT —— 立刻删就是把
+    // 正要用的文件删掉。文件改由「附件孤儿清理」统一收（保护期后、且确认无行引用）。
+    // 代价：删了附件不会马上还磁盘，最迟多留到下一轮清理（默认一天一次）；
+    // 秒传索引同理留到那时一起清 —— 这段窗口里文件还在，重传正常命中，不会成死链。
     Ok(ok(json!({ "deleted": 1 })))
 }
 
