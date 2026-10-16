@@ -331,7 +331,7 @@ mod tests {
         // SMTP 的三个字符串字段同口径（与 webhook 同类）：关着也不许存超长值。
         // 这三个字段此前一处都没校验过，没有「沿用现有限值」可循 —— 取 255：
         // 主机名与邮箱地址的 RFC 上限都在这个量级以内。
-        for (label, mut c) in [
+        for (label, c) in [
             ("smtp_host", {
                 let mut c = cfg();
                 c.smtp_host = "h".repeat(300);
