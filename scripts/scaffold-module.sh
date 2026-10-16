@@ -5,7 +5,8 @@
 #   scripts/scaffold-module.sh message system:message name:string:64 status:bool sort:int remark:text
 #
 # 字段写法 `<名>:<类型>[:<长度>]`，类型：string（VARCHAR，默认 128）/ text（TEXT）/
-# int（i32）/ i64 / bool（i8，1 是 / 0 否）。**第一个 string 字段被当成名称字段**：
+# int（i32）/ i64 / bool（i8，1 是 / 0 否）/ datetime（DATETIME，秒精度；接口收发都是
+# "YYYY-MM-DD HH:MM:SS" 字符串，见 docs/scaffold.md）。**第一个 string 字段被当成名称字段**：
 # 列表的模糊查询、新建的必填与超长校验都只挂在它身上。
 #
 # 生成物（骨架，不是成品）：模型 / 接口（4 个 CRUD 接口 + apidoc 注解）/ 单元测试 /
@@ -14,8 +15,9 @@
 # 三条硬规则：
 # 1. 生成物**必须自己先编译过**：跑完原地执行 `cargo check -p bee_admin --all-targets` +
 #    `pnpm -C admin/web exec tsc -b`；编译不过 = 脚本的 bug，修脚本别改生成物糊过去
-#    （`--out` 跳过自检：那只是把骨架写到仓库外对照用，不参与编译）。自检不过就**整体回滚**
-#    （两个 mod.rs 还原、本次生成物删掉），工作树回到跑脚本之前。
+#    （`--out` 跳过自检：那只是把骨架写到仓库外对照用，不参与编译）。**任何一步失败都整体回滚**
+#    （两个 mod.rs 还原、本次写下的文件删掉）：自检不过、写盘 I/O 错（磁盘满 / 权限 / 目标是
+#    坏链接）、Ctrl-C 全走同一条路（EXIT 兜底），工作树回到跑脚本之前。
 # 2. **不覆盖任何已有文件**：任一目标已存在就整体退出（一次误跑会清掉线上模块）。
 # 3. 只追加 `api/mod.rs` 与 `models/mod.rs` 各一行 `pub mod`（不加，生成物不参与编译，
 #    自检就是假绿）；路由/菜单种子/前端路由/i18n 只**打印可粘贴片段** —— 结构化编辑
@@ -35,7 +37,8 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" 2>/dev/null && pwd -P) || die "定位不
 . "$SCRIPT_DIR/scaffold-wiring.sh"
 
 usage() {
-    sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+    # 打印头部说明到「三条硬规则」为止：按标题动态取，别写死行号（改注释就得多改一处）
+    sed -n '2,/^# 三条硬规则/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'
 }
 
 if [ $# -lt 2 ]; then
@@ -106,12 +109,13 @@ rust_type() {
         int) echo i32 ;;
         i64) echo i64 ;;
         bool) echo i8 ;;
+        datetime) echo NaiveDateTime ;;
         *) echo "" ;;
     esac
 }
 ts_type() {
     case "$1" in
-        string | text) echo string ;;
+        string | text | datetime) echo string ;;
         *) echo number ;;
     esac
 }
@@ -140,9 +144,10 @@ NAME_FIELD=""
 NAME_MAX=128
 # 见过的字段名，带竖线包裹（"|a|b|"）：查重比数组省事，也不吃 set -u 的亏
 SEEN_FIELDS="|"
-# 页面按需 import：字段里没有数字/布尔时引 InputNumber/Select 会是没用到的导入
+# 页面按需 import：字段里没有数字/布尔/datetime 时引 InputNumber/Select/DatePicker 会是没用到的导入
 HAS_NUM=0
 HAS_BOOL=0
+HAS_DT=0
 
 for spec in "${FIELDS[@]}"; do
     IFS=':' read -r fname ftype flen <<<"$spec"
@@ -159,14 +164,16 @@ for spec in "${FIELDS[@]}"; do
     esac
     SEEN_FIELDS="$SEEN_FIELDS$fname|"
     case "$ftype" in
-        string | text | int | i64 | bool) ;;
-        *) die "字段类型只认 string/text/int/i64/bool：$spec" ;;
+        string | text | int | i64 | bool | datetime) ;;
+        *) die "字段类型只认 string/text/int/i64/bool/datetime：$spec" ;;
     esac
     flen=${flen:-128}
     [[ $flen =~ ^[0-9]+$ ]] || die "字段长度要是数字：$spec"
     [ "$flen" -ge 1 ] && [ "$flen" -le 20000 ] || die "字段长度要在 1..20000：$spec"
     zh=$(known_zh "$fname")
     label=$([ -n "$zh" ] && echo "t('field.$fname')" || echo "'$fname'")
+    # 中文说法：命中现有词表就用它，没命中退回字段名（400 文案 / apidoc 描述都用它）
+    FIELD_ZH=${zh:-$fname}
     # 第一个 string 字段当选名称字段：列表模糊查、必填校验、超长校验都挂它
     if [ -z "$NAME_FIELD" ] && [ "$ftype" = string ]; then
         NAME_FIELD=$fname
@@ -174,6 +181,8 @@ for spec in "${FIELDS[@]}"; do
     fi
 
     # 每个类型只在这里声明差异，下面的追加统一做（曾经按类型抄了四遍，改一处要改四处）
+    API_TY=""         # 接口面的类型（请求体 / 查询参数）——只有 datetime 与模型面不同
+    ADOC_SUFFIX=""    # apidoc 描述尾巴（datetime 要带上格式）
     case "$ftype" in
         string | text)
             RUST_TY=String
@@ -250,21 +259,64 @@ fn check_${fname}(value: &str) -> Result<(), ApiError> {
             DEFAULT_V=1
             FORM_ITEM='<Select options={yesNo} />'
             ;;
+        datetime)
+            HAS_DT=1
+            DT_FIELDS+=("$fname")
+            # 模型面是 NaiveDateTime，接口面是字符串：chrono 的原生 serde 只认 "T" 分隔，
+            # 本仓契约是空格分隔的 "YYYY-MM-DD HH:MM:SS"（见 docs/scaffold.md）
+            API_TY=String
+            RUST_TY=NaiveDateTime
+            TS_TY=string
+            TS_QUERY_TY=string
+            ADOC_TY=string
+            ADOC_SUFFIX="（YYYY-MM-DD HH:MM:SS）"
+            FILTER=dt
+            DEFAULT_V='"2026-01-02 03:04:05"'
+            FORM_ITEM='<DatePicker showTime style={{ width: '\''100%'\'' }} />'
+            MODEL_DECL="    /// $FIELD_ZH（DATETIME，秒精度；接口收发都是 \"YYYY-MM-DD HH:MM:SS\" 字符串）
+    #[serde(serialize_with = \"crate::util::ser_dt\")]
+    pub $fname: NaiveDateTime,"
+            CHECKS+="
+/// $FIELD_ZH的解析：契约是 \"YYYY-MM-DD HH:MM:SS\"（空格分隔、秒精度 —— 与本仓其它时间字段
+/// 一个口径）。收字符串再显式解析，是因为 chrono 的 Deserialize 只认 \`T\` 分隔：直接拿
+/// NaiveDateTime 当请求体字段，前端按契约传空格分隔反而被判 400。
+/// 解析失败回 400（动态文案、无稳定错误码，前端回落 msg）。
+fn parse_$fname(value: &str) -> Result<NaiveDateTime, ApiError> {
+    NaiveDateTime::parse_from_str(value.trim(), \"%Y-%m-%d %H:%M:%S\")
+        .map_err(|_| ApiError::BadRequest(format!(\"{}格式需为 YYYY-MM-DD HH:MM:SS\", \"$FIELD_ZH\")))
+}
+"
+            # 校验放在发号之前（与名称字段的 check 同一位置）：格式错不消耗 id
+            CHECK_CALLS+="    parse_$fname(&body.$fname)?;
+"
+            CHECK_TESTS+="
+    #[test]
+    fn parse_${fname}_accepts_contract_format_only() {
+        assert!(parse_$fname(\"2026-01-02 03:04:05\").is_ok());
+        assert!(parse_$fname(\"  2026-01-02 03:04:05  \").is_ok(), \"两侧空白 trim 后放行\");
+        for bad in [\"2026-01-02T03:04:05\", \"2026-01-02\", \"2026-01-02 03:04\", \"\", \"2026-02-30 00:00:00\"] {
+            assert!(parse_$fname(bad).is_err(), \"格式不对要拒：{bad}\");
+        }
+    }
+"
+            ;;
     esac
+    # 没单列声明接口面类型的（除 datetime 外都如此）：两边同型
+    API_TY=${API_TY:-$RUST_TY}
 
     MODEL_FIELDS+="$MODEL_DECL
 "
-    BODY_FIELDS+="    pub $fname: $RUST_TY,
+    BODY_FIELDS+="    pub $fname: $API_TY,
 "
-    QUERY_FIELDS+="    pub $fname: Option<$RUST_TY>,
+    QUERY_FIELDS+="    pub $fname: Option<$API_TY>,
 "
     TS_ROW+="  $fname: $TS_TY;
 "
     TS_FORM+="  $fname: $TS_TY;
 "
     TS_QUERY+=" $fname?: $TS_QUERY_TY;"
-    ADOC_DESC="$([ -n "$zh" ] && echo "$zh" || echo "$fname")"
-    ADOC_PARAMS+="#[apidoc::param(name = \"$fname\", ty = \"$ADOC_TY\", required, desc = \"$ADOC_DESC\")]
+    ADOC_DESC=$FIELD_ZH
+    ADOC_PARAMS+="#[apidoc::param(name = \"$fname\", ty = \"$ADOC_TY\", required, desc = \"$ADOC_DESC$ADOC_SUFFIX\")]
 "
     # 名称字段的测试值直接用唯一串：列表要按它查得到
     if [ "$fname" = "$NAME_FIELD" ]; then
@@ -278,6 +330,14 @@ fn check_${fname}(value: &str) -> Result<(), ApiError> {
     }
 "
         ADOC_QUERIES+="#[apidoc::query(name = \"$fname\", ty = \"string\", desc = \"$ADOC_DESC（模糊匹配）\")]
+"
+    elif [ "$FILTER" = dt ]; then
+        # 查询参数同样是字符串：解析成 NaiveDateTime 再当绑定参数（筛选值是用户输入，不进 SQL 串）
+        QUERY_FILTERS+="    if let Some(v) = q.$fname.as_deref().filter(|s| !s.trim().is_empty()) {
+        qs = qs.filter_eq(\"$fname\", parse_$fname(v)?).map_err(ApiError::from)?;
+    }
+"
+        ADOC_QUERIES+="#[apidoc::query(name = \"$fname\", ty = \"string\", desc = \"$ADOC_DESC（精确匹配，格式 YYYY-MM-DD HH:MM:SS）\")]
 "
     else
         QUERY_FILTERS+="    if let Some(v) = q.$fname {
@@ -302,9 +362,12 @@ fn check_${fname}(value: &str) -> Result<(), ApiError> {
           </Form.Item>
 "
     else
-        CREATE_ASSIGN+="        $fname: body.$fname,
+        # 接口面与模型面不同型（datetime）：赋值处顺手转一次，create/update 都不会把原串塞进库
+        ASSIGN_EXPR="body.$fname"
+        [ "$API_TY" = "$RUST_TY" ] || ASSIGN_EXPR="parse_$fname(&body.$fname)?"
+        CREATE_ASSIGN+="        $fname: $ASSIGN_EXPR,
 "
-        UPDATE_ASSIGN+="    row.$fname = body.$fname;
+        UPDATE_ASSIGN+="    row.$fname = $ASSIGN_EXPR;
 "
         rules=""
         [ "$RUST_TY" != String ] && rules="
@@ -314,16 +377,19 @@ fn check_${fname}(value: &str) -> Result<(), ApiError> {
           </Form.Item>
 "
     fi
-    if [ "$ftype" = bool ]; then
-        COLUMNS+="    {
+    case "$ftype" in
+        bool)
+            COLUMNS+="    {
       title: $label, dataIndex: '$fname', width: 90,
       render: (v: number) => (v === 1 ? t('common.enabled') : t('common.disabled')),
     },
-"
-    else
-        COLUMNS+="    { title: $label, dataIndex: '$fname' },
-"
-    fi
+" ;;
+        # 时间串是 YYYY-MM-DD HH:MM:SS（19 字符），给足宽度别折行（与 created_at 列同宽）
+        datetime) COLUMNS+="    { title: $label, dataIndex: '$fname', width: 170 },
+" ;;
+        *) COLUMNS+="    { title: $label, dataIndex: '$fname' },
+" ;;
+    esac
     # 字段名不在现有词表里时，附一份 i18n 占位（粘不粘都行，见 docs/scaffold.md）
     if [ -z "$zh" ]; then
         I18N_ZH+="  '$MODULE.$fname': '$fname',
@@ -363,7 +429,9 @@ else
 fi
 
 # 页面里真正用到的 antd 组件（按字段类型决定，别引入没用到的组件）
-ANTD_IMPORTS="App, Button, Form, Input"
+ANTD_IMPORTS="App, Button"
+[ "$HAS_DT" = 1 ] && ANTD_IMPORTS+=", DatePicker"
+ANTD_IMPORTS+=", Form, Input"
 [ "$HAS_NUM" = 1 ] && ANTD_IMPORTS+=", InputNumber"
 ANTD_IMPORTS+=", Modal, Popconfirm"
 [ "$HAS_BOOL" = 1 ] && ANTD_IMPORTS+=", Select"
@@ -376,6 +444,65 @@ if [ "$HAS_BOOL" = 1 ]; then
   ];
 
 '
+fi
+
+# datetime 字段在页面上要折一道：DatePicker 的值类型是 Dayjs，接口契约是字符串。
+# 表单的值类型因此在 Form 类型上把那几个字段换成 Dayjs（FormValues），回填 / 提交各转一次。
+DAYJS_IMPORT=""
+DT_FORM_DECL=""
+DT_FORM_TYPE="${CAMEL}Form"
+DT_SET_VALUE="form.setFieldsValue(row);"
+DT_SUBMIT_BODY="    if (editing) await $API_OBJ.update(editing.id, v);
+    else await $API_OBJ.create(v);"
+DT_IMPORT=""
+TEST_DT_BAD=""
+CREATE_DESC_DT=""
+if [ "$HAS_DT" = 1 ]; then
+    DT_IMPORT="use chrono::NaiveDateTime;
+"
+    CREATE_DESC_DT="；时间字段格式错回 400"
+    DAYJS_IMPORT="import dayjs from 'dayjs';
+import type { Dayjs } from 'dayjs';
+"
+    dt_union=""
+    dt_decl=""
+    dt_set=""
+    dt_to_body=""
+    dt_bad=""
+    for f in "${DT_FIELDS[@]}"; do
+        dt_union+="'$f' | "
+        dt_decl+="  $f: Dayjs;
+"
+        dt_set+="      $f: dayjs(row.$f),
+"
+        dt_to_body+="      $f: v.$f.format('YYYY-MM-DD HH:mm:ss'),
+"
+        # 集成测试里的负例：只在「格式不对」上断言 —— 校验发生在进入库之前
+        dt_bad+="    // datetime 字段（$f）：格式不对要 400（契约是空格分隔的 \"YYYY-MM-DD HH:MM:SS\"）
+    let mut bad_dt = body.clone();
+    bad_dt[\"$f\"] = json!(\"2026-01-02T03:04:05\");
+    let (st, v) = call(&c, Method::POST, api(\"\"), Some(&token), Some(bad_dt)).await;
+    assert_eq!(st, 400, \"$f 格式错要 400：{v}\");
+
+"
+    done
+    TEST_DT_BAD=$dt_bad
+    dt_union=${dt_union% | }
+    DT_FORM_DECL="
+/** datetime 字段在表单里是 Dayjs（antd DatePicker 的值类型），提交前转回后端契约的
+ *  \"YYYY-MM-DD HH:mm:ss\" 字符串 —— 接口类型 ${CAMEL}Form 里这几个字段仍是 string。 */
+type FormValues = Omit<${CAMEL}Form, $dt_union> & {
+$dt_decl};
+
+"
+    DT_FORM_TYPE="FormValues"
+    DT_SET_VALUE="form.setFieldsValue({ ...row,
+$dt_set    });"
+    DT_SUBMIT_BODY="    const body: ${CAMEL}Form = {
+      ...v,
+$dt_to_body    };
+    if (editing) await $API_OBJ.update(editing.id, body);
+    else await $API_OBJ.create(body);"
 fi
 
 # ── 模板 ────────────────────────────────────────────────────
@@ -392,18 +519,56 @@ WEB_API_SRC=$(tpl_web_api)
 WEB_TSX_SRC=$(tpl_web_page)
 
 # ── 写文件 ──────────────────────────────────────────────────
+# 本次真写下的落点（绝对路径）。**先记后写**：`cat` 写一半失败（磁盘满 / 权限 / 目标是坏链接）
+# 时，那个半截文件也在名单里，回滚照删。
+WROTE=()
+BAKDIR=""
+ROLLED=0
+
 write_one() { # $1 = 仓库相对路径，stdin = 内容
     local target="$PREFIX$1"
     mkdir -p "$(dirname -- "$target")"
+    WROTE+=("$target")
     cat >"$target"
     echo "  生成 $1" >&2
 }
 
-printf '%s\n' "$MODEL_SRC" | write_one "$MODEL_RS"
-printf '%s\n' "$API_SRC" | write_one "$API_RS"
-printf '%s\n' "$TEST_SRC" | write_one "$TEST_RS"
-printf '%s\n' "$WEB_API_SRC" | write_one "$WEB_TS"
-printf '%s\n' "$WEB_TSX_SRC" | write_one "$WEB_TSX"
+# 回滚：还原两个 mod.rs、删掉本次写下的文件与新建的页面目录，最后清掉备份目录。
+# 按 WROTE 名单删，不硬编码那 5 条路径 —— 中途失败时可能只写了前几个，`--out` 模式的
+# 落点还在仓库外。幂等（ROLLED 闸）：显式调用的失败分支与下面的 EXIT 兜底可能各来一次。
+rollback() {
+    [ "$ROLLED" = 0 ] || return 0
+    ROLLED=1
+    if [ -n "$BAKDIR" ] && [ -d "$BAKDIR" ]; then
+        cp "$BAKDIR/api_mod.rs" "$ROOT/$API_MOD"
+        cp "$BAKDIR/models_mod.rs" "$ROOT/$MODELS_MOD"
+    fi
+    local f
+    for f in ${WROTE[@]+"${WROTE[@]}"}; do rm -f -- "$f"; done
+    rm -f -- "$ROOT/$API_MOD.tmp" "$ROOT/$MODELS_MOD.tmp"
+    [ -n "$OUT" ] || rmdir "$ROOT/admin/web/src/pages/system/$MODULE" 2>/dev/null || true
+    [ -z "$BAKDIR" ] || rm -rf -- "$BAKDIR"
+    local what="本次写下的文件已删"
+    [ -n "$OUT" ] || what="两个 mod.rs 还原、$what" # --out 模式压根没碰 mod.rs
+    echo "scaffold: 已回滚本次生成（$what）" >&2
+}
+
+# 兜底：写盘 I/O 失败、自检不过、Ctrl-C —— 任何非零退出都走同一条回滚路。
+# 装在参数校验与「已存在」闸之后：那之前退出时还什么都没写，不该动工作树。
+cleanup_on_exit() {
+    local rc=$?
+    [ "$rc" -eq 0 ] || rollback
+    exit "$rc"
+}
+trap cleanup_on_exit EXIT INT TERM
+
+# 用 here-string 而不是管道：管道右侧是子 shell，write_one 里往 WROTE 记的落点会丢在
+# 子 shell 里 —— 那正是「回滚时一个文件都没删」的成因（记账必须在当前 shell 生效）。
+write_one "$MODEL_RS" <<<"$MODEL_SRC"
+write_one "$API_RS" <<<"$API_SRC"
+write_one "$TEST_RS" <<<"$TEST_SRC"
+write_one "$WEB_TS" <<<"$WEB_API_SRC"
+write_one "$WEB_TSX" <<<"$WEB_TSX_SRC"
 
 # mod.rs 各追加一行：不加，上面两个 .rs 根本不参与编译，自检就是假绿。
 # 插在最后一条同类语句之后（保持「声明聚成一块」的形状，不打断现有排序）。
@@ -440,17 +605,6 @@ if [ -z "$OUT" ]; then
     echo "  追加 $MODELS_MOD → pub mod $MODULE; / pub use $MODULE::$CAMEL;" >&2
 fi
 
-# 自检失败 = 脚本的 bug：把这次写的东西全撤掉，工作树回到跑脚本之前。
-# 半截生成物比重跑一次贵得多 —— 它会占着落点，下次跑被「已存在，拒绝覆盖」挡住，还得手工清。
-rollback() {
-    cp "$BAKDIR/api_mod.rs" "$ROOT/$API_MOD"
-    cp "$BAKDIR/models_mod.rs" "$ROOT/$MODELS_MOD"
-    rm -f "$ROOT/$API_RS" "$ROOT/$MODEL_RS" "$ROOT/$TEST_RS" "$ROOT/$WEB_TS" "$ROOT/$WEB_TSX"
-    rmdir "$ROOT/admin/web/src/pages/system/$MODULE" 2>/dev/null || true
-    rm -rf "$BAKDIR"
-    echo "scaffold: 已回滚本次生成（两个 mod.rs 还原、5 个生成物已删）" >&2
-}
-
 # ── 打印「剩下的手工接线」（清单文本在 scripts/scaffold-wiring.sh）────
 print_wiring
 
@@ -464,6 +618,9 @@ EOF
 fi
 
 cd "$ROOT"
+# 自检失败 = 脚本的 bug：rollback 把这次写的东西全撤掉（EXIT 兜底也会走同一条路，
+# 这里显式调一次只为把话说在 die 前面）。半截生成物比重跑一次贵得多 ——
+# 它会占着落点，下次跑被「已存在，拒绝覆盖」挡住，还得手工清。
 echo "── 自检 1/2：cargo check -p bee_admin --all-targets（前台跑，几分钟）" >&2
 cargo check -p bee_admin --all-targets --manifest-path "$ROOT/Cargo.toml" ||
     { rollback; die "生成物编译不过 = 脚本的 bug。修 scripts/scaffold-module.sh，别手改生成物。"; }
@@ -471,4 +628,5 @@ echo "── 自检 2/2：pnpm -C admin/web exec tsc -b" >&2
 pnpm -C "$ROOT/admin/web" exec tsc -b ||
     { rollback; die "生成的前端编译不过 = 脚本的 bug。修 scripts/scaffold-module.sh，别手改生成物。"; }
 rm -rf "$BAKDIR"
+BAKDIR=""
 echo "── 自检通过：$MODULE 骨架已就位（上面 ①③ 两条粘完就能调接口）"

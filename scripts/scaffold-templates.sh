@@ -46,7 +46,7 @@ use crate::util::now;
 use axum::Json;
 use axum::extract::State;
 use bee_orm::Model;
-use serde::Deserialize;
+${DT_IMPORT}use serde::Deserialize;
 use serde_json::{Value, json};
 
 // 文本列逐个卡长度（常量 + 校验函数）：超长要在这里回 400，别让 MySQL 报 1406 变成 500。
@@ -99,7 +99,7 @@ $QUERY_FILTERS    let (rows, total) = qs
 }
 
 #[apidoc::title("新建$LABEL")]
-#[apidoc::desc("$NAME_ZH必填且有长度上限，超了回 400")]
+#[apidoc::desc("$NAME_ZH必填且有长度上限，超了回 400$CREATE_DESC_DT")]
 #[apidoc::url("/api/v1$API_PATH")]
 #[apidoc::method("POST")]
 #[apidoc::tag("$LABEL")]
@@ -263,7 +263,7 @@ async fn ${MODULE}_crud() {
     let (st, v) = call(&c, Method::POST, api(""), Some(&token), Some(blank)).await;
     assert_eq!(st, 400, "空白 $NAME_FIELD 要 400：{v}");
 
-    // 列表：按名字模糊查能查到刚建的那行（查询走服务端 filter_contains）
+$TEST_DT_BAD    // 列表：按名字模糊查能查到刚建的那行（查询走服务端 filter_contains）
     let (st, v) = call(
         &c,
         Method::GET,
@@ -337,7 +337,7 @@ EOF
 tpl_web_page() { cat <<EOF
 import { useCallback, useEffect, useState } from 'react';
 import { $ANTD_IMPORTS } from 'antd';
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+${DAYJS_IMPORT}import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { $API_OBJ, type ${CAMEL}Form, type ${CAMEL}Query, type ${CAMEL}Row } from '../../../api/$MODULE';
 import Auth from '../../../auth/Auth';
@@ -346,10 +346,10 @@ import { useI18n } from '../../../i18n';
 /** $LABEL（脚手架生成）：列表 + 新建/编辑弹窗 + 删除。
  *  字段标签用的是现有的通用键（脚手架只引已经存在的 i18n 键，否则 tsc 立刻报错）；
  *  想要模块专属文案，就把脚本打印的 i18n 片段粘进两张词表，再把这些 t('field.x') 换掉。 */
-export default function ${CAMEL}Page() {
+${DT_FORM_DECL}export default function ${CAMEL}Page() {
   const { message } = App.useApp();
   const { t } = useI18n();
-  const [form] = Form.useForm<${CAMEL}Form>();
+  const [form] = Form.useForm<$DT_FORM_TYPE>();
   const [query, setQuery] = useState<${CAMEL}Query>({ page: 1, size: 10 });
   const [rows, setRows] = useState<${CAMEL}Row[]>([]);
   const [total, setTotal] = useState(0);
@@ -378,14 +378,13 @@ $YESNO  const load = useCallback(async (q: ${CAMEL}Query) => {
 
   const openEdit = (row: ${CAMEL}Row) => {
     setEditing(row);
-    form.setFieldsValue(row);
+    $DT_SET_VALUE
     setModal(true);
   };
 
   const submit = async () => {
     const v = await form.validateFields();
-    if (editing) await $API_OBJ.update(editing.id, v);
-    else await $API_OBJ.create(v);
+$DT_SUBMIT_BODY
     message.success(editing ? t('common.updated') : t('common.created'));
     setModal(false);
     void load(query);

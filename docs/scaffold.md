@@ -27,14 +27,22 @@ scripts/scaffold-module.sh message system:message name:string:64 status:bool sor
 | `text` | `String` | `TEXT` | `Input.TextArea` |
 | `int` / `i64` | `i32` / `i64` | `INT` / `BIGINT` | `InputNumber` |
 | `bool` | `i8` | `TINYINT` | `Select`（1 启用 / 0 禁用） |
+| `datetime` | `NaiveDateTime` | `DATETIME` | `DatePicker showTime` |
+
+`datetime` 的进出一律是 **`"YYYY-MM-DD HH:MM:SS"` 字符串**（空格分隔、秒精度 —— 与本仓
+其它时间字段一个口径）：模型里 `NaiveDateTime`（序列化走 `serde(serialize_with = "crate::util::ser_dt")`，
+与 `created_at` 同款），请求体/查询参数/前端类型里都是 `string`。不用 chrono 的原生 serde
+是因为它只认字面量 `T` 分隔，前端按本仓契约传空格会被判 400；生成物因此在入口显式
+`parse_<字段>(...)`（格式错回 400，无稳定错误码）。前端 `FormValues` 把 datetime 字段换成
+`Dayjs`（DatePicker 的值类型），回填 / 提交各转一次。查询参数对该列是**精确匹配**。
 
 ## 生成哪些文件
 
 | 文件 | 内容 |
 | --- | --- |
 | `admin/src/models/<模块名>.rs` | 模型（`id` / 业务字段 / `created_at` / `updated_at`） |
-| `admin/src/api/<模块名>.rs` | list / create / update / remove + apidoc 注解 + 文本列长度校验（含单测） |
-| `admin/tests/api_<模块名>_test.rs` | 真库真进程跑一遍 CRUD（含 401 闸门、空白名 400、删完查不到） |
+| `admin/src/api/<模块名>.rs` | list / create / update / remove + apidoc 注解 + 文本列长度校验与 datetime 解析（各含单测） |
+| `admin/tests/api_<模块名>_test.rs` | 真库真进程跑一遍 CRUD（含 401 闸门、空白名 400、datetime 格式错 400、删完查不到） |
 | `admin/web/src/api/<模块名>.ts` | 类型 + `xxxApi` 四个方法（类型留在模块自己的文件里，不动共享 `types.ts`） |
 | `admin/web/src/pages/system/<模块名>/index.tsx` | 列表 + 新建/编辑弹窗 + 删除（`Auth` 包着操作按钮） |
 | `admin/src/api/mod.rs`、`admin/src/models/mod.rs` | 各**追加一行** `pub mod`（不加，上面两个 .rs 根本不参与编译，自检就是假绿） |
@@ -90,11 +98,17 @@ const MessagePage = lazy(() => import('./pages/system/message/index'));
 就是一处编译不过或一处串味的路由。脚本只做两件确定安全的事：写新文件、往既有文件的
 同类声明块里追加一行。
 
-## 编译不过怎么办
+## 失败了怎么办（编译不过 / 写盘出错）
 
 **改脚本，不要改生成物把它糊过去。** 生成物是模板的输出，手工修一份只说明模板坏了，
-下一个模块还会坏一次。自检失败时脚本会**先整体回滚**（还原两个 `mod.rs`、删掉本次生成的
-5 个文件与新建的页面目录）再退出并提示这一点 —— 工作树回到跑脚本之前，改了脚本重跑即可。
+下一个模块还会坏一次。自检失败时脚本会**先整体回滚**（还原两个 `mod.rs`、删掉本次写下的
+文件与新建的页面目录）再退出并提示这一点 —— 工作树回到跑脚本之前，改了脚本重跑即可。
+
+回滚不只挂在两道自检上：**写盘中途失败也算**（磁盘满、权限、目标是坏链接，或 Ctrl-C）——
+脚本装了 `EXIT`/`INT`/`TERM` 兜底，任何非零退出都走同一条回滚路。删哪些文件是按**实际写下
+的落点**记的（写一个记一个，`cat` 写一半失败时半截文件也在名单里），不是硬编码那 5 条路径，
+所以「只写了前两个就断了」与 `--out`（落点在仓库外）两种情形都收得干净。参数校验与
+「已存在，拒绝覆盖」两道闸在回滚安装**之前**：那两步退出时还什么都没写，不该动工作树。
 
 ## 演示：用脚手架重造「字典管理」对照
 
@@ -121,9 +135,10 @@ bash scripts/scaffold-module.sh dict system:dict \
   同理不修改任何既有模块的代码，除了上面那两个 `pub mod` 追加。
 - **不生成 DDL**：建表一律走 `migrate::sync`（加列不删列）。要复合唯一键、外键、
   特殊索引，自己往 `seed.rs` 的裸 DDL 清单里加，写法照着现有的 `idx_attachment_entity`。
-- **不支持 `datetime` 字段**：时间列只有 `created_at/updated_at`，由服务端写。
-  业务要自己的时间列（比如「生效时间」）就手工加 —— 那样就得处理前端 `DatePicker`
-  和时区，属于业务，不属于骨架。
+- **不生成业务语义**：`datetime` 只保证「字符串 ↔ `NaiveDateTime`」这条通道通（解析、
+  回传、查询精确匹配、前端 DatePicker 折算），**时区不在里面** —— 存的就是本地墙钟的
+  字面量（与 `util::now()` = `Local::now().naive_local()` 一个口径）。要跨时区、
+  要区间查询（`>= / <=`）、要「生效时间自动写入」，自己在骨架之上长。
 - **不生成业务逻辑**：级联删、状态机、导出、数据权限收窄……都是「长在骨架上」的东西，
   骨架只保证 CRUD 通、校验在、鉴权在、测试在。
 - **不动 i18n 词表**：页面只引**已经存在**的 `field.*` 键（引新键 tsc 立刻报错），
