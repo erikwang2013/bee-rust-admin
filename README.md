@@ -60,9 +60,9 @@ INI 配置），前端是 Vite + React 18 + Ant Design 5 单页应用，两者�
 |---|---|---|
 | 客户端 | 浏览器 SPA | React 18 + TypeScript + Ant Design 5（Vite 构建） |
 | 接入层 | nginx :8081 | 提供前端静态资源，`/api/` 反向代理到后端并透传 `X-Real-IP` |
-| 应用层 | `bee_admin` | bee_router（axum）· Auth 提取器 · 85 个 API handler · datascope 数据权限 · 统一响应信封 |
+| 应用层 | `bee_admin` | bee_router（axum）· Auth 提取器 · 91 个 API handler · datascope 数据权限 · 统一响应信封 |
 | 框架层 | bee_orm / bee_config / bee_logs | 多后端连接池、QuerySet、CRUD、M2M、migrate 迁移；INI 配置；tracing 日志 |
-| 数据层 | MySQL 8.4 | 19 张表（14 张业务表 + 4 张关系表 + 1 张明文备份表） |
+| 数据层 | MySQL 8.4 | 20 张表（15 张业务表 + 4 张关系表 + 1 张明文备份表） |
 
 ## 功能设计
 
@@ -113,11 +113,12 @@ INI 配置），前端是 Vite + React 18 + Ant Design 5 单页应用，两者�
 | **定时任务** | 内置任务由**代码注册**（code 是注册键，库里只放调度与执行记录，界面不能新增/改名）、固定间隔（秒）调度 + 启停、手动触发一次、执行记录分页；`[job] enabled` 总开关关掉后仍可手动补跑 |
 | **数据库备份** | 内置任务 `db_backup` 用 `mysqldump` 把整库导到磁盘（文件 0600、可配目录与保留份数，默认留 7 份），执行记录进 `job_log`；恢复是**手工动作**（停服 → `mysql < dump`，见 usage.md §5.10） |
 | **通知公告** | 草稿 / 已发布两态（发布写 `published_at`，回退草稿不清空——留痕）、增删改、删公告同事务级联删已读记录；顶栏铃铛显示未读数 |
+| **附件中心** | 通用附件库：分片上传（白名单内 13 种扩展名、单文件 10MB、每人总量受 `[attach] quota_mb` 约束）、列表筛选、下载、删除，并可把附件**关联**到业务对象（v1 是公告配图，绑定带排序）；**下载要过鉴权**——绑到已发布公告的附件对所有登录用户可下，其余按上传人的数据权限；同一份内容只落一份文件，删到最后一行引用才删盘；公告编辑页有「配图」栏（上传即绑定），孤儿文件由内置任务 `attach_orphan_clean` 清理 |
 | **系统配置** | 键值对配置（键 / 值 / 类型 / 分组 / 备注 + 公开开关），分组表单编辑且只提交改动项；标记「公开」的键经 `GET /configs/public`（免登录）供给登录页与页脚（副标题、版权、项目地址、页脚显隐），读不到时前端回落内置默认值；内置键由启动流程幂等补齐，改配置刷新即变 |
 | **中英双语** | 界面文案中/英两套（顶栏切换，跟随浏览器语言，存 localStorage），antd 组件文案与日期格式跟着切；**后端不做多语言消息**——错误响应带稳定业务错误码 `err` + 参数 `args`，前端查表出文案，查不到回落后端中文 `msg`（任何情况都有话可说） |
 | **站点信息** | 登录页与侧边栏底部一行：版本号（构建时注入，发布产物显示真实 tag、本地构建显示 `dev`）、版权、项目地址（链到仓库）—— 版权文字 / 项目地址 / 是否显示都读系统配置的公开键，报障带上版本号最省事 |
 
-接口共 85 个（83 个业务接口 + `/api/v1/health` 探活 + `/api/v1/version` 版本），路径与字段的完整定义见
+接口共 91 个（89 个业务接口 + `/api/v1/health` 探活 + `/api/v1/version` 版本），路径与字段的完整定义见
 [设计文档 §5.3](docs/superpowers/specs/2026-10-05-bee-rust-admin-design.md)，
 字典 / 定时任务 / 通知公告 / i18n 的契约另见 [C 组设计](docs/superpowers/plans/2026-10-06-bra-v1.5-c-modules.md)。
 
@@ -137,8 +138,10 @@ admin/                  管理后台服务端（crate bee_admin）
   src/error.rs          ApiError + 统一信封（code/msg/err/args）+ 错误码表 + 请求体提取器
   src/auth.rs           JWT 签发校验 + Auth 提取器（权限码加载、token_version 校验）
   src/datascope.rs      数据权限解析与查询注入（部门子树 / 本人 / 自定义）
-  src/api/              auth · admin · avatar · role · menu · dept · dict · job · notice · login_log · audit_log 十一个模块
-  src/models/           11 个模型（migrate 建表）。列长度用 `sql_type = "VARCHAR(n)"` 声明；
+  src/api/              admin · attach · audit_log · auth · avatar · config · dashboard · dept · dict ·
+                        export · import · job · login_log · menu · notice · notify · role 十七个模块
+                        （csv / totp 是内部工具模块，不出接口）
+  src/models/           15 个模型（migrate 建表）。列长度用 `sql_type = "VARCHAR(n)"` 声明；
                         **唯一键与索引不走模型**（上游属性没有这两个概念），集中在
                         `src/seed.rs` 的 CONSTRAINTS 里建。连接表（admin_role/role_menu/
                         role_dept/notice_read）是复合主键、无模型结构体，走 seed 的裸 DDL，
@@ -153,13 +156,14 @@ admin/                  管理后台服务端（crate bee_admin）
     src/auth/           AuthContext + 按钮级权限组件
     src/layouts/        动态菜单布局
     src/pages/          登录 / 首页 / 管理员 / 角色 / 菜单 / 部门 / 字典 / 定时任务 / 通知公告 /
-                        登录记录 / 操作日志 / 个人中心
+                        系统配置 / 通知设置 / 导出中心 / 附件中心 / 登录记录 / 操作日志 / 个人中心
 docs/
   install.md            ★ 安装说明（三种装法、配置生成步骤、常见坑）
   usage.md              ★ 使用手册（权限体系怎么落地、各模块怎么用）
   release-checklist.md  ★ 发布 / 升级检查清单（逐条打勾）
   release.md            发版怎么发（scripts/release.sh 用法、产物口径、发完怎么验）
   ponytail-debt.md      有意搁置台账（源码里 ponytail: 注释的汇总视图）
+  scaffold.md           模块脚手架用法（生成物必先自编译过才落盘）
   diagrams/             本 README 引用的 4 张 SVG 图
   pet/                  项目宠物「阿守」的五态 SVG + 渲染器（node render.mjs）
   social/               社交预览图 1280×640（仓库 Settings → Social preview 上传那份 PNG）
@@ -167,6 +171,7 @@ docs/
   superpowers/plans/    实施计划（ORM 执行层、后端、前端）
 install.sh              ★ 一键安装脚本（拉发布产物 / 源码构建 → 生成配置 → 装 systemd + nginx → 自检）
 scripts/
+  scaffold-module.sh    ★ 模块脚手架：一条命令生成 CRUD 模块骨架（模型/接口/单测/集成测试/前端页）
   release.sh            发版：构建 → strip → 打包 → 产物自检 → gh release create
   publish.sh            逐个发布工作区内未上传到 crates.io 的 crate
   smoke-install.sh      install.sh 冒烟验证（/tmp 里装一套 scratch 实例 + 升级一次 + 清理）
@@ -313,7 +318,7 @@ password = <自己定一个口令>
 
 - `enabled = true` 而 `password` 空着 → **拒绝启动**（与 `encrypt_key` 一个态度：不允许
   「以为有口令其实没有」地跑起来）；非法布尔值同样拒绝启动
-- 挂载点：`/apidoc`（UI，浏览器直接开）、`/apidoc/api.json`（原始接口清单，85 个接口）
+- 挂载点：`/apidoc`（UI，浏览器直接开）、`/apidoc/api.json`（原始接口清单，91 个接口）
 - 文档站**不在审计 / 安全扫描层的覆盖范围内**（它 merge 在全部中间件之后，读文档不是业务
   操作，记进操作日志只是噪音），整棵树也在 `/api/v1` 之外，与业务接口互不影响
 
