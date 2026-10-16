@@ -165,15 +165,19 @@ pub async fn save(state: &AppState, cfg: &NotifyConfig) -> Result<(), ApiError> 
 
 /// 存之前的校验：只拦「一定发不出去」的配置，别拦「配了但对方不认」的（那要看失败原因）。
 pub fn validate(cfg: &NotifyConfig) -> Result<(), ApiError> {
+    // 长度与开关无关：关着也拦。地址整条进审计摘要（`changes`），存个超长值会让
+    // 那行摘要写不进去 —— 少一条审计比少一条通知严重（负控：audit_diff 的摘要列）。
+    // 长度与开关无关：关着也拦。地址整条进审计摘要（`changes`），存个超长值会让
+    // 那行摘要写不进去 —— 少一条审计比少一条通知严重（负控：audit_diff 的摘要列）。
+    if cfg.webhook_url.chars().count() > 512 {
+        return Err(ApiError::BadRequest("Webhook 地址过长（≤ 512 字符）".into()));
+    }
     if cfg.webhook_enabled {
         if cfg.webhook_url.is_empty() {
             return Err(ApiError::BadRequest("启用 Webhook 就要填地址".into()));
         }
         if !cfg.webhook_url.starts_with("http://") && !cfg.webhook_url.starts_with("https://") {
             return Err(ApiError::BadRequest("Webhook 地址必须是 http:// 或 https://".into()));
-        }
-        if cfg.webhook_url.chars().count() > 512 {
-            return Err(ApiError::BadRequest("Webhook 地址过长（≤ 512 字符）".into()));
         }
     }
     if !ENCRYPTIONS.contains(&cfg.smtp_encryption.as_str()) {
@@ -305,8 +309,15 @@ mod tests {
 
     #[test]
     fn validate_rejects_only_unsendable_config() {
-        // 默认（两个渠道都关）随便存：没启用就不校验地址
+        // 默认（两个渠道都关）随便存：没启用就不校验地址是否可发
         assert!(validate(&cfg()).is_ok());
+        // 但长度**关着也拦**：超长值整条进审计摘要，写不进 changes 就丢一条审计
+        let mut c = cfg();
+        c.webhook_url = format!("https://x.com/{}", "a".repeat(600));
+        assert!(validate(&c).is_err(), "关着也不许存超长地址");
+        c.webhook_url = format!("https://x.com/{}", "a".repeat(460));
+        assert_eq!(c.webhook_url.chars().count(), 474, "别把断言写超 512");
+        assert!(validate(&c).is_ok(), "512 以内的地址关着可以存");
 
         let mut c = cfg();
         c.webhook_enabled = true;

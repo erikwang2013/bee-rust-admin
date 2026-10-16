@@ -32,8 +32,11 @@ pub fn build_guard(key: &str) -> Result<Guard, String> {
 pub fn write(guard: &Guard, plain: &str) -> Result<String, String> {
     let cipher = guard.encrypt(plain).map_err(|e| format!("加密失败: {e}"))?;
     if cipher.len() > COL_MAX {
+        // 说的是**密文上限**而不是列宽：同一道闸门也守在 SMTP 口令上，而那一位落在
+        // `sys_config.value`（TEXT）—— 报「超出列宽」会把人指错方向（email/phone/
+        // totp_secret 的列宽恰好等于这个值，改口径对它们没有损失）。
         return Err(format!(
-            "加密后 {} 个字符，超出列宽 {COL_MAX}（明文含多字节字符？）",
+            "加密后 {} 个字符，超出密文上限 {COL_MAX}（明文含多字节字符？）",
             cipher.len()
         ));
     }

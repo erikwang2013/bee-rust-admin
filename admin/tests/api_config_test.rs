@@ -94,6 +94,36 @@ async fn sys_config_and_public() {
     assert_eq!(sub["is_public"], 1);
     assert_eq!(find(&list, "site.footer_enabled")["value_type"], "bool");
 
+    // ── M4：`notify.*` 一律不许公开 —— 写入侧拒 + 读侧兜底 ─────────
+    // 公开读免登录，notify 键里是 SMTP 服务器/账号、Webhook 地址这类内部信息。
+    let hook_id = common::as_id(&find(&list, "notify.webhook_url")["id"]);
+    let (st, v) = call(
+        &c, Method::PUT, format!("{base}{CONFIGS}/{hook_id}"), Some(&admin),
+        Some(json!({ "is_public": 1 })),
+    )
+    .await;
+    assert_eq!(st, 400, "notify.* 标记公开要拒: {v}");
+    assert!(v["msg"].as_str().unwrap_or("").contains("不能设为公开"), "{v}");
+    let (st, v) = call(
+        &c, Method::POST, format!("{base}{CONFIGS}"), Some(&admin),
+        Some(json!({"key": "notify.sneaky", "value": "x", "is_public": 1})),
+    )
+    .await;
+    assert_eq!(st, 400, "新建 notify.* 公开也要拒: {v}");
+
+    // 读侧兜底：直改库把 is_public 置 1（绕开接口），免登录口依然不能吐出来
+    let pool = sqlx::MySqlPool::connect(&dsn).await.unwrap();
+    sqlx::query("UPDATE sys_config SET is_public = 1 WHERE config_key = 'notify.webhook_url'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (_, v) = call(&c, Method::GET, format!("{base}{CONFIGS}/public"), None, None).await;
+    assert!(v["data"]["notify.webhook_url"].is_null(), "免登录口不能吐 notify 配置: {v}");
+    sqlx::query("UPDATE sys_config SET is_public = 0 WHERE config_key = 'notify.webhook_url'")
+        .execute(&pool)
+        .await
+        .unwrap();
+
     // ── 改配置 → 公开读立即可见（验收：改配置 → 登录页/页脚刷新即变）──
     let sub_id = common::as_id(&sub["id"]);
     let (st, v) = call(

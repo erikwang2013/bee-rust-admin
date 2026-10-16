@@ -352,6 +352,7 @@ export const enUS: Record<I18nKey, string> = {
   'notify.test_hint': 'The test uses the **saved** config - save first, then test; a failure shows the reason.',
   'notify.test_sent': 'Sent to {to} - check your inbox',
   'notify.url_rule': 'Must start with http:// or https://',
+  'notify.url_too_long': 'At most 512 characters (enforced even when off: an over-long value breaks the audit summary)',
   'auditlog.module.notify': 'Notification settings',
 
   // ---- Operation logs ----

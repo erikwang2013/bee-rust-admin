@@ -293,6 +293,16 @@ async fn notify_webhook_events_and_smtp_test_mail() {
     assert_eq!(changes["smtp_password"]["old"], Value::Null, "不能记旧值: {changes}");
     assert_eq!(changes["webhook_url"]["new"], format!("http://127.0.0.1:{hook_port}/hook"), "{changes}");
 
+    // ── 3b. 口令过长：报的是密文上限（255 字符），不甩「列宽」────────
+    // 口令落在 `sys_config.value`（TEXT），卡的从来不是列宽 —— 报文必须说人话。
+    let mut long = cfg.clone();
+    long["smtp_password"] = json!("口".repeat(100)); // 100 个汉字 = 300 字节 → 密文 440 > 255
+    let (st, v) = call(&c, Method::PUT, api("/notify/config"), Some(&token), Some(long)).await;
+    assert_eq!(st, 400, "超长口令要 400: {v}");
+    let msg = v["msg"].as_str().unwrap_or_default();
+    assert!(!msg.contains("列宽"), "口令报错不能甩「列宽」（它落在 TEXT 列）: {msg}");
+    assert!(msg.contains("255"), "要报出上限是多少: {msg}");
+
     // ── 4. 公告发布 → webhook 收到事件体 ──────────────────────
     let (st, v) = publish(&c, &base, &token, "通知渠道验收公告", 1).await;
     assert_eq!(st, 200, "发公告: {v}");

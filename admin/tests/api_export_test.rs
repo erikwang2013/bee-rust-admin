@@ -437,7 +437,6 @@ async fn export_tasks_run_download_and_expire() {
         Some(json!({"kind": "login-log"}))).await;
     assert_eq!(st, 200, "建用于 N5 的任务: {t5}");
     let id5 = common::dec_id(&common::as_id(&t5["data"]["id"]));
-    let before = common::last_log_id(&pool, "export_run").await;
     common::trigger(&c, &base, &run_id, &admin).await;
     let (status, _, msg) = wait_task(&pool, id5).await;
     assert_eq!(status, 2, "先正常跑完一份: {msg}");

@@ -359,6 +359,7 @@ export const zhCN = {
   'notify.test_hint': '测试用的是**已保存**的配置 —— 改完先保存再测；发不出去会给失败原因。',
   'notify.test_sent': '已发往 {to}，去收件箱看看',
   'notify.url_rule': '必须是 http:// 或 https:// 开头',
+  'notify.url_too_long': '最长 512 字符（关着也要守：超长值会让审计摘要写不进去）',
   'auditlog.module.notify': '通知设置',
 
   // ---- 操作日志 ----

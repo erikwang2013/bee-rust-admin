@@ -110,6 +110,8 @@ pub async fn save_config(
         None => (old.smtp_password.clone(), false),
         Some("") => (String::new(), !old.smtp_password.is_empty()),
         Some(v) => {
+            // 口径：口令也走密文落库；它落在 `sys_config.value`（TEXT），拦下来的是
+            // `crypto::write` 的密文上限（255 字符），不是任何一列的列宽。
             let cipher =
                 crate::crypto::write(&state.crypto, v).map_err(ApiError::BadRequest)?;
             (cipher, masked_changed(&state.crypto, &old.smtp_password, v))

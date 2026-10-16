@@ -91,6 +91,9 @@ export default function NotifyPage() {
           rules={[
             ({ getFieldValue }) => ({
               validator: (_, v: string) => {
+                // 长度与开关无关（后端 `notify::validate` 同口径）：超长值整条进审计摘要，
+                // 写不进去就丢一条审计 —— 所以关着也拦
+                if ((v ?? '').length > 512) return Promise.reject(new Error(t('notify.url_too_long')));
                 if (!getFieldValue('webhook_enabled')) return Promise.resolve();
                 if (!v) return Promise.reject(new Error(t('validate.required', { field: t('notify.webhook_url') })));
                 return /^https?:\/\//.test(v)

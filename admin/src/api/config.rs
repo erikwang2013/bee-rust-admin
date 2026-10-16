@@ -45,6 +45,18 @@ fn is_secret_key(key: &str) -> bool {
     SECRET_KEYS.contains(&key)
 }
 
+/// 一律不许公开的键前缀：`/configs/public` 免登录，`notify.*` 里是 SMTP 服务器/账号、
+/// Webhook 地址这些内部信息，抖给匿名访问者等于把内网拓扑送人。前缀匹配 —— 以后
+/// 新增 `notify.*` 键自动在内，不用记得往名单里补。
+const NEVER_PUBLIC_PREFIXES: [&str; 1] = ["notify."];
+
+fn never_public(key: &str) -> bool {
+    NEVER_PUBLIC_PREFIXES.iter().any(|p| key.starts_with(p))
+}
+
+/// 标记 `notify.*` 公开时的拒绝文案（create / update 共用）。
+const PUBLIC_BANNED: &str = "notify 下的配置不能设为公开（免登录接口会泄露 SMTP / Webhook 信息）";
+
 /// 命中敏感键的统一拒绝文案（改/删共用）。
 fn secret_key_rejected() -> ApiError {
     ApiError::BadRequest("该配置项由「通知设置」页维护，不能在这里修改".into())
@@ -160,6 +172,11 @@ pub async fn public_list(State(state): State<AppState>) -> Result<Json<Value>, A
         .map_err(ApiError::from)?;
     let mut map = Map::new();
     for c in rows {
+        // 写入侧已拦 `notify.*` 标记公开（见 never_public），这里再滤一道：
+        // 库被手改过、或旧数据里已经标成 1 的，免登录口也不能吐出去。
+        if never_public(&c.key) {
+            continue;
+        }
         map.insert(c.key, public_value(&c.value_type, &c.value));
     }
     Ok(ok(Value::Object(map)))
@@ -195,6 +212,9 @@ pub async fn create(
     check_type(&body.value_type)?;
     if !valid_group(&body.group) {
         return Err(ApiError::BadRequest("分组名只能是小写字母、数字、下划线，最长 64".into()));
+    }
+    if body.is_public == 1 && never_public(key) {
+        return Err(ApiError::BadRequest(PUBLIC_BANNED.into()));
     }
     check_len("remark", &body.remark, 255)?;
 
@@ -264,6 +284,9 @@ pub async fn update(
         c.value_type = t;
     }
     if let Some(p) = body.is_public {
+        if p == 1 && never_public(&c.key) {
+            return Err(ApiError::BadRequest(PUBLIC_BANNED.into()));
+        }
         c.is_public = p;
     }
     if let Some(r) = body.remark {
