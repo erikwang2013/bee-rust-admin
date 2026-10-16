@@ -167,6 +167,28 @@ fn attach_file(saved_path: &str) -> std::path::PathBuf {
     std::path::Path::new("target/test-uploads/attach").join(subdir).join(name)
 }
 
+/// 附件组目录下的全部文件（递归、排序）——「零落盘」类断言的前后快照。
+/// 只走 attach 子树：上传根下还有 backups（db_backup 任务随时可能落一份）等别的目录，
+/// 全根快照会被后台任务搅出假失败。
+fn tree_files() -> Vec<std::path::PathBuf> {
+    fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        if let Ok(rd) = std::fs::read_dir(dir) {
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    walk(&p, out);
+                } else {
+                    out.push(p);
+                }
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(std::path::Path::new("target/test-uploads/attach"), &mut out);
+    out.sort();
+    out
+}
+
 /// 菜单树里某个权限码对应的 id（造受限角色用）。
 fn find_perm(tree: &Value, perm: &str) -> String {
     // `tree` 是顶层节点**数组**：从这里展开，别把整个数组当一个节点找（它没有 perm 字段）
@@ -368,6 +390,48 @@ async fn v19_attachment_center() {
     let (st, v) = call(&c, Method::GET, api(&format!("/attachments/{mine_id}")), Some(&admin), None).await;
     assert_eq!(st, 200, "超管全量: {v}");
 
+    // ── 4b. add 码负控：没有 system:attach:add 的角色连上传口都进不去 ─────────
+    // 上传是唯一「往磁盘写东西」的入口，此前只有登录校验（全仓唯一缺 add 的模块）。
+    let (st, v) = call(
+        &c,
+        Method::POST,
+        api("/roles"),
+        Some(&admin),
+        Some(json!({"name": "无附件权限角色", "code": "att_none", "data_scope": 1, "status": 1, "remark": ""})),
+    )
+    .await;
+    assert_eq!(st, 200, "建无权限角色: {v}");
+    let none_role_id = common::as_id(&v["data"]["id"]);
+    let (st, v) = call(
+        &c,
+        Method::POST,
+        api("/admins"),
+        Some(&admin),
+        Some(json!({"username": "att_none_u", "password": "att_none12345", "nickname": "无权限用户", "role_ids": [none_role_id]})),
+    )
+    .await;
+    assert_eq!(st, 200, "建无权限用户: {v}");
+    let none_user = common::login(&base, "att_none_u", "att_none12345").await.expect("无权限用户登录");
+
+    let disk_before = tree_files();
+    let (st, v) = post_form(
+        &c,
+        api("/attachments/upload/preprocess"),
+        Some(&none_user),
+        preprocess_form("nope.png", png.len(), &hash, &[]),
+    )
+    .await;
+    assert_eq!(st, 403, "没有 add 码：preprocess 403: {v}");
+    let (st, v) = post_form(
+        &c,
+        api("/attachments/upload/chunk"),
+        Some(&none_user),
+        chunk_form("nope-tmp", "png", "202610", &hash, 1, 1, png.clone(), "nope.png", &[]),
+    )
+    .await;
+    assert_eq!(st, 403, "没有 add 码：chunk 403: {v}");
+    assert_eq!(tree_files(), disk_before, "403 要在碰磁盘之前发生（零落盘）");
+
     // ── 5. 公告配图：绑定已发布公告 = 公开（对全体登录用户可下）────────
     let (st, v) = call(
         &c,
@@ -544,6 +608,53 @@ async fn v19_attachment_center() {
     assert_eq!(st, 400, "0.2MB 已用 + 0.9MB 新文件 > 1MB 配额: {v}");
     assert_eq!(v["err"], "attach.quota_exceeded", "配额码给前端译: {v}");
 
+    // 不诚实路径：预检声明 resource_size=1（过得去），落盘实测量 ~900KB ——
+    // 预检只看声明值，唯一拦得住的是落库前按实测 size 的复查。
+    let mut big = jpeg_bytes();
+    big.extend(std::iter::repeat(9u8).take(700 * 1024));
+    let big_hash = aetherupload::md5_hex(&big);
+    let (st, v) = post_form(
+        &c,
+        format!("{qbase}/api/v1/attachments/upload/preprocess"),
+        Some(&qlogin),
+        preprocess_form("sneaky.jpg", 1, &big_hash, &[]),
+    )
+    .await;
+    assert_eq!(st, 200, "声明 1 字节时预检拦不住（正是要补的那道缝）: {v}");
+    let d = &v["data"];
+    let (temp, ext, subdir) = (
+        d["resource_temp_base_name"].as_str().unwrap().to_string(),
+        d["resource_ext"].as_str().unwrap().to_string(),
+        d["group_sub_dir"].as_str().unwrap().to_string(),
+    );
+    let chunk_size = d["chunk_size"].as_u64().unwrap() as usize;
+    let total = big.len().div_ceil(chunk_size);
+    let (mut last_st, mut last_v) = (0, json!(null));
+    for idx in 1..=total {
+        let start = (idx - 1) * chunk_size;
+        let end = (start + chunk_size).min(big.len());
+        let (st, v) = post_form(
+            &c,
+            format!("{qbase}/api/v1/attachments/upload/chunk"),
+            Some(&qlogin),
+            chunk_form(&temp, &ext, &subdir, &big_hash, idx, total, big[start..end].to_vec(), "sneaky.jpg", &[]),
+        )
+        .await;
+        (last_st, last_v) = (st, v);
+        if st != 200 {
+            break;
+        }
+    }
+    assert_eq!(last_st, 400, "末片按实测 size 复查配额: {last_v}");
+    assert_eq!(last_v["err"], "attach.quota_exceeded", "稳定码: {last_v}");
+    let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM attachment WHERE name = 'sneaky.jpg'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(n, 0, "超配额的成品不落行");
+    let sneaky = attach_file(&format!("attach_{subdir}_{big_hash}.jpg"));
+    assert!(sneaky.exists(), "成品已组装落盘（没行引用，等孤儿清理兜）: {}", sneaky.display());
+
     // ── 8. 审计留痕（模块 attach）──────────────────────────────────
     let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM audit_log WHERE module = 'attach'")
         .fetch_one(&pool)
@@ -571,6 +682,8 @@ async fn v19_attachment_center() {
     // 插件写到一半的临时文件（扩展名不在白名单）：清理任务不许碰
     let part = dir.join("half.png.part");
     std::fs::write(&part, b"partial").unwrap();
+    // 上一节被配额拒掉的成品也躺在这儿（没行引用）—— 它就是「落库前复查」那条缝的兜底对象
+    assert!(sneaky.exists(), "被拒的成品在盘上等清理: {}", sneaky.display());
 
     let (st, v) = call(&c, Method::GET, api("/jobs"), Some(&admin), None).await;
     assert_eq!(st, 200, "任务列表: {v}");
@@ -587,6 +700,7 @@ async fn v19_attachment_center() {
     let (status, msg, _) = common::wait_job_log(&pool, "attach_orphan_clean", mark).await;
     assert_eq!(status, 1, "清理任务执行成功: {msg}");
     assert!(!orphan.exists(), "没人引用的成品被清掉: {msg}");
+    assert!(!sneaky.exists(), "被配额拒掉的成品同样收走（I1 的兜底路径真的接得住）: {msg}");
     assert!(part.exists(), "非白名单扩展名（插件临时文件）不碰: {msg}");
     assert!(attach_file(&live_saved).exists(), "库里有引用的文件绝不能删（误删=丢数据）: {msg}");
 

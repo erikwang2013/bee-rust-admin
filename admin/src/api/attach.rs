@@ -67,7 +67,7 @@ const SORT_MAX: i32 = 999;
 
 /// `POST /api/v1/attachments/upload/preprocess` —— 校验参数（类型/大小/配额）、判秒传、建临时文件。
 #[apidoc::title("附件上传 · 预检")]
-#[apidoc::desc("校验扩展名白名单（415）、单文件上限 10MB 与**每人总配额**（400 `attach.too_large` / `attach.quota_exceeded`）、判秒传、建临时文件。需要登录")]
+#[apidoc::desc("校验扩展名白名单（415）、单文件上限 10MB 与**每人总配额**（400 `attach.too_large` / `attach.quota_exceeded`）、判秒传、建临时文件。需要 `system:attach:add`")]
 #[apidoc::url("/api/v1/attachments/upload/preprocess")]
 #[apidoc::method("POST")]
 #[apidoc::tag("附件")]
@@ -80,6 +80,7 @@ const SORT_MAX: i32 = 999;
 #[apidoc::response_status("200")]
 #[apidoc::response_status("400")]
 #[apidoc::response_status("401")]
+#[apidoc::response_status("403")]
 #[apidoc::response_status("415")]
 #[apidoc::returned(name = "data", ty = "object", desc = "插件响应：saved_path 非空 = 秒传命中（同时带 attachment 行）；否则带分片信息（chunk_size 等）")]
 pub async fn preprocess(
@@ -87,6 +88,7 @@ pub async fn preprocess(
     auth: Auth,
     AppMultipart(mut multipart): AppMultipart,
 ) -> Result<Json<Value>, ApiError> {
+    auth.require("system:attach:add")?;
     let (form, name) = read_form(&mut multipart).await?;
     // 配额在预检处拦：分片都传上来了再拒，白费流量，文件也已落了一半
     check_quota(&state, &auth, &form).await?;
@@ -111,7 +113,7 @@ pub async fn preprocess(
 
 /// `POST /api/v1/attachments/upload/chunk` —— 逐片追加；末片组装完成后落 `attachment` 行。
 #[apidoc::title("附件上传 · 上传分片")]
-#[apidoc::desc("multipart 逐片追加（128 KB/片）；末片组装完成后落库并回 attachment 行。失败按插件的真实状态码与稳定码返回（409 分块乱序时可带 `args.expected_index`，据它续传）。需要登录")]
+#[apidoc::desc("multipart 逐片追加（128 KB/片）；末片组装完成后落库并回 attachment 行。失败按插件的真实状态码与稳定码返回（409 分块乱序时可带 `args.expected_index`，据它续传）。需要 `system:attach:add`")]
 #[apidoc::url("/api/v1/attachments/upload/chunk")]
 #[apidoc::method("POST")]
 #[apidoc::tag("附件")]
@@ -123,6 +125,7 @@ pub async fn preprocess(
 #[apidoc::not_debug]
 #[apidoc::response_status("200")]
 #[apidoc::response_status("400")]
+#[apidoc::response_status("403")]
 #[apidoc::response_status("409")]
 #[apidoc::response_status("413")]
 #[apidoc::response_status("415")]
@@ -133,6 +136,7 @@ pub async fn chunk(
     auth: Auth,
     AppMultipart(mut multipart): AppMultipart,
 ) -> Result<Json<Value>, ApiError> {
+    auth.require("system:attach:add")?;
     let (form, name) = read_form(&mut multipart).await?;
     let request = form.to_save_chunk_request();
     let result =
@@ -175,6 +179,10 @@ async fn finish(
     .await
     .map_err(|e| ApiError::internal(format!("附件摘要任务执行失败: {e}")))?
     .map_err(|e| ApiError::internal(format!("读附件成品失败: {e}")))?;
+
+    // 配额按**实测** size 复查：预检那道只看客户端声明的 resource_size，声明 1 字节即可绕过。
+    // 这里拒掉时行不落库，成品文件成孤儿 —— `attach_orphan_clean` 会连秒传索引一起清掉。
+    check_quota_bytes(state, *admin_id, size as u64).await?;
 
     let ext = Path::new(saved_path)
         .extension()
@@ -243,15 +251,24 @@ pub(crate) const TOO_LARGE_MSG: &str = "附件不能超过 10 MB";
 /// 每人**在用附件总量**的配额闸（`[attach] quota_mb`，0 = 不限）。
 /// 口径是 `SUM(size)` 而不是「上传次数」：配额的意义是磁盘占用。
 async fn check_quota(state: &AppState, auth: &Auth, form: &FormData) -> Result<(), ApiError> {
-    let quota_mb = state.cfg.attach_quota_mb;
-    if quota_mb <= 0 {
-        return Ok(());
-    }
     let incoming: u64 = form
         .text("resource_size")
         .and_then(|s| s.trim().parse().ok())
         .unwrap_or(0);
-    let used = sum_size(state, auth.admin.id).await?;
+    check_quota_bytes(state, auth.admin.id, incoming).await
+}
+
+/// 配额闸的唯一口径：`该管理员现有附件总量 + incoming > quota`（MB 折算后）就拒。
+///
+/// 两处调用，**入参的可信度不同**：预检拿的是客户端声明的 `resource_size`（要拦早，
+/// 不然分片白传；但它不可信，声明 1 字节就能过），`finish` 拿的是落盘文件的**实测**
+/// size（唯一拦得住的一道）。被 `finish` 拒掉的成品没人引用，交给 attach_orphan_clean。
+async fn check_quota_bytes(state: &AppState, admin_id: i64, incoming: u64) -> Result<(), ApiError> {
+    let quota_mb = state.cfg.attach_quota_mb;
+    if quota_mb <= 0 {
+        return Ok(());
+    }
+    let used = sum_size(state, admin_id).await?;
     let quota = quota_mb as u64 * 1024 * 1024;
     if used + incoming > quota {
         return Err(ApiError::Coded {
