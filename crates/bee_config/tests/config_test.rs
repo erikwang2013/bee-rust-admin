@@ -44,6 +44,13 @@ struct RetryConfig {
     run_mode: String,
 }
 
+#[derive(Deserialize, Debug, PartialEq, Config)]
+struct SlowWriterConfig {
+    app_name: String,
+    http_port: u16,
+    run_mode: String,
+}
+
 fn write_test_conf(path: &std::path::Path, port: u16, mode: &str) {
     std::fs::write(path, format!("app_name = test-app\nhttp_port = {port}\nrun_mode = {mode}\n"))
         .unwrap();
@@ -123,6 +130,33 @@ fn test_reload_retries_on_half_written_file() {
     let writer = std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(10));
         write_test_conf(&path, 9090, "prod");
+    });
+
+    cfg.reload().unwrap();
+    writer.join().unwrap();
+    assert_eq!(cfg.http_port, 9090);
+    assert_eq!(cfg.run_mode, "prod");
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// CI run 38841315418 的 flake 现场：writer 线程在极载 runner 上被饿住，重写文件
+/// 晚于 reload 的重试窗口 → `MissingKey("default section")`。这里把那个「慢」放大到
+/// 400ms 钉住它：窗口 200ms 时本用例必 RED（reload 在 deadline 拿 last_err 返回），
+/// 窗口 1s 时 GREEN 且读到新值。
+#[test]
+fn test_reload_outlasts_a_slow_writer() {
+    let (dir, path) = temp_dir("slow_writer");
+    write_test_conf(&path, 8080, "dev");
+
+    let mut cfg = SlowWriterConfig::load(&path).unwrap();
+    assert_eq!(cfg.http_port, 8080);
+
+    std::fs::write(&path, "partially written\n").unwrap();
+    let slow_path = path.clone();
+    let writer = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        write_test_conf(&slow_path, 9090, "prod");
     });
 
     cfg.reload().unwrap();

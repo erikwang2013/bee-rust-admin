@@ -46,9 +46,12 @@ pub fn derive_config(input: TokenStream) -> TokenStream {
                 // behind the change event, and the writer may be slow (or the
                 // machine loaded) — so retry until a deadline, not a fixed
                 // attempt count. A fixed 3x20ms window loses the race on a
-                // busy box; 200ms is ~20x a local editor's rewrite.
+                // busy box. 1s (was 200ms = ~20x a local editor's rewrite):
+                // the smaller window still lost the race on a loaded CI
+                // runner, where the writer thread got starved for >200ms and
+                // reload surfaced MissingKey (run 38841315418).
                 let deadline =
-                    std::time::Instant::now() + std::time::Duration::from_millis(200);
+                    std::time::Instant::now() + std::time::Duration::from_millis(1000);
                 let mut last_err = None;
                 loop {
                     match Self::load(&path) {
