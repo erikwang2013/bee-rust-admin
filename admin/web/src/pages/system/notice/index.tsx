@@ -235,10 +235,13 @@ export default function NoticePage() {
             ) : editing ? (
               <Space direction="vertical" style={{ width: '100%' }}>
                 <Space wrap>
-                  <Auth code="system:attach:add">
-                    <Button icon={<UploadOutlined />} loading={uploading} onClick={() => fileRef.current?.click()}>
-                      {t('notice.image_upload')}
-                    </Button>
+                  {/* 两个码都要：传完立刻 bind（system:attach:edit），只有 add 的账号点下去会留下没绑定的孤儿附件 */}
+                  <Auth code="system:attach:edit">
+                    <Auth code="system:attach:add">
+                      <Button icon={<UploadOutlined />} loading={uploading} onClick={() => fileRef.current?.click()}>
+                        {t('notice.image_upload')}
+                      </Button>
+                    </Auth>
                   </Auth>
                   <input ref={fileRef} type="file" accept={IMG_ACCEPT} hidden onChange={(e) => void onPickImage(e)} />
                 </Space>

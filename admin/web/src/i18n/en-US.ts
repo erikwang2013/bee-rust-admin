@@ -238,7 +238,7 @@ export const enUS: Record<I18nKey, string> = {
   'attach.entity_notice': 'Notice images',
   'attach.public': 'Public',
   'attach.delete_confirm': 'Delete "{name}"?',
-  'attach.hint': 'Up to 10 MB per file. Allowed: images (png/jpg/gif/webp/bmp), pdf, txt, csv, docx/xlsx/pptx, zip. Uploads beyond your quota are rejected. Uploading the same file twice stores one row and one copy on disk; the file is deleted only with the last row.',
+  'attach.hint': 'Up to 10 MB per file. Allowed: images (png/jpg/gif/webp/bmp), pdf, txt, csv, docx/xlsx/pptx, zip. Uploads beyond your quota are rejected. Uploading the same file twice within the same month keeps one copy on disk (named by content MD5, in a per-month subdirectory); every upload gets its own row, and the file is deleted only with the last row.',
 
   // ---- Admins ----
   'admin.super': 'Super admin',

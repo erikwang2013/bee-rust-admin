@@ -245,7 +245,7 @@ export const zhCN = {
   'attach.entity_notice': '公告配图',
   'attach.public': '公开',
   'attach.delete_confirm': '删除「{name}」？',
-  'attach.hint': '单文件上限 10 MB，白名单：图片（png/jpg/gif/webp/bmp）、pdf、txt、csv、docx/xlsx/pptx、zip；超配额会拒绝。同一个文件重复上传只落一行库、磁盘上只有一份，删到最后一行时才删文件。',
+  'attach.hint': '单文件上限 10 MB，白名单：图片（png/jpg/gif/webp/bmp）、pdf、txt、csv、docx/xlsx/pptx、zip；超配额会拒绝。同一个文件在同一月内重复上传，磁盘上只留一份（文件名取内容 MD5、子目录按月），每次上传各一行记录，删到最后一行时才删文件。',
 
   // ---- 管理员 ----
   'admin.super': '超级管理员',
