@@ -168,6 +168,21 @@ export interface ImportReport {
   rows: ImportRow[];
 }
 
+/** 附件（项 5）。`stored_path` 不下发（后端 skip），下载一律走 `/attachments/{id}`。 */
+export interface AttachmentRow {
+  id: string; name: string; ext: string; mime: string; size: number; sha256: string;
+  admin_id: string; admin_name: string;
+  /** 关联类型：空串 = 未绑定（目前只有 notice） */
+  entity_type: string;
+  /** 关联对象 id（短串）；未绑定是空串 */
+  entity_id: string;
+  /** 关联对象的标题（列表里给眼睛看的那一列） */
+  entity_label: string;
+  /** 绑定了**已发布**公告 = 所有登录用户都能下 */
+  is_public: boolean;
+  sort: number; created_at: string;
+}
+
 /** 异步导出（项 4）：类型在**后端代码**里注册（能往库里写导出语句就是任意读库），前端只列出来。 */
 export type ExportKind = 'audit-log' | 'login-log';
 export interface ExportTask {

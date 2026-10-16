@@ -249,6 +249,13 @@ fn module_action(method: &Method, path: &str) -> (String, String) {
         ("POST", ["avatar", "upload", "preprocess"]) => ("auth", "上传头像"),
         ("POST", ["avatar", "upload", "chunk"]) => ("auth", "上传头像"),
 
+        // 附件中心（项 5）：同头像，preprocess 与每一片 chunk 各留一条；
+        // 改关联（含解绑）与删除各一条 —— 「谁把配图挂到公告上/删了」必须查得到
+        ("POST", ["attachments", "upload", "preprocess"]) => ("attach", "上传附件"),
+        ("POST", ["attachments", "upload", "chunk"]) => ("attach", "上传附件"),
+        ("PUT", ["attachments", _]) => ("attach", "关联附件"),
+        ("DELETE", ["attachments", _]) => ("attach", "删除附件"),
+
         _ => return ("other".into(), format!("{} {}", method, path)),
     };
     (module.into(), action.into())

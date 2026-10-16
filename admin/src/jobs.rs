@@ -9,7 +9,7 @@
 //! - 同一进程内用 `last_run_at` **抢占**：执行前先落库，tick 重叠时不会再选它。
 //!   ponytail: 单实例假设，多实例部署要换成 DB 行锁（本项目的 admin 是单实例）。
 //! - `[job] enabled=false` 时**不启动循环**（手动触发仍可用：运维要能临时关掉定时、手动补跑）。
-use crate::models::{Admin, Job, JobLog};
+use crate::models::{Admin, Attachment, Job, JobLog};
 use crate::state::AppState;
 use bee_orm::Model;
 use crate::util::now;
@@ -39,6 +39,12 @@ pub const JOBS: &[JobSpec] = &[
         name: "头像孤儿清理",
         interval_secs: 86400,
         run: |s| Box::pin(avatar_orphan_clean(s)),
+    },
+    JobSpec {
+        code: "attach_orphan_clean",
+        name: "附件孤儿清理",
+        interval_secs: 86400,
+        run: |s| Box::pin(attach_orphan_clean(s)),
     },
     // 每天一份、保留 7 份（[backup] keep）：默认节奏是一周内的回滚窗口。
     // 备份本体在 crate::backup（解析 DSN → mysqldump → 落盘 → 清理）
@@ -277,12 +283,67 @@ async fn avatar_orphan_clean(state: AppState) -> Result<String, String> {
         match std::fs::remove_file(&path) {
             Ok(_) => {
                 removed += 1;
-                purge_instant(&state, rel);
+                purge_instant(&state, crate::api::avatar::AVATAR_GROUP, rel);
             }
             Err(e) => tracing::warn!("删孤儿头像 {} 失败: {e}", path.display()),
         }
     }
     Ok(format!("头像 {seen} 个，删除孤儿 {removed} 个"))
+}
+
+/// 附件孤儿清理：删附件组目录（`{upload_dir}/attach/`）下**不再被任何 `attachment` 行
+/// 引用**的文件。护栏与头像同一条：只删白名单扩展名里的文件 —— 目录里除了成品还有
+/// 插件写到一半的临时文件（`<临时名>.png.part`）与运维手放的东西，那些不碰。
+///
+/// 与头像的差别：附件的引用集合只有一个来源（`attachment.stored_path`，没有历史 URL 形态），
+/// 所以这里简单得多。上传成品落盘成功、INSERT 失败的那条缝（以及被人手删的行）只有它兜得住。
+async fn attach_orphan_clean(state: AppState) -> Result<String, String> {
+    let dir = std::path::Path::new(&state.cfg.upload_dir).join(crate::api::attach::ATTACH_GROUP);
+    let files = match collect_files(&dir) {
+        Ok(files) => files,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok("附件目录不存在，无需清理".into());
+        }
+        Err(e) => return Err(format!("读附件目录 {} 失败: {e}", dir.display())),
+    };
+
+    let rows = Attachment::query()
+        .all(&state.db)
+        .await
+        .map_err(|e| format!("查附件失败: {e}"))?;
+    let mut kept: std::collections::HashSet<std::path::PathBuf> = std::collections::HashSet::new();
+    for row in &rows {
+        let stored = row.stored_path.trim();
+        if stored.is_empty() {
+            continue;
+        }
+        // saved_path → 插件的成品路径；配置换了 upload_dir 的陈旧值解析到别处，那不是本目录的孤儿
+        if let Some(resource) = state.aether.resource(stored) {
+            if let Ok(rel) = resource.path.strip_prefix(&dir) {
+                kept.insert(rel.to_path_buf());
+            }
+        }
+    }
+
+    let (mut seen, mut removed) = (0u64, 0u64);
+    for path in files {
+        seen += 1;
+        if !is_attach_file(&path) {
+            continue;
+        }
+        let Ok(rel) = path.strip_prefix(&dir) else { continue };
+        if kept.contains(rel) {
+            continue;
+        }
+        match std::fs::remove_file(&path) {
+            Ok(_) => {
+                removed += 1;
+                purge_instant(&state, crate::api::attach::ATTACH_GROUP, rel);
+            }
+            Err(e) => tracing::warn!("删孤儿附件 {} 失败: {e}", path.display()),
+        }
+    }
+    Ok(format!("附件 {seen} 个，删除孤儿 {removed} 个"))
 }
 
 /// 递归收集目录下的所有文件（用显式栈：用户手放的深层目录不该让清理任务爆栈）。
@@ -315,9 +376,9 @@ fn collect_files(root: &std::path::Path) -> std::io::Result<Vec<std::path::PathB
 ///
 /// 索引里可能还留着 `group_hash → saved_path` 指向这个已删文件（管理员行被删、值被直接
 /// 改库 —— 文件成了孤儿但索引没过期），不清的话下次有人传同样的内容会「秒传命中」到一个
-/// 死链（头像 404）。`rel` 是相对头像组目录的路径，只有「一层子目录 + 文件名」这种插件
-/// 成品的位置才构造得出 saved_path；直接躺在 `avatar/` 下的老文件/手工文件跳过。
-fn purge_instant(state: &AppState, rel: &std::path::Path) {
+/// 死链（头像 404）。`rel` 是相对**该分组目录**的路径，只有「一层子目录 + 文件名」这种
+/// 插件成品的位置才构造得出 saved_path；直接躺在组目录下的老文件/手工文件跳过。
+fn purge_instant(state: &AppState, group: &str, rel: &std::path::Path) {
     let (Some(subdir), Some(name)) = (
         rel.parent().and_then(|p| p.to_str()),
         rel.file_name().and_then(|n| n.to_str()),
@@ -327,7 +388,7 @@ fn purge_instant(state: &AppState, rel: &std::path::Path) {
     if subdir.is_empty() || subdir.contains('/') {
         return;
     }
-    let saved = aetherupload::SavedPath::encode(crate::api::avatar::AVATAR_GROUP, subdir, name);
+    let saved = aetherupload::SavedPath::encode(group, subdir, name);
     if !state.aether.delete_instant_path(&saved) {
         tracing::debug!("清孤儿 {saved} 的秒传索引未成功（不阻断清理）");
     }
@@ -336,10 +397,19 @@ fn purge_instant(state: &AppState, rel: &std::path::Path) {
 /// 扩展名白名单守卫（理由见 `avatar_orphan_clean` 的注释）：只有 png/jpg 才可能是
 /// 成品头像；`.part`、`.bak`、无扩展名的一律留给人工处理。
 fn is_avatar_file(path: &std::path::Path) -> bool {
+    in_ext_whitelist(path, &crate::api::avatar::AVATAR_EXTS)
+}
+
+/// 附件同理：只有 `ATTACH_EXTS` 里的扩展名才可能是上传成品。
+fn is_attach_file(path: &std::path::Path) -> bool {
+    in_ext_whitelist(path, &crate::api::attach::ATTACH_EXTS)
+}
+
+fn in_ext_whitelist(path: &std::path::Path, exts: &[&str]) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
         .map(str::to_ascii_lowercase)
-        .is_some_and(|ext| crate::api::avatar::AVATAR_EXTS.contains(&ext.as_str()))
+        .is_some_and(|ext| exts.contains(&ext.as_str()))
 }
 
 #[cfg(test)]

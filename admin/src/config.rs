@@ -53,6 +53,9 @@ pub struct AppConfig {
     /// 导出文件保留天数（`[export] retain_days`，默认 7）——过期由 export_clean 任务
     /// 删记录 + 文件。**必须 >= 1**：0 等于刚导完就过期，导出中心什么也留不下。
     pub export_retain_days: i64,
+    /// 每人的附件总量配额（`[attach] quota_mb`，默认 200）。**0 = 不限**（负数拒启动）：
+    /// 口径是 `SUM(size)`，即磁盘占用，不是上传次数（见 `api::attach::check_quota`）。
+    pub attach_quota_mb: i64,
     /// 请求安全扫描的拦截阈值（`[security] scan`）：`None` = `off`（**默认**，只报告不拦截）。
     ///
     /// `Some(High)` / `Some(Critical)` = 扫描等级达到该值就 403 + `err = "security.blocked"`
@@ -170,6 +173,15 @@ impl AppConfig {
             ));
         }
 
+        // 附件配额：0 = 不限（合法意图），负数一定是误配 —— 那时 `quota <= 0` 会被
+        // 当成「不限」，等于悄悄把闸门全打开，得在启动时说清楚。
+        let attach_quota_mb = num("attach", "quota_mb", 200)?;
+        if attach_quota_mb < 0 {
+            return Err(ConfigError::Invalid(
+                "[attach] quota_mb 不能是负数（0 = 不限）".into(),
+            ));
+        }
+
         // 文档站开关 + 口令：**enabled = true 却没配口令 = 拒绝启动**。默认 false：
         // 文档站把整个接口面（含请求/响应结构）摊开，是开发/交付工具，不该跟着
         // 生产实例一起对外；真要开，就必须带口令 —— 不允许「以为有口令其实没有」。
@@ -216,6 +228,7 @@ impl AppConfig {
             backup_dir: opt("backup", "dir", ""),
             backup_keep,
             export_retain_days,
+            attach_quota_mb,
             security_scan,
             hashids_salt: opt("app", "hashids_salt", ""),
             hashids_min_len: hashids_min_len as usize,

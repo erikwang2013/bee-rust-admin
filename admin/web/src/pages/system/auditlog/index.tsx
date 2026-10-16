@@ -21,6 +21,7 @@ const MODULE_KEYS: Record<string, I18nKey> = {
   export: 'auditlog.module.export',
   loginlog: 'auditlog.module.loginlog',
   auditlog: 'auditlog.module.auditlog',
+  attach: 'auditlog.module.attach',
   auth: 'auditlog.module.auth',
   other: 'auditlog.module.other',
 };

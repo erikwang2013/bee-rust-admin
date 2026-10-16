@@ -5,6 +5,7 @@ use bee_orm::pool::mysql::Pool;
 use bee_orm::{Model, OrmError, QuerySet, Value};
 
 pub mod admin;
+pub mod attach;
 pub mod audit_log;
 pub mod auth;
 pub mod avatar;

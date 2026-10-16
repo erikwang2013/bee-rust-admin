@@ -22,6 +22,7 @@ const ExportPage = lazy(() => import('./pages/system/export/index'));
 const NoticePage = lazy(() => import('./pages/system/notice/index'));
 const ConfigPage = lazy(() => import('./pages/system/config/index'));
 const NotifyPage = lazy(() => import('./pages/system/notify/index'));
+const AttachPage = lazy(() => import('./pages/system/attach/index'));
 
 const loading = (
   <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 120 }}>
@@ -60,6 +61,7 @@ export const router = createBrowserRouter([
           { path: 'system/config', element: <RequirePerm code="system:config:list"><L><ConfigPage /></L></RequirePerm> },
           { path: 'system/export', element: <RequirePerm code="system:export:list"><L><ExportPage /></L></RequirePerm> },
           { path: 'system/notify', element: <RequirePerm code="system:notify:list"><L><NotifyPage /></L></RequirePerm> },
+          { path: 'system/attach', element: <RequirePerm code="system:attach:list"><L><AttachPage /></L></RequirePerm> },
           { path: 'profile', element: <L><ProfilePage /></L> },
           { path: '403', element: <Forbidden /> },
           { path: '*', element: <NotFound /> },

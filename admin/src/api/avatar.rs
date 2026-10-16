@@ -76,31 +76,41 @@ pub fn build_runtime(cfg: &AppConfig) -> Result<Arc<Runtime>, String> {
         // 默认的 1MB 的话 512KB 的头像永远只有一片，「分片」在上传路径上根本不触发。
         // 128KB → 满配头像 4 片、压缩过的头像 1–2 片。写死，不做配置项。
         chunk_size: AVATAR_CHUNK_BYTES,
-        // 只留 avatar 分组：`Config::default()` 自带的 `file` 分组（100MB、20 多种扩展名）
-        // 在这里没有用途，删掉它就是删掉一条「往别的目录写大文件」的路径。
-        groups: BTreeMap::from([(
-            AVATAR_GROUP.to_string(),
-            GroupConfig {
-                group_dir: AVATAR_GROUP.to_string(),
-                resource_maxsize: AVATAR_MAX_BYTES,
-                resource_extensions: AVATAR_EXTS.iter().map(|e| e.to_string()).collect(),
-                event_before_upload_complete: false,
-                event_upload_complete: false,
-            },
-        )]),
+        // 只留 avatar + attach 两个分组：`Config::default()` 自带的 `file` 分组（100MB、
+        // 20 多种扩展名）在这里没有用途，删掉它就是删掉一条「往别的目录写大文件」的路径。
+        // 分片大小是**全局**的（插件没有 per-group 的 chunk_size），所以附件也是 128KB/片。
+        groups: BTreeMap::from([
+            (
+                AVATAR_GROUP.to_string(),
+                GroupConfig {
+                    group_dir: AVATAR_GROUP.to_string(),
+                    resource_maxsize: AVATAR_MAX_BYTES,
+                    resource_extensions: AVATAR_EXTS.iter().map(|e| e.to_string()).collect(),
+                    event_before_upload_complete: false,
+                    event_upload_complete: false,
+                },
+            ),
+            // 附件（项 5）：与头像同进程、同上传根，只是另一套闸门与白名单；秒传索引
+            // 的键带分组名（`{group}_{hash}`），两个分组之间不会互相命中
+            (crate::api::attach::ATTACH_GROUP.to_string(), crate::api::attach::group()),
+        ]),
         ..UploadConfig::default()
     };
 
     let runtime = Runtime::new(config, "")
-        .map_err(|e| format!("初始化头像上传运行时失败（[app] upload_dir = {}）: {e}", cfg.upload_dir))?;
+        .map_err(|e| format!("初始化上传运行时失败（[app] upload_dir = {}）: {e}", cfg.upload_dir))?;
 
-    // 插件不会自己建这两个目录，缺了第一个上传就会失败（错误还只是「创建子文件夹失败」）：
-    // - `avatar/`：头像组的落盘根（插件只建它下面的按月子目录，要求父目录已存在）
+    // 插件不会自己建这些目录，缺了上传就会失败（错误还只是「创建子文件夹失败」）：
+    // - `avatar/` `attach/`：各分组的落盘根（插件只建它下面的按月子目录，要求父目录已存在）
     // - `_header/`：分块断点（续传位置）的存放目录（插件直接 `create` 文件，不建目录）
     // 建不出来说明 upload_dir 不可写 —— 现在就说清楚，别等第一张头像上传时才发现。
-    for dir in [runtime.upload_root().join(AVATAR_GROUP), runtime.upload_root().join("_header")] {
+    for dir in [
+        runtime.upload_root().join(AVATAR_GROUP),
+        runtime.upload_root().join(crate::api::attach::ATTACH_GROUP),
+        runtime.upload_root().join("_header"),
+    ] {
         std::fs::create_dir_all(&dir).map_err(|e| {
-            format!("创建头像上传目录 {} 失败（[app] upload_dir = {}）: {e}", dir.display(), cfg.upload_dir)
+            format!("创建上传目录 {} 失败（[app] upload_dir = {}）: {e}", dir.display(), cfg.upload_dir)
         })?;
     }
 
@@ -275,8 +285,8 @@ async fn finish(state: &AppState, admin: &Admin, saved_path: &str) -> Result<(),
 }
 
 /// 插件内核是同步的（末片要算整份 md5、分块要持排他锁追加）：丢进阻塞线程池，
-/// 别占着 async worker（插件的取向说明里也是这么建议的）。
-async fn run_kernel<T, F>(state: &AppState, job: F) -> Result<T, ApiError>
+/// 别占着 async worker（插件的取向说明里也是这么建议的）。头像与附件共用这一份。
+pub(crate) async fn run_kernel<T, F>(state: &AppState, job: F) -> Result<T, ApiError>
 where
     T: Send + 'static,
     F: FnOnce(Arc<Runtime>) -> T + Send + 'static,
@@ -284,14 +294,14 @@ where
     let runtime = state.aether.clone();
     tokio::task::spawn_blocking(move || job(runtime))
         .await
-        .map_err(|e| ApiError::internal(format!("头像上传任务执行失败: {e}")))
+        .map_err(|e| ApiError::internal(format!("上传任务执行失败: {e}")))
 }
 
 /// 插件失败体 → 统一信封：**状态码与稳定 `code` 原样透传**（409 乱序 / 413 超限 / 415 类型不对 …，
 /// 见插件 `error.rs` 的状态码 × code 表），`extra` 进 `args`（目前只有乱序的 `expected_index`）。
 /// 压成 400 + 文案的话，真实状态码没了、码也没了 —— 前端既没法续传判断也没法本地化，
 /// 只剩服务端中文原样弹窗。
-fn problem_to_api_error(problem: aetherupload::Problem) -> ApiError {
+pub(crate) fn problem_to_api_error(problem: aetherupload::Problem) -> ApiError {
     let status = StatusCode::from_u16(problem.status).unwrap_or(StatusCode::BAD_REQUEST);
     let args = if problem.extra.is_empty() {
         Value::Null

@@ -104,6 +104,7 @@ pub async fn migrate(db: &Pool) -> Result<(), OrmError> {
     migrate::sync::<crate::models::SysConfig, _>(db).await?;
     migrate::sync::<crate::models::ExportTask, _>(db).await?;
     migrate::sync::<crate::models::AdminLoginDevice, _>(db).await?;
+    migrate::sync::<crate::models::Attachment, _>(db).await?;
 
     // 3) 单列唯一键与索引：原先写在模型属性上（`#[bee(unique)]` / `#[bee(index)]`），
     //    上游属性里没有这两个概念，移到这儿。
@@ -282,6 +283,11 @@ const CONSTRAINTS: &[(&str, &str, &str)] = &[
     // 登录设备（项 7）只按账号查（列列表 / 每次登录找同 UA 的行），表很小但会很频繁
     ("admin_login_device", "idx_admin_login_device_admin_id", "CREATE INDEX idx_admin_login_device_admin_id ON admin_login_device (admin_id)"),
     ("sys_config", "uk_sys_config_key", "CREATE UNIQUE INDEX uk_sys_config_key ON sys_config (config_key)"),
+    // 附件（项 5）：列表按上传人收窄、删除按 stored_path 查引用计数、多态关联按
+    // (entity_type, entity_id) 取「某个对象的配图」，各配一条
+    ("attachment", "idx_attachment_admin_id", "CREATE INDEX idx_attachment_admin_id ON attachment (admin_id)"),
+    ("attachment", "idx_attachment_stored_path", "CREATE INDEX idx_attachment_stored_path ON attachment (stored_path)"),
+    ("attachment", "idx_attachment_entity", "CREATE INDEX idx_attachment_entity ON attachment (entity_type, entity_id)"),
 ];
 
 /// 幂等建索引：MySQL 没有 `CREATE INDEX IF NOT EXISTS`，先查 information_schema。
@@ -305,7 +311,7 @@ async fn ensure_index(db: &Pool, table: &str, index: &str, ddl: &str) -> Result<
 }
 
 /// 内置菜单定义：(名称, 路径, 组件, 图标, 权限码前缀, 按钮后缀列表)。
-const BUILTIN_MENUS: [(&str, &str, &str, &str, &str, &[&str]); 12] = [
+const BUILTIN_MENUS: [(&str, &str, &str, &str, &str, &[&str]); 13] = [
     (
         "管理员管理",
         "/system/admin",
@@ -407,6 +413,16 @@ const BUILTIN_MENUS: [(&str, &str, &str, &str, &str, &[&str]); 12] = [
         "DownloadOutlined",
         "system:export",
         &["list", "remove"],
+    ),
+    // 附件中心（项 5）：edit 管「关联业务对象」（含解绑），remove 管删除；
+    // 下载本身不发独立的码 —— 能进列表 + 数据权限就够，多一个码只会多一处配错
+    (
+        "附件中心",
+        "/system/attach",
+        "system/attach/index",
+        "FolderOpenOutlined",
+        "system:attach",
+        &["list", "add", "edit", "remove"],
     ),
 ];
 

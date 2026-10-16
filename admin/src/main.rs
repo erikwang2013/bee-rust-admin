@@ -269,6 +269,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .post("/upload/preprocess", api::avatar::preprocess)
                 .post("/upload/chunk", api::avatar::chunk)
         })
+        // 附件中心（项 5）：与头像不同，**读取也要登录**且受数据权限约束
+        // （口径与理由见 `api::attach`）。静态段写在 `/{id}` 前面。
+        .ns("/api/v1/attachments", |ns| {
+            ns.get("", api::attach::list)
+                .post("/upload/preprocess", api::attach::preprocess)
+                .post("/upload/chunk", api::attach::chunk)
+                .get("/{id}", api::attach::download)
+                .put("/{id}", api::attach::bind)
+                .delete("/{id}", api::attach::remove)
+        })
         // 登录页验证码（公开）。路径与 poster-rust 的 `captcha_routes_at("/captcha")`
         // 给出的 `/captcha/new` 一致；校验不在插件端点里做，而是随登录体一起提交、
         // 由登录接口校验（见 `api::auth::login`）——多一个「先自己验一次」的端点

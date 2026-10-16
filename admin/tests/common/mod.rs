@@ -153,7 +153,7 @@ pub async fn reset_db(dsn: &str) {
     for t in [
         "admin_role", "role_menu", "role_dept", "login_log", "audit_log", "menu", "role", "dept",
         "dict_item", "dict_type", "job_log", "job", "notice_read", "notice", "export_task",
-        "admin_login_device", "admin", "sys_config",
+        "attachment", "admin_login_device", "admin", "sys_config",
     ] {
         sqlx::query(&format!("DROP TABLE IF EXISTS {t}")).execute(&pool).await.unwrap();
     }

@@ -246,6 +246,7 @@ mod tests {
             backup_dir: String::new(),
             backup_keep: 7,
             export_retain_days: 7,
+            attach_quota_mb: 200,
             security_scan: None,
             hashids_salt: "test-salt".into(),
             hashids_min_len: 8,

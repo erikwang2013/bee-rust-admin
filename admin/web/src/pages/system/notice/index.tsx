@@ -1,22 +1,34 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { App, Button, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, Typography } from 'antd';
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { DeleteOutlined, PlusOutlined, ReloadOutlined, UploadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import { attachApi, uploadAttachment } from '../../../api/attach';
+import { UploadError } from '../../../api/chunkedUpload';
 import { noticeApi, type NoticeForm, type NoticeQuery } from '../../../api/notice';
-import type { Notice } from '../../../api/types';
+import type { AttachmentRow, Notice } from '../../../api/types';
 import Auth from '../../../auth/Auth';
+import { useAuth } from '../../../auth/AuthContext';
 import { useI18n } from '../../../i18n';
+
+/** 公告配图（项 5 附件中心的第一个消费方）：白名单与头像同一套，只在编辑时可用（要先有 id） */
+const IMG_ACCEPT = '.png,.jpg,.jpeg,.gif,.webp,.bmp';
 
 export default function NoticePage() {
   const { message } = App.useApp();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
+  /** 没有附件权限的人照样能编辑公告 —— 那时既不拉配图（会 403 弹提示）也不显示这一栏 */
+  const { has } = useAuth();
+  const canSeeImages = has('system:attach:list');
   const [form] = Form.useForm<Pick<NoticeForm, 'title' | 'content'>>();
+  const fileRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState<NoticeQuery>({ page: 1, size: 10 });
   const [rows, setRows] = useState<Notice[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState<Notice | null>(null);
   const [modal, setModal] = useState(false);
+  const [images, setImages] = useState<AttachmentRow[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   const statusOptions = [
     { value: 1, label: t('notice.published') },
@@ -41,14 +53,47 @@ export default function NoticePage() {
 
   const openCreate = () => {
     setEditing(null);
+    setImages([]);
     form.resetFields();
     setModal(true);
   };
 
   const openEdit = (row: Notice) => {
     setEditing(row);
+    setImages([]);
     form.setFieldsValue({ title: row.title, content: row.content });
     setModal(true);
+    if (canSeeImages) void loadImages(row.id);
+  };
+
+  /** 这篇公告已绑的配图。列表接口按 `entity_id` 收窄（不分页：配图不会有几十张） */
+  const loadImages = async (id: string) => {
+    const res = await attachApi.list({ entity_type: 'notice', entity_id: id, size: 100 });
+    setImages(res.list);
+  };
+
+  const onPickImage = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !editing) return;
+    setUploading(true);
+    try {
+      const row = await uploadAttachment(file, { locale: lang === 'zh-CN' ? 'zh' : 'en' });
+      // 传完立刻绑到这篇公告：绑已发布的公告后，所有登录用户都能看到这张图
+      await attachApi.bind(row.id, { entity_type: 'notice', entity_id: editing.id, sort: images.length });
+      message.success(t('attach.uploaded', { name: row.name }));
+      await loadImages(editing.id);
+    } catch (err) {
+      if (err instanceof UploadError) message.error(err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removeImage = async (row: AttachmentRow) => {
+    await attachApi.remove(row.id);
+    message.success(t('common.deleted'));
+    if (editing) await loadImages(editing.id);
   };
 
   /** 新建一律先落草稿（发布是列表上的独立动作）；编辑保留原状态，后端对已发布的不会重复盖章 */
@@ -183,6 +228,43 @@ export default function NoticePage() {
             rules={[{ required: true, whitespace: true, message: t('validate.required', { field: t('field.content') }) }]}
           >
             <Input.TextArea rows={10} placeholder={t('notice.content_placeholder')} />
+          </Form.Item>
+          <Form.Item label={t('notice.images')}>
+            {!canSeeImages ? (
+              <Typography.Text type="secondary">{t('notice.image_no_perm')}</Typography.Text>
+            ) : editing ? (
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <Space wrap>
+                  <Auth code="system:attach:add">
+                    <Button icon={<UploadOutlined />} loading={uploading} onClick={() => fileRef.current?.click()}>
+                      {t('notice.image_upload')}
+                    </Button>
+                  </Auth>
+                  <input ref={fileRef} type="file" accept={IMG_ACCEPT} hidden onChange={(e) => void onPickImage(e)} />
+                </Space>
+                {images.map((img) => (
+                  <Space key={img.id} size={2}>
+                    <Button
+                      type="link" size="small" style={{ padding: 0 }}
+                      onClick={() => void attachApi.download(img)}
+                    >
+                      {img.name}
+                    </Button>
+                    <Auth code="system:attach:remove">
+                      <Popconfirm
+                        title={t('attach.delete_confirm', { name: img.name })}
+                        onConfirm={() => void removeImage(img)}
+                      >
+                        <Button type="link" size="small" danger icon={<DeleteOutlined />} />
+                      </Popconfirm>
+                    </Auth>
+                  </Space>
+                ))}
+                <Typography.Text type="secondary">{t('notice.image_hint')}</Typography.Text>
+              </Space>
+            ) : (
+              <Typography.Text type="secondary">{t('notice.image_need_save')}</Typography.Text>
+            )}
           </Form.Item>
         </Form>
       </Modal>

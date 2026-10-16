@@ -117,6 +117,8 @@ const ERR_TABLE: &[(&str, &str)] = &[
     (TOTP_NOT_BOUND, "auth.totp_not_bound"),
     // avatar
     ("头像不能超过 512 KB", "avatar.too_large"),
+    // attach（项 5）：超限文案与构造点共用一份常量，改文案只改一处
+    (crate::api::attach::TOO_LARGE_MSG, "attach.too_large"),
     // admin
     ("密码至少 8 位，且需包含字母、数字、符号中的至少两类", "admin.weak_password"),
     ("用户名长度需 3-64 个字符", "admin.username_length"),

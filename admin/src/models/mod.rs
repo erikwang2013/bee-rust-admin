@@ -1,5 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 pub mod admin;
+pub mod attachment;
 pub mod audit_log;
 pub mod config;
 pub mod dept;
@@ -13,6 +14,7 @@ pub mod notice;
 pub mod role;
 
 pub use admin::Admin;
+pub use attachment::Attachment;
 pub use audit_log::AuditLog;
 pub use config::SysConfig;
 pub use dept::Dept;

@@ -70,6 +70,12 @@ keep = 7
 # 文件落在 {upload_dir}/exports/，权限 0600。见 docs/usage.md「3.12 导出中心」
 retain_days = 7
 
+[attach]
+# 附件中心（项 5）的每人总量配额（MB）：按该上传人的 SUM(size) 算，超了预检接口回
+# 400 `attach.quota_exceeded`。0 = 不限；负数拒绝启动。
+# 单文件 10 MB 上限与类型白名单**写死在代码里**（api/attach.rs），不做配置项。
+quota_mb = 200
+
 [security]
 # 请求安全扫描（security-rust 32 个检测器：SQLi / XSS / 命令注入 / Log4Shell …）。
 # 扫 URL、几个请求头、以及 ≤64KB 的 JSON 请求体（multipart 上传不读）。

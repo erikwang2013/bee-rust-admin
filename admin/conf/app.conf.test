@@ -33,3 +33,8 @@ captcha = false
 
 [seed]
 initial_admin_password = admin123
+
+[attach]
+# 附件配额（MB）。api_attach_test 的配额用例会把这一行换成 1（`start_server_conf`），
+# 所以**这条键的写法是有测试依赖的**：改格式要同步改那边。
+quota_mb = 50

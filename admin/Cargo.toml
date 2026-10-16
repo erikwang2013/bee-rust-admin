@@ -90,6 +90,9 @@ csv = "1"
 # 声明只多几行，不新增编译成本。base32 与 otpauth URL 自己写（见 src/totp.rs）。
 hmac = "0.12"
 sha1 = "0.10"
+# 附件的 sha256 摘要（项 5，见 src/api/attach.rs）在服务端落盘后算，不信客户端报的值。
+# 0.10 那份本来就在依赖图里（encryptable-rust 带进来的 0.10.9），零新增 crate。
+sha2 = "0.10"
 # 动态验证码的二维码：后端直接出 SVG（前端 `data:image/svg+xml,` 内联即可，
 # 不必再依赖一个 base64 编码库）。**只开 svg**：默认特性会拉 image 全家桶。
 # qrcode 0.14 本来就在依赖图里（poster-rust 带进来的），零新增 crate。
