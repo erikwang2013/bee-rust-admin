@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { envelopeError, errCodeOf } from './client';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
+
+// 全局 toast 换成可断言的桩。`client.ts` 里 `import { message } from 'antd'` 拿到的是同一个
+// 对象，所以这一层断言的就是「拦截器到底弹没弹」。
+const { toast } = vi.hoisted(() => ({ toast: vi.fn() }));
+vi.mock('antd', () => ({ message: { error: toast } }));
+
+import { TOKEN_KEY, client, envelopeError, errCodeOf, http } from './client';
 
 describe('errCodeOf', () => {
   it('从 axios 错误里取信封错误码（登录页靠它判断要不要亮动态验证码框）', () => {
@@ -49,5 +56,70 @@ describe('envelopeError', () => {
     expect(envelopeError({ code: 400, msg: '这个码前端还没见过', err: 'brand.new.code' }))
       .toBe('这个码前端还没见过');
     expect(envelopeError({ code: 500, msg: '', err: 'brand.new.code' })).toBe('请求失败');
+  });
+});
+
+// ── 拦截器 · silent（公开配置那一处）─────────────────────────
+//
+// 换掉 adapter 直接喂响应，让请求真的走一遍 axios 的合并与两个拦截器 ——
+// 这样连「自定义的 config 键会不会被 axios 丢掉」也一并钉住（丢掉的话 silent 就是哑的）。
+const envelope = (body: unknown, status = 200) =>
+  async (cfg: InternalAxiosRequestConfig): Promise<AxiosResponse> =>
+    ({ data: body, status, statusText: 'OK', headers: {}, config: cfg });
+
+const bomb = (status?: number) =>
+  (cfg: InternalAxiosRequestConfig): Promise<never> =>
+    Promise.reject(new AxiosError('boom', 'ERR_NETWORK', cfg, undefined, status
+      ? { data: { code: status, msg: '后端炸了' }, status, statusText: '', headers: {}, config: cfg }
+      : undefined));
+
+describe('响应拦截器 · silent', () => {
+  beforeEach(() => {
+    toast.mockClear();
+    // 请求拦截器要读 token；node 环境没有 localStorage（401 那条用例会换成自己的桩）
+    vi.stubGlobal('localStorage', { getItem: () => null, removeItem: vi.fn() });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('默认（业务请求）：信封失败照弹全局 toast —— silent 不许把全局错误处理削弱掉', async () => {
+    client.defaults.adapter = envelope({ code: 400, msg: '业务失败' });
+    await expect(http.get('/x')).rejects.toThrow('业务失败');
+    expect(toast).toHaveBeenCalledWith('业务失败');
+  });
+
+  it('silent：同样的失败不弹，但照样 reject（拿不到由调用方自己兜底）', async () => {
+    client.defaults.adapter = envelope({ code: 400, msg: '业务失败' });
+    await expect(http.get('/x', undefined, { silent: true })).rejects.toThrow('业务失败');
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it('silent：连不上后端（没响应体）也不弹 —— 这正是登录页「后端挂了」的那条红字', async () => {
+    client.defaults.adapter = bomb();
+    await expect(http.get('/x', undefined, { silent: true })).rejects.toThrow('boom');
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it('不是 silent 的网络错误照样弹（同一个 bomb，差别只在请求选项）', async () => {
+    client.defaults.adapter = bomb();
+    await expect(http.get('/x')).rejects.toThrow('boom');
+    expect(toast).toHaveBeenCalledTimes(1);
+  });
+
+  it('silent 只压 toast，不动成功路径', async () => {
+    client.defaults.adapter = envelope({ code: 0, msg: 'ok', data: { 'site.copyright': 'x' } });
+    await expect(http.get('/x', undefined, { silent: true })).resolves.toEqual({ 'site.copyright': 'x' });
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it('silent 只压 toast：401 清 token / 跳登录照旧（静默不等于哑）', async () => {
+    const loc = { pathname: '/system/admin', href: '' };
+    const removeItem = vi.fn();
+    vi.stubGlobal('localStorage', { getItem: () => 'tok', removeItem });
+    vi.stubGlobal('window', { location: loc });
+    client.defaults.adapter = bomb(401);
+    await expect(http.get('/x', undefined, { silent: true })).rejects.toThrow();
+    expect(removeItem).toHaveBeenCalledWith(TOKEN_KEY);
+    expect(loc.href).toBe('/login');
+    expect(toast).not.toHaveBeenCalled();
   });
 });

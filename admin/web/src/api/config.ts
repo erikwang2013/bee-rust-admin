@@ -24,12 +24,15 @@ export const configApi = {
  * 公开配置（免登录）。登录页副标题与 SiteInfo 页脚都会读：同一次页面加载里两个组件
  * 并发挂载，共享同一个 in-flight 请求；resolve 后即释放，**不做缓存** ——
  * 验收要求「改配置 → 登录页/页脚刷新即变」。
+ *
+ * `silent`：两个调用方拿不到配置都是回落内置值（副标题不显示、页脚用内置文案），
+ * 后端挂了再弹一条红字只会让登录页更吓人 —— 这一条失败由调用方自己咽下。
  */
 let inflight: Promise<PublicConfig> | null = null;
 export function fetchPublicConfig(): Promise<PublicConfig> {
   if (!inflight) {
     inflight = http
-      .get<PublicConfig>('/configs/public')
+      .get<PublicConfig>('/configs/public', undefined, { silent: true })
       .finally(() => { inflight = null; });
   }
   return inflight;

@@ -40,4 +40,10 @@ describe('fetchPublicConfig', () => {
     get.mockResolvedValueOnce({ ok: true });
     await expect(fetchPublicConfig()).resolves.toEqual({ ok: true });
   });
+
+  it('是静默请求：读不到就走内置兜底，不在登录页弹全局 toast', async () => {
+    get.mockResolvedValueOnce({});
+    await fetchPublicConfig();
+    expect(get).toHaveBeenCalledWith('/configs/public', undefined, { silent: true });
+  });
 });
