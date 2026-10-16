@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 780" width="980" height="780" role="img" aria-label="bee-rust 管理后台 功能设计图">
   <title>BRA（Bee Rust Admin）— 功能设计（RBAC 权限模型）</title>
-  <desc>登录鉴权链、管理员-角色-菜单/部门权限模型、数据权限五档、九个功能模块</desc>
+  <desc>登录鉴权链、管理员-角色-菜单/部门权限模型、数据权限五档、13 个功能模块</desc>
   <style>
     .bg { fill: #ffffff; }
     .panel { fill: #f7f8fa; stroke: #e5e7eb; stroke-width: 1; }
@@ -30,7 +30,7 @@
 
   <rect class="bg" x="0" y="0" width="980" height="780"/>
   <text class="t-title" x="24" y="30">BRA · 功能设计</text>
-  <text class="t-sub" x="24" y="48">登录鉴权 · 角色权限模型（菜单+按钮）· 部门数据权限 · 九大功能模块</text>
+  <text class="t-sub" x="24" y="48">登录鉴权 · 角色权限模型（菜单+按钮）· 部门数据权限 · 13 个功能模块</text>
 
   <!-- 一、登录与鉴权 -->
   <rect class="panel" x="24" y="64" width="932" height="126" rx="8"/>
@@ -72,7 +72,7 @@
   <text class="t-name" x="732" y="294" text-anchor="middle">菜单与按钮（权限树：目录 M / 菜单 C / 按钮 F）</text>
   <text class="t-sub"  x="548" y="316">权限码：system:{模块}:{动作}，以管理员为例</text>
   <text class="t-sub"  x="548" y="332">system:admin:list / add / edit / remove / resetPwd</text>
-  <text class="t-sub"  x="548" y="348">9 个模块：admin/role/menu/dept/dict/job/notice/loginlog/auditlog</text>
+  <text class="t-sub"  x="548" y="348">13 个模块：admin…auditlog 9 个 + config/notify/export/attach 4 个</text>
   <rect class="box-join" x="296" y="380" width="164" height="26" rx="5"/>
   <text class="t-name" x="378" y="397" text-anchor="middle" font-size="11">部门（role_dept · 自定义范围）</text>
   <text class="t-sub"  x="600" y="392">前端按权限码渲染菜单与按钮；后端逐接口再校验（隐藏 ≠ 放过）</text>
@@ -86,11 +86,11 @@
   <text class="t-sub" x="40" y="554">4 · 仅本人 —— admin_id = 本人</text>
   <text class="t-sub" x="40" y="578">5 · 自定义 —— dept_id ∈ role_dept 勾选</text>
   <text class="t-sub" x="40" y="606">任一角色为「全部」→ 不加条件；无启用角色或无部门且非本人 → WHERE 1 = 0</text>
-  <text class="t-sub" x="40" y="628">作用于列表接口（管理员/登录记录/操作日志/字典项/执行记录），条件参数化绑定</text>
+  <text class="t-sub" x="40" y="628">作用于列表接口（管理员/登录记录/操作日志/附件），条件参数化绑定</text>
 
   <!-- 四、功能模块 -->
   <rect class="panel" x="514" y="434" width="442" height="310" rx="8"/>
-  <text class="panel-label" x="530" y="456">四、功能模块（9 个）</text>
+  <text class="panel-label" x="530" y="456">四、功能模块（13 个）</text>
   <rect class="box-module" x="530" y="468" width="196" height="44" rx="6"/>
   <text class="t-name" x="628" y="487" text-anchor="middle">管理员管理</text>
   <text class="t-sub"  x="628" y="503" text-anchor="middle">增删改 · 分配角色 · 重置密码 · 启停</text>
@@ -118,6 +118,7 @@
   <rect class="box-module" x="530" y="676" width="196" height="44" rx="6"/>
   <text class="t-name" x="628" y="695" text-anchor="middle">操作日志</text>
   <text class="t-sub"  x="628" y="711" text-anchor="middle">模块+动作留痕 · 数据权限过滤</text>
+  <text class="t-sub"  x="530" y="736">新增模块：系统配置 · 通知设置 · 导出中心 · 附件中心</text>
 
   <text class="t-foot" x="24" y="766">© 2026 erik · https://erik.xyz</text>
 </svg>
