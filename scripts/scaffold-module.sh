@@ -182,7 +182,9 @@ for spec in "${FIELDS[@]}"; do
             if [ "$ftype" = string ]; then
                 MODEL_DECL="    #[bee(sql_type = \"VARCHAR($flen)\")]
     pub $fname: String,"
-                FORM_ITEM="<Input$([ "$fname" = "$NAME_FIELD" ] && echo " maxLength={$flen}") />"
+                # `|| true` 不能省：set -e 下赋值里的 `$(失败的 test && …)` 会让整个赋值返回 1，
+                # 脚本静默退出（rc=1、零输出零落盘）—— 第二个及以后的 string 字段必然踩到
+                FORM_ITEM="<Input$([ "$fname" = "$NAME_FIELD" ] && echo " maxLength={$flen}" || true) />"
             else
                 MODEL_DECL="    #[bee(sql_type = \"TEXT\")]
     pub $fname: String,"
