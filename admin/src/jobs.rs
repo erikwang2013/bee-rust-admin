@@ -70,6 +70,14 @@ pub const JOBS: &[JobSpec] = &[
         interval_secs: 86400,
         run: |s| Box::pin(crate::export::clean(s)),
     },
+    // 登录设备清理（E2-2）：清「已踢且 [auth] device_keep_days 天没露面」的行，
+    // 执行体在 crate::retention（口径与安全线写在那边）
+    JobSpec {
+        code: "device_clean",
+        name: "登录设备清理",
+        interval_secs: 86400,
+        run: |s| Box::pin(crate::retention::device_clean(s)),
+    },
 ];
 
 /// 按 code 找注册项；库里残留的旧 code 找不到 = 不可手动触发（409）、调度跳过。
@@ -539,6 +547,7 @@ mod tests {
         assert!(spec("db_backup").is_some());
         assert!(spec("export_run").is_some());
         assert!(spec("export_clean").is_some());
+        assert!(spec("device_clean").is_some());
         assert!(spec("ghost_job").is_none(), "库里残留的旧 code 找不到注册项");
         let mut codes: Vec<&str> = JOBS.iter().map(|j| j.code).collect();
         codes.sort_unstable();

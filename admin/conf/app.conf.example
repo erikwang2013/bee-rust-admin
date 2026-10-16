@@ -45,6 +45,11 @@ captcha = true
 # ⚠️ 症状：用户「拖得很快」（<300ms 甩过去）会被判机器 —— 滑块怎么拖都提示
 #    「验证码错误」。要放宽得改插件侧的 min_duration_ms，遇到再调。
 captcha_trajectory = false
+# 登录设备（admin_login_device，项 7）的**已踢**行留多久：踢出的设备是软删（status=0），
+# 留痕便于用户回看「这台设备是什么时候被踢的」，之后由内置任务 device_clean 每天清一次。
+# 计时的口径是**最后活跃时刻**（last_active_at），不是创建时刻。在用的行一律不碰。
+# 0 = 永久保留（与 [log] retain_days 同一个口径）。
+device_keep_days = 30
 
 [log]
 # 日志保留天数（login_log / audit_log / job_log 执行记录）；0 = 永久保留。

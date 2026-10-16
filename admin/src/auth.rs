@@ -241,6 +241,7 @@ mod tests {
             lock_minutes: 10,
             captcha: true,
             captcha_trajectory: false,
+            device_keep_days: 30,
             retain_days: 90,
             job_enabled: true,
             backup_dir: String::new(),

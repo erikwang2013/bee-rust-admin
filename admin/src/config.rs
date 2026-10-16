@@ -41,6 +41,10 @@ pub struct AppConfig {
     /// 只提交裸数值的客户端一律判失败；极快的甩动（<300ms）也会被判机器。
     /// 前端已经**总是**上报轨迹（开关关着时插件直接放行），所以开这个开关不需要重发前端。
     pub captcha_trajectory: bool,
+    /// 登录设备保留天数（`[auth] device_keep_days`，默认 30）：**已踢**（软删，status=0）
+    /// 的 `admin_login_device` 行留这么久的留痕，之后由 `device_clean` 任务删掉。
+    /// **0 = 永久保留**（与 `[log] retain_days` 同一个口径）。在用的行一律不碰。
+    pub device_keep_days: i64,
     /// 日志保留天数（login_log / audit_log / job_log）；0 = 永久保留
     pub retain_days: i64,
     /// 定时任务总开关（`[job] enabled`）：false = 不启动调度循环（手动触发仍可用）
@@ -223,6 +227,9 @@ impl AppConfig {
             captcha: flag("auth", "captcha", true)?,
             // 轨迹校验默认关：开了老前端（只提交裸数值）会被判失败，不能默认打开
             captcha_trajectory: flag("auth", "captcha_trajectory", false)?,
+            // 登录设备留痕：0 = 永久保留（合法意图，与 [log] retain_days 一致），
+            // 负数没必要拦（`device_clean` 按 `<= 0` 一视同仁地跳过）
+            device_keep_days: num("auth", "device_keep_days", 30)?,
             retain_days: num("log", "retain_days", 90)?,
             job_enabled: flag("job", "enabled", true)?,
             backup_dir: opt("backup", "dir", ""),
