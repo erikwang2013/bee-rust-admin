@@ -598,12 +598,21 @@ pub async fn logout_others(
     admin.updated_at = now();
     admin.update(&state.db).await.map_err(ApiError::from)?;
 
-    // 换发的 token 仍挂在**当前这台设备**上：不然一杯新 token 就把本机从设备列表里摘掉
+    // 换发的 token 仍挂在**当前这台设备**上：不然一杯新 token 就把本机从设备列表里摘掉。
+    // 老 token（升级前签的，claims 里没有 dv）解出来是 0 —— 原样签回去这台设备就永远
+    // 不在列表里（踢不掉），而且循环调用 logout-others 能一直续期。按当前 UA 落一行再签。
+    let device_id = if auth.device_id == 0 {
+        find_or_create_device(&state, admin.id, &user_agent(&headers), &client_ip(&headers))
+            .await?
+            .id
+    } else {
+        auth.device_id
+    };
     let (token, expires_in) = sign_token(
         &state.jwt,
         admin.id,
         admin.token_version,
-        auth.device_id,
+        device_id,
         expire_secs(&state.cfg),
     )?;
     write_login_log(&state, admin.id, &admin.username, &headers, 1, "退出其他设备").await;

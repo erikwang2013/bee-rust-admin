@@ -94,6 +94,49 @@ async fn profile(c: &reqwest::Client, base: &str, token: &str) -> (u16, Value) {
     call(c, Method::GET, format!("{base}/api/v1/auth/profile"), Some(token), None).await
 }
 
+/// 手签一个「升级前」的 token：payload 里**没有** `dv`（服务端解出来是 0）。
+/// 密钥 / issuer / audience 与后端同源，直接读 conf/app.conf.test（同在 [jwt] 节，
+/// 键写在哪个节都认），不硬编码猜 —— 猜错的症状是「一律 401」，比报缺键难查。
+fn legacy_token(admin_id: i64, ver: i32) -> String {
+    #[derive(serde::Serialize)]
+    struct LegacyClaims {
+        sub: i64,
+        ver: i32,
+    }
+    struct NoBlacklist;
+    impl jwt_rust::storage::TokenStorage for NoBlacklist {
+        fn blacklist(&self, _jti: &str, _expire_time: i64) -> Result<bool, jwt_rust::JwtError> {
+            Ok(true)
+        }
+        fn is_blacklisted(&self, _jti: &str) -> Result<bool, jwt_rust::JwtError> {
+            Ok(false)
+        }
+        fn cleanup(&self) -> Result<bool, jwt_rust::JwtError> {
+            Ok(true)
+        }
+    }
+    let conf = std::fs::read_to_string("conf/app.conf.test").unwrap();
+    let val = |k: &str| {
+        conf.lines()
+            .filter_map(|l| l.trim().split_once('='))
+            .find(|(a, _)| a.trim() == k)
+            .map(|(_, b)| b.trim().to_string())
+            .unwrap_or_else(|| panic!("conf/app.conf.test 缺键 {k}"))
+    };
+    let jwt = jwt_rust::Jwt::new(
+        jwt_rust::config::JwtConfig {
+            secret_key: val("secret"),
+            issuer: "bee-rust-admin".into(),
+            audience: "bee-rust-admin".into(),
+            default_expire: 3600,
+            ..Default::default()
+        },
+        std::sync::Arc::new(NoBlacklist),
+    )
+    .expect("测试侧 JWT 初始化");
+    jwt.encode(&LegacyClaims { sub: admin_id, ver }, Some(3600)).expect("签老 token")
+}
+
 /// 设备列表（只列当前仍启用的设备），断言是数组。
 async fn devices(c: &reqwest::Client, base: &str, token: &str) -> Vec<Value> {
     let (st, v) = call(c, Method::GET, format!("{base}/api/v1/auth/devices"), Some(token), None).await;
@@ -212,6 +255,17 @@ async fn totp_bind_login_and_kick_devices() {
     let (st, v) = login(&b, &base, "admin", "admin123", Some(&code(&secret))).await;
     assert_eq!(st, 200, "对码登录: {v}");
     let token_b = v["data"]["token"].as_str().unwrap().to_string();
+
+    // ── 5b. 缺码**不计**失败次数（钉住）：连来 6 次（> max_fail=5）也不该封禁，
+    //     第 7 次带对码照样登得上。缺码是「协议没对齐」，不是有人在猜密码 ——
+    //     计进去等于一个没升级的前端能把用户刷进封禁（本条是钉行为的测试，无代码改动）。
+    for i in 0..6 {
+        let (st, v) = login(&b, &base, "admin", "admin123", None).await;
+        assert_eq!(st, 400, "第 {i} 次缺码应 400 而不是 429（缺码不计失败）: {v}");
+        assert_eq!(v["err"], "auth.totp_required", "第 {i} 次缺码: {v}");
+    }
+    let (st, v) = login(&b, &base, "admin", "admin123", Some(&code(&secret))).await;
+    assert_eq!(st, 200, "6 次缺码之后对码仍能登录（缺码没把账号刷进封禁）: {v}");
 
     // ── 6. 设备列表：两台设备，当前设备唯一且标注出来 ──
     let list = devices(&b, &base, &token_b).await;
@@ -350,6 +404,38 @@ async fn totp_bind_login_and_kick_devices() {
     assert_eq!(db_secret, "", "解绑要连密钥一起清掉（留着等于没解绑）");
     let (st, v) = login(&a, &base, "admin", "admin123", None).await;
     assert_eq!(st, 200, "解绑后不需要验证码: {v}");
+
+    // ── 12. 老 token（升级前签的，payload 里没有 dv）走 logout-others ──
+    // 换发的 token 必须挂到一台**新落的设备行**上：原样签回 dv=0 的话这台设备永远
+    // 不出现在列表里（踢不掉），而且循环调用 logout-others 能一直续期。
+    let (admin_id, ver): (i64, i32) =
+        sqlx::query_as("SELECT id, token_version FROM admin WHERE username = 'admin'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let d = client("totp-dev-legacy");
+    let legacy = legacy_token(admin_id, ver);
+    let (st, v) = call(&d, Method::POST, api("/auth/logout-others"), Some(&legacy), None).await;
+    assert_eq!(st, 200, "老 token 也要能换发: {v}");
+    let token_l = v["data"]["token"].as_str().unwrap().to_string();
+    let list = devices(&d, &base, &token_l).await;
+    let legacy_dev = common::as_id(
+        &list
+            .iter()
+            .find(|x| x["user_agent"].as_str().unwrap_or("").contains("totp-dev-legacy"))
+            .unwrap_or_else(|| panic!("换发的 token 要挂在一台列表可见的设备行上: {list:?}"))["id"],
+    );
+    let (st, v) = call(
+        &d,
+        Method::DELETE,
+        api(&format!("/auth/devices/{legacy_dev}")),
+        Some(&token_l),
+        None,
+    )
+    .await;
+    assert_eq!(st, 200, "换发时挂上的设备要能踢掉: {v}");
+    let (st, _) = profile(&d, &base, &token_l).await;
+    assert_eq!(st, 401, "踢掉后换发的 token 立刻失效（dv=0 时永远做不到）");
 
     // 负控②：登录日志里也不能出现明文密钥（UA / 备注都会落这张表）
     let leak: i64 = sqlx::query_scalar(
