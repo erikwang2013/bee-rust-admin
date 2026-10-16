@@ -36,9 +36,9 @@ async fn insert_task(
 ) {
     sqlx::query(
         "INSERT INTO export_task \
-         (id, admin_id, username, kind, params, status, file_path, row_count, file_size, msg, \
+         (id, admin_id, username, kind, params, status, file_path, row_count, file_size, progress_rows, msg, \
           created_at, started_at, finished_at, expire_at) \
-         VALUES (?, 1, 'admin', 'audit-log', '{}', ?, ?, 0, 0, '', ?, ?, NULL, ?)",
+         VALUES (?, 1, 'admin', 'audit-log', '{}', ?, ?, 0, 0, 0, '', ?, ?, NULL, ?)",
     )
     .bind(id)
     .bind(status)

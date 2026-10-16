@@ -23,24 +23,41 @@ pub struct ExportTask {
     /// 筛选条件 JSON（字段与同步导出的 query 一致，创建时按同一份结构校验过）
     #[bee(sql_type = "VARCHAR(1024)")]
     pub params: String,
-    /// 0 待处理 / 1 执行中 / 2 已完成 / 3 失败
+    /// 0 待处理 / 1 执行中 / 2 已完成 / 3 失败 / 4 已取消
     pub status: i8,
     /// 落盘绝对路径；清理任务删记录时**连着它一起删**（谁也不会留下孤儿文件）
     #[bee(sql_type = "VARCHAR(255)")]
     pub file_path: String,
     pub row_count: i64,
     pub file_size: i64,
+    /// 已写进文件的行数：执行中每批（5000 行）回写一次，列表上就是「已经导到哪了」。
+    /// 终态时与 `row_count` 同值（取消的那行是取消那一刻的部分值，见 `api::export::cancel`）
+    pub progress_rows: i64,
     /// 失败原因 / 完成摘要
     #[bee(sql_type = "VARCHAR(255)")]
     pub msg: String,
     #[serde(serialize_with = "crate::util::ser_dt")]
     pub created_at: NaiveDateTime,
-    /// 认领时刻（执行中的行才有）：进程崩了留在 1 的行按它判「卡住」并重跑
+    /// 认领时刻（执行中的行才有）
     #[serde(serialize_with = "crate::util::ser_opt_dt")]
     pub started_at: Option<NaiveDateTime>,
+    /// 心跳：每批回写进度时一起刷新，是「这个任务还活着」的唯一证据。
+    /// 判「进程崩过要重跑」与收残留 `.part` 都看它（见 `last_seen`）——只看认领时刻的话，
+    /// 跑得久的好任务会被误判成死任务（M1）
+    #[serde(serialize_with = "crate::util::ser_opt_dt")]
+    pub heartbeat_at: Option<NaiveDateTime>,
     #[serde(serialize_with = "crate::util::ser_opt_dt")]
     pub finished_at: Option<NaiveDateTime>,
     /// 过期时刻（创建时 = 现在 + `[export] retain_days`）：清理任务按它删
     #[serde(serialize_with = "crate::util::ser_dt")]
     pub expire_at: NaiveDateTime,
+}
+
+impl ExportTask {
+    /// 最后一次「还活着」的证据：心跳优先，没见过心跳才回落到认领时刻。
+    /// 判「进程崩过的行」重跑与收残留 `.part` **共用这一个函数**——两处各写一遍
+    /// `COALESCE` 迟早漂开（一处看心跳、一处看认领时刻，行为就对不上了）。
+    pub fn last_seen(&self) -> Option<NaiveDateTime> {
+        self.heartbeat_at.or(self.started_at)
+    }
 }

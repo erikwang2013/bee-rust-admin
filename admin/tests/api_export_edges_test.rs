@@ -51,9 +51,9 @@ fn dt(secs_from_now: i64) -> String {
 async fn insert_task(pool: &sqlx::MySqlPool, id: i64, admin_id: i64, username: &str, kind: &str) {
     sqlx::query(
         "INSERT INTO export_task \
-         (id, admin_id, username, kind, params, status, file_path, row_count, file_size, msg, \
+         (id, admin_id, username, kind, params, status, file_path, row_count, file_size, progress_rows, msg, \
           created_at, started_at, finished_at, expire_at) \
-         VALUES (?, ?, ?, ?, '{}', 0, '', 0, 0, '', ?, NULL, NULL, ?)",
+         VALUES (?, ?, ?, ?, '{}', 0, '', 0, 0, 0, '', ?, NULL, NULL, ?)",
     )
     .bind(id)
     .bind(admin_id)
@@ -125,7 +125,20 @@ async fn export_run_fails_closed_and_indexes_exist() {
     common::trigger(&c, &base, &job_id, &admin).await;
     let (status, msg, _) = common::wait_job_log(&pool, "export_run", mark).await;
     assert_eq!(status, 1, "任务本身跑完（单笔失败不是任务失败）: {msg}");
-    assert!(msg.contains("失败 2"), "两单都要记成失败: {msg}");
+    // 派发式（E2-1）：任务消息只说派了几单；每单的成败落在**各自的行**上，
+    // 所以下面要等行到终态再断言（任务消息回来时它们可能还在跑）
+    assert_eq!(msg, "导出任务 2 个（已派发，并发上限 2）", "派发完就返回: {msg}");
+    for id in [ID_OWNER_GONE, ID_GHOST_KIND] {
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(60);
+        loop {
+            let (s, _) = task_state(&pool, id).await;
+            if s == 3 {
+                break;
+            }
+            assert!(tokio::time::Instant::now() < deadline, "任务 {id} 60 秒内没到失败态（现在 {s}）");
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        }
+    }
 
     let (status, msg) = task_state(&pool, ID_OWNER_GONE).await;
     assert_eq!(status, 3, "发起人没了 → 3 失败（绝不拿旧快照导出）: {msg}");

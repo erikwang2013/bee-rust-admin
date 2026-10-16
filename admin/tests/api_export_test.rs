@@ -303,7 +303,10 @@ async fn export_tasks_run_download_and_expire() {
     // 摆出「另一个执行者刚认领」的现场：status=1 + started_at 新鲜。
     // 时戳在 Rust 侧算（与 src 的 util::now 同一个钟；MySQL NOW() 会话时区是 UTC，偏 8 小时）
     let claimed_at = chrono::Local::now().naive_local();
-    sqlx::query("UPDATE export_task SET status = 1, started_at = ? WHERE id = ?")
+    // 认领一次会把 started_at 与 heartbeat_at 一起刷成现在（见 src 的 claim_sql），
+    // 所以这里两列都给上：判活看心跳，缺了它这行就会被当成「进程崩过」
+    sqlx::query("UPDATE export_task SET status = 1, started_at = ?, heartbeat_at = ? WHERE id = ?")
+        .bind(claimed_at)
         .bind(claimed_at)
         .bind(dup)
         .execute(&pool)
@@ -313,8 +316,8 @@ async fn export_tasks_run_download_and_expire() {
     common::trigger(&c, &base, &run_id, &admin).await;
     let (status, msg, _ms) = common::wait_job_log(&pool, "export_run", before).await;
     assert_eq!(status, 1, "{msg}");
-    assert_eq!(msg, "导出任务 0 个（成功 0 / 失败 0）",
-        "执行中（未超时）的任务第二次认领必须 0 行: {msg}");
+    assert_eq!(msg, "导出任务 0 个",
+        "执行中（心跳还热）的任务第二次认领必须 0 行: {msg}");
     let (started, status, msg): (chrono::NaiveDateTime, i8, String) =
         sqlx::query_as("SELECT started_at, status, msg FROM export_task WHERE id = ?")
             .bind(dup)
@@ -340,30 +343,33 @@ async fn export_tasks_run_download_and_expire() {
     assert_eq!(st, 200, "{t_claim}");
     let cid = common::dec_id(&common::as_id(&t_claim["data"]["id"]));
     let t1 = chrono::Local::now().naive_local();
-    let n1: u64 = sqlx::query("UPDATE export_task SET status = 1, started_at = ? WHERE id = ? AND status = 0")
-        .bind(t1).bind(cid).execute(&pool).await.unwrap().rows_affected();
+    let claim_pending = "UPDATE export_task SET status = 1, started_at = ?, heartbeat_at = ?, progress_rows = 0 WHERE id = ? AND status = 0";
+    let n1: u64 = sqlx::query(claim_pending)
+        .bind(t1).bind(t1).bind(cid).execute(&pool).await.unwrap().rows_affected();
     assert_eq!(n1, 1, "待处理 → 第一次认领命中");
-    let n2: u64 = sqlx::query("UPDATE export_task SET status = 1, started_at = ? WHERE id = ? AND status = 0")
-        .bind(t1).bind(cid).execute(&pool).await.unwrap().rows_affected();
+    let n2: u64 = sqlx::query(claim_pending)
+        .bind(t1).bind(t1).bind(cid).execute(&pool).await.unwrap().rows_affected();
     assert_eq!(n2, 0, "第二个执行者（旧快照仍以为它是待处理）必须认领不到");
-    // 超时认领同理：第一次认领会刷新 started_at，第二个执行者按老时戳再认领必须 0 行
+    // 超时认领同理：第一次认领会刷新 started_at（心跳也一起刷），第二个执行者按老时戳再认领必须 0 行
     let old_at = chrono::Local::now().naive_local() - chrono::Duration::seconds(601);
     let stale_line = chrono::Local::now().naive_local() - chrono::Duration::seconds(600);
-    sqlx::query("UPDATE export_task SET started_at = ? WHERE id = ?")
-        .bind(old_at).bind(cid).execute(&pool).await.unwrap();
-    let claim_stale = "UPDATE export_task SET status = 1, started_at = ? WHERE id = ? AND status = 1 AND started_at < ?";
+    sqlx::query("UPDATE export_task SET started_at = ?, heartbeat_at = ? WHERE id = ?")
+        .bind(old_at).bind(old_at).bind(cid).execute(&pool).await.unwrap();
+    let claim_stale = "UPDATE export_task SET status = 1, started_at = ?, heartbeat_at = ?, progress_rows = 0 WHERE id = ? AND status = 1 AND started_at < ?";
     let s1: u64 = sqlx::query(claim_stale)
-        .bind(t1).bind(cid).bind(stale_line).execute(&pool).await.unwrap().rows_affected();
+        .bind(t1).bind(t1).bind(cid).bind(stale_line).execute(&pool).await.unwrap().rows_affected();
     assert_eq!(s1, 1, "卡住的行第一次认领命中（恢复机制还在）");
     let s2: u64 = sqlx::query(claim_stale)
-        .bind(t1).bind(cid).bind(stale_line).execute(&pool).await.unwrap().rows_affected();
+        .bind(t1).bind(t1).bind(cid).bind(stale_line).execute(&pool).await.unwrap().rows_affected();
     assert_eq!(s2, 0, "started_at 已被刷新，第二个执行者认领不到");
     // 不想让这一行留在库里影响后面的断言：跑掉它（status=1 + 新鲜时戳 = 认领中，无害）
     let _ = t_claim;
 
     // 反面：认领**超时**（进程崩过留下的行）反而要能重跑，恢复机制不能被顺手改掉
     let long_ago = chrono::Local::now().naive_local() - chrono::Duration::seconds(601);
-    sqlx::query("UPDATE export_task SET started_at = ? WHERE id = ?")
+    // 两列一起弄旧：判活看心跳（`last_seen` = 心跳优先、没有才看认领时刻）
+    sqlx::query("UPDATE export_task SET started_at = ?, heartbeat_at = ? WHERE id = ?")
+        .bind(long_ago)
         .bind(long_ago)
         .bind(dup)
         .execute(&pool)

@@ -216,6 +216,7 @@ fn module_action(method: &Method, path: &str) -> (String, String) {
         ("POST", ["imports"]) => ("import", "导入数据"),
 
         ("POST", ["exports"]) => ("export", "发起导出"),
+        ("POST", ["exports", _, "cancel"]) => ("export", "取消导出任务"),
         ("DELETE", ["exports", _]) => ("export", "删除导出任务"),
 
         ("PUT", ["jobs", _]) => ("job", "编辑定时任务"),
@@ -311,6 +312,10 @@ mod tests {
         assert_eq!(
             module_action(&Method::POST, "/api/v1/exports"),
             ("export".into(), "发起导出".into())
+        );
+        assert_eq!(
+            module_action(&Method::POST, "/api/v1/exports/7/cancel"),
+            ("export".into(), "取消导出任务".into())
         );
         assert_eq!(
             module_action(&Method::DELETE, "/api/v1/exports/7"),

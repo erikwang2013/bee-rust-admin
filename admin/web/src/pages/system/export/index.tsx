@@ -17,11 +17,13 @@ const KIND_KEYS: { value: ExportKind; key: I18nKey; perm: string }[] = [
   { value: 'login-log', key: 'export.kind.login_log', perm: 'system:loginlog:list' },
 ];
 
+/** 下标 = 状态值（0 待处理 / 1 执行中 / 2 已完成 / 3 失败 / 4 已取消）：顺序不能动 */
 const STATUS: { color: string; key: I18nKey }[] = [
   { color: 'default', key: 'export.status.pending' },
   { color: 'processing', key: 'export.status.running' },
   { color: 'success', key: 'export.status.done' },
   { color: 'error', key: 'export.status.failed' },
+  { color: 'warning', key: 'export.status.canceled' },
 ];
 
 /** 列表里轮询的间隔：任务由定时任务执行（一分钟一次），再快也没用 */
@@ -92,6 +94,12 @@ export default function ExportPage() {
     void load(query);
   };
 
+  const cancel = async (row: ExportTask) => {
+    await exportApi.cancel(row.id);
+    message.success(t('export.canceled'));
+    void load(query);
+  };
+
   const columns: ColumnsType<ExportTask> = [
     { title: t('field.id'), dataIndex: 'id', width: 80 },
     {
@@ -113,6 +121,12 @@ export default function ExportPage() {
       // 参数为空（`{}` / 空串）= 发起时没设条件，即全量；显示成「全量」比一串空括号好读
       render: (v: string) => (v === '' || v === '{}' ? t('export.all') : v),
     },
+    {
+      // 进度：执行中才有意义（每批 5000 行回写一次）；取消的那行停在取消时的部分值 ——
+      // 总量在分页取数下是不知道的，所以只报行数，不编百分比
+      title: t('field.progress'), dataIndex: 'progress_rows', width: 90,
+      render: (v: number, row) => (row.status === 1 || row.status === 4 ? v : '-'),
+    },
     { title: t('field.row_count'), dataIndex: 'row_count', width: 90, render: (v: number) => (v > 0 ? v : '-') },
     { title: t('field.file_size'), dataIndex: 'file_size', width: 100, render: (v: number) => sizeText(v) },
     { title: t('field.created_at'), dataIndex: 'created_at', width: 170 },
@@ -120,7 +134,8 @@ export default function ExportPage() {
     { title: t('field.expire_at'), dataIndex: 'expire_at', width: 170 },
     { title: t('field.msg'), dataIndex: 'msg', ellipsis: true },
     {
-      title: t('common.actions'), width: 150, fixed: 'right',
+      // 三个动作（下载 / 取消 / 删除）放得下：150 会把取消挤到换行
+      title: t('common.actions'), width: 210, fixed: 'right',
       render: (_, row) => (
         <Space>
           <Button
@@ -133,6 +148,12 @@ export default function ExportPage() {
           >
             {t('export.download')}
           </Button>
+          {/* 只给「还没跑完」的行（0/1）：跑完的取消了也没东西可取消，后端也会 409 */}
+          {(row.status === 0 || row.status === 1) && (
+            <Popconfirm title={t('export.cancel_confirm')} onConfirm={() => void cancel(row)}>
+              <Button size="small" type="link" danger>{t('export.cancel')}</Button>
+            </Popconfirm>
+          )}
           <Auth code="system:export:remove">
             <Popconfirm title={t('export.delete_confirm')} onConfirm={() => void remove(row)}>
               <Button size="small" type="link" danger>{t('common.delete')}</Button>
@@ -204,7 +225,7 @@ export default function ExportPage() {
         loading={loading}
         columns={columns}
         dataSource={rows}
-        scroll={{ x: 1300 }}
+        scroll={{ x: 1400 }}
         pagination={{
           current: query.page, pageSize: query.size, total, showSizeChanger: true,
           onChange: (page, size) => setQuery((q) => ({ ...q, page, size })),

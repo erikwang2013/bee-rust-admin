@@ -2,7 +2,7 @@
 //! 导出中心（项 4）：导出任务的列表 / 发起 / 下载 / 删除。
 //!
 //! 执行不在请求里——任务落库后由 `crate::export` 的 job（`export_run`）跑，过期由
-//! `export_clean` 清。请求路径只负责「登记」与「取回成品」。
+//! `export_clean` 清。请求路径只负责「登记」「取消」与「取回成品」。
 //!
 //! 权限口径（两条闸都要过）：
 //! - `system:export:list`：能用导出中心（菜单入口码）；
@@ -18,6 +18,7 @@ use crate::state::AppState;
 use crate::util::now;
 use axum::Json;
 use axum::extract::State;
+use axum::http::StatusCode;
 use axum::response::Response;
 use bee_orm::Model;
 use serde::Deserialize;
@@ -28,7 +29,7 @@ pub struct ExportQuery {
     pub page: Option<u32>,
     pub size: Option<u32>,
     pub kind: Option<String>,
-    /// 0 待处理 / 1 执行中 / 2 已完成 / 3 失败
+    /// 0 待处理 / 1 执行中 / 2 已完成 / 3 失败 / 4 已取消
     pub status: Option<i8>,
 }
 
@@ -49,7 +50,7 @@ pub struct CreateBody {
 #[apidoc::query(name = "page", ty = "int", desc = "页码，从 1 开始，默认 1")]
 #[apidoc::query(name = "size", ty = "int", desc = "每页条数，默认 10，上限 100")]
 #[apidoc::query(name = "kind", ty = "string", desc = "导出类型：audit-log / login-log")]
-#[apidoc::query(name = "status", ty = "int", desc = "0 待处理 / 1 执行中 / 2 已完成 / 3 失败")]
+#[apidoc::query(name = "status", ty = "int", desc = "0 待处理 / 1 执行中 / 2 已完成 / 3 失败 / 4 已取消")]
 #[apidoc::response_status("200")]
 pub async fn list(
     State(state): State<AppState>,
@@ -115,9 +116,11 @@ pub async fn create(
         file_path: String::new(),
         row_count: 0,
         file_size: 0,
+        progress_rows: 0,
         msg: String::new(),
         created_at: now(),
         started_at: None,
+        heartbeat_at: None,
         finished_at: None,
         expire_at: now() + chrono::Duration::days(state.cfg.export_retain_days),
     };
@@ -149,6 +152,7 @@ pub async fn download(
     match task.status {
         2 => {}
         3 => return Err(ApiError::BadRequest(format!("导出失败，没有文件：{}", task.msg))),
+        4 => return Err(ApiError::BadRequest("任务已取消，没有文件".into())),
         _ => return Err(ApiError::BadRequest("导出还没跑完，稍后刷新列表再看".into())),
     }
     // 流式回文件：不再把整份导出读进内存（几十万行就是几十 MB，并发下载会把内存顶上去）
@@ -157,6 +161,64 @@ pub async fn download(
         .map_err(|_| ApiError::NotFoundMsg("文件已过期或被清理，请重新发起导出".into()))?;
     let filename = format!("{}-{}.csv", kind.file_prefix, csv::today());
     Ok(csv::stream_file(file, filename))
+}
+
+/// 取消还没跑完的任务。**标记式**：只把行置 4，不在这里等执行者停下来 ——
+/// 执行者每批（5000 行）回写进度时会探到这一行不再属于它，批间收手并丢掉半份文件
+/// （见 `crate::export::beat`）。所以「取消成功」= 请求受理了，不是「已经停了」。
+#[apidoc::title("取消导出任务")]
+#[apidoc::desc("只能取消自己的、还没跑完的任务（待处理 / 执行中）置为已取消；已经结束的 409")]
+#[apidoc::url("/api/v1/exports/{id}/cancel")]
+#[apidoc::method("POST")]
+#[apidoc::tag("导出")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("403")]
+#[apidoc::response_status("409")]
+#[apidoc::returned(name = "data", ty = "object", desc = "canceled：实际改动的条数（0 = 刚好被跑完）")]
+pub async fn cancel(
+    State(state): State<AppState>,
+    auth: Auth,
+    AppPath(id): AppPath<String>,
+) -> Result<Json<Value>, ApiError> {
+    auth.require("system:export:list")?;
+    let task = own(&state, &auth, &id).await?;
+    // 已经有结局的行（2/3/4）不能再取消
+    if !matches!(task.status, 0 | 1) {
+        return Err(not_cancelable());
+    }
+    // 谓词带 status IN (0, 1)：上面那次读与这一写之间任务可能刚好跑完 ——
+    // 那种情况命中 0 行，回同一句 409（真实结局以这一写为准，不信刚才那次读）。
+    // 只改 status / finished_at / msg：进度**留在取消那一刻的值**（部分行数），
+    // 文件交给执行者的看守或 `export_clean` 收，这里不碰盘
+    let n = state
+        .db
+        .execute(
+            "UPDATE export_task SET status = 4, finished_at = ?, msg = ? WHERE id = ? AND status IN (0, 1)",
+            &[
+                bee_orm::Value::from(now()),
+                bee_orm::Value::from("已取消"),
+                bee_orm::Value::from(task.id),
+            ],
+        )
+        .await
+        .map_err(ApiError::from)?;
+    if n == 0 {
+        return Err(not_cancelable());
+    }
+    Ok(ok(json!({ "canceled": n })))
+}
+
+/// 「这行已经结束了，取消不了」：409 而不是 400 —— 请求本身没毛病，是**行的状态**
+/// 不允许（与手动触发在跑的 job 同一个档）。文案与前端词表 `err.export.not_cancelable`
+/// 挂在一起（`ERR_TABLE` 不认它，`err` 显式带上）。
+fn not_cancelable() -> ApiError {
+    ApiError::Coded {
+        status: StatusCode::CONFLICT,
+        err: "export.not_cancelable",
+        msg: "任务已经结束，不能取消".into(),
+        args: Value::Null,
+    }
 }
 
 /// 删任务（连文件）。误删只是丢一份能重导的文件，不做二次确认之外的限制。

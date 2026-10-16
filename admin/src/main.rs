@@ -357,6 +357,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ns("/api/v1/exports", |ns| {
             ns.get("", api::export::list)
                 .post("", api::export::create)
+                .post("/{id}/cancel", api::export::cancel)
                 .get("/{id}/download", api::export::download)
                 .delete("/{id}", api::export::remove)
         })

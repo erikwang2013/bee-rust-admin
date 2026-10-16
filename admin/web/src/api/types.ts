@@ -189,12 +189,16 @@ export interface ExportTask {
   id: string; admin_id: string; username: string; kind: string;
   /** 筛选条件 JSON 字符串：`{}` = 全量 */
   params: string;
-  /** 0 待处理 / 1 执行中 / 2 已完成 / 3 失败 */
+  /** 0 待处理 / 1 执行中 / 2 已完成 / 3 失败 / 4 已取消 */
   status: number;
   row_count: number; file_size: number;
+  /** 已写进文件的行数：执行中每批（5000 行）回写一次；取消的那行停在取消时的部分值 */
+  progress_rows: number;
   /** 失败原因 / 完成摘要 */
   msg: string;
   created_at: string; started_at: string | null; finished_at: string | null;
+  /** 心跳：每批刷新一次（后端判「任务是不是还活着」用，列表不显示） */
+  heartbeat_at: string | null;
   /** 过期时刻：清理任务按它连记录带文件一起删 */
   expire_at: string;
 }
