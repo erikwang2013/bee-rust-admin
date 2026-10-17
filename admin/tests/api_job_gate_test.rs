@@ -5,8 +5,10 @@
 //! 用户看到「已触发」却什么都没执行。现在接口在 spawn **之前**拿 permit，
 //! 拿不到当场 409，permit 随任务走到结束。
 //!
-//! 用 `db_backup` 当慢任务（真 mysqldump，本机实测 ~134ms），同时发 16 个触发：
-//! 必须恰好 1 个 200、15 个 409，且这一轮只多一条 job_log。
+//! 执行窗口做成**确定性**的：`LOCK TABLES login_log WRITE` 冻住 db_backup 的 mysqldump
+//! （读 login_log 时阻塞），锁没放就说明执行期没结束。在其间同时发 16 个触发：
+//! 必须恰好 1 个 200、15 个 409；请求收齐时 job_log 还没多（受理性与执行期重叠）。
+//! 解锁后受理的那次跑完，这一轮只多一条 job_log。
 //! 起真实进程 + 真库（bee_admin_test），需要 `BEE_ADMIN_DB_DSN`。
 mod common;
 
@@ -51,6 +53,14 @@ async fn concurrent_triggers_accept_exactly_one() {
         let before_logs = job_log_count(&pool, "db_backup").await;
         let mark = common::last_log_id(&pool, "db_backup").await;
 
+        // 冻住 dump：db_backup 读到 login_log 会阻塞，permit 一直被受理者持有，
+        // 16 个请求全部落在执行期内（不再靠「db_backup 大约 134ms」赌时序）。
+        let mut lock = pool.acquire().await.unwrap();
+        sqlx::raw_sql("LOCK TABLES login_log WRITE")
+            .execute(&mut *lock)
+            .await
+            .expect("锁表");
+
         // 16 个请求同时发：acquire-first 下第一个拿到 permit，其余当场 409
         let mut tasks = Vec::new();
         for _ in 0..16 {
@@ -75,6 +85,15 @@ async fn concurrent_triggers_accept_exactly_one() {
         let busy = statuses.iter().filter(|s| **s == 409).count();
         assert_eq!(ok, 1, "第 {round} 轮：并发触发只能有一者受理，实际 {statuses:?}");
         assert_eq!(busy, 15, "第 {round} 轮：其余 15 个必须 409，实际 {statuses:?}");
+
+        // 请求收齐时锁还没放：受理者仍被冻在执行期里（job_log 尚未落）
+        assert_eq!(
+            job_log_count(&pool, "db_backup").await,
+            before_logs,
+            "第 {round} 轮：请求窗口必须落在执行期内"
+        );
+        sqlx::raw_sql("UNLOCK TABLES").execute(&mut *lock).await.unwrap();
+        drop(lock);
 
         // 被拒的请求不执行、不留 job_log；等受理的那一次跑完，恰好 +1 条
         let (status, msg, _ms) = common::wait_job_log(&pool, "db_backup", mark).await;
