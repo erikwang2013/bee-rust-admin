@@ -199,10 +199,11 @@ pub async fn update(
     Ok(ok(Value::Null))
 }
 
-/// 删公告连带删它的已读记录，**同一事务**（与字典的级联删一致）：
-/// 残留行会让「已读」在 id 复用（本项目 id 不复用）时串味，留着也是垃圾。
+/// 删公告连带删它的已读记录**和配图附件行**，**同一事务**（与字典的级联删一致）：
+/// 残留的已读行/附件行都是指向已删对象的垃圾。文件本身不删 —— 交给
+/// `attach_orphan_clean` 定时收（那里有保护期，能兜住落盘与落库之间的缝）。
 #[apidoc::title("删除公告")]
-#[apidoc::desc("连带删它的已读记录，**同一事务**")]
+#[apidoc::desc("连带删它的已读记录与配图附件行，同一事务；磁盘文件交给附件孤儿清理")]
 #[apidoc::url("/api/v1/notices/{id}")]
 #[apidoc::method("DELETE")]
 #[apidoc::tag("公告")]
@@ -226,12 +227,18 @@ pub async fn remove(
         .ok_or(ApiError::NotFound)?;
 
     // notice_read 是复合主键（notice_id, admin_id），按主键删不适用，走带参裸 SQL；
-    // Db 层没有事务，事务开在 Pool::get() 拿到的连接上（两条删除必须在同一个连接上）。
+    // Db 层没有事务，事务开在 Pool::get() 拿到的连接上（三条删除必须在同一个连接上）。
     let mut conn = state.db.get().await.map_err(ApiError::from)?;
     conn.begin().await.map_err(ApiError::from)?;
     let result = async {
         conn.execute("DELETE FROM notice_read WHERE notice_id = ?", &[DbValue::from(id)])
             .await?;
+        // 配图附件行跟着走；文件留在盘上，由 attach_orphan_clean 按「无行引用」回收
+        conn.execute(
+            "DELETE FROM attachment WHERE entity_type = 'notice' AND entity_id = ?",
+            &[DbValue::from(id)],
+        )
+        .await?;
         conn.execute("DELETE FROM notice WHERE id = ?", &[DbValue::from(id)])
             .await?;
         Ok::<(), OrmError>(())
