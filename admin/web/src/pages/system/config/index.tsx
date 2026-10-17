@@ -217,15 +217,26 @@ function GroupCard({
       return;
     }
     setSaving(true);
+    let failed = 0;
     try {
       for (const { it, patch } of changed) {
-        await configApi.update(it.id, patch);
+        try {
+          await configApi.update(it.id, patch);
+        } catch {
+          // 单项失败（如 notify.* 不许公开）不拖垮其余项；具体原因 http 拦截器已弹过
+          failed += 1;
+        }
       }
-      message.success(t('common.saved'));
-      onChanged();
     } finally {
       setSaving(false);
     }
+    if (failed > 0) {
+      message.warning(t('config.save_partial', { n: failed }));
+    } else {
+      message.success(t('common.saved'));
+    }
+    // 成败都重载：失败项的开关/输入回滚到服务端值，页面不会停在「看起来改成功了」
+    onChanged();
   };
 
   return (
