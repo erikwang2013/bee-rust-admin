@@ -186,7 +186,7 @@ fn reject_unsafe_webhook_host(url: &str) -> Result<(), ApiError> {
     // 写法会在这里失败；直接拦，别留「校验放行、发送才炸」的口子。
     let Ok(parsed) = reqwest::Url::parse(url) else {
         return Err(ApiError::BadRequest(
-            "Webhook 地址无法解析（IPv6 不支持 zone id，如 %eth0）".into(),
+            "Webhook 地址无法解析：URL 主机/端口不合法（IPv6 不支持 zone id 这类写法）".into(),
         ));
     };
     let Some(host) = parsed.host_str() else { return Ok(()) };
