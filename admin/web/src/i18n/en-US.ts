@@ -360,7 +360,7 @@ export const enUS: Record<I18nKey, string> = {
 
   // ---- Notification settings (item 6) ----
   'notify.title': 'Notification settings',
-  'notify.hint': 'The webhook POSTs events as JSON (5s timeout, 3 retries); SMTP powers "send a test email to me". The password is stored AES-256-GCM encrypted: never echoed by the API, and the audit log only records "changed".',
+  'notify.hint': 'The webhook POSTs events as JSON (5s timeout, 3 retries); SMTP powers "send a test email to me" and notice email delivery. The password is stored AES-256-GCM encrypted: never echoed by the API, and the audit log only records "changed".',
   'notify.webhook_enabled': 'Enable webhook',
   'notify.webhook_url': 'Webhook URL',
   'notify.webhook_hint': 'Events: notice published (notice.published) / account locked (account.locked)',
@@ -378,6 +378,9 @@ export const enUS: Record<I18nKey, string> = {
   'notify.clear_password_confirm': 'Clear the saved SMTP password? You will have to set it again before mail can be sent.',
   'notify.smtp_from': 'From address',
   'notify.smtp_from_placeholder': 'Empty = use the username',
+  'notify.email_notice_title': 'Notice email delivery',
+  'notify.email_notice_enabled': 'Email when a notice is published',
+  'notify.email_notice_hint': 'Sends one email per enabled account that has an email address (the publisher is excluded), one SMTP delivery per recipient. A failed delivery is only logged server-side and never retried. Mind your SMTP quota on large teams; nothing is sent while SMTP is off.',
   'notify.test': 'Send a test email to me',
   'notify.test_hint': 'The test uses the **saved** config - save first, then test; a failure shows the reason.',
   'notify.test_sent': 'Sent to {to} - check your inbox',

@@ -6,11 +6,12 @@
 //! 因此看不到、改不动口令键，见 `api::config::is_secret_key`）。
 //! 每次投递/发信**现读**配置：事件是低频的，一次 SELECT 换「改完即生效、不重启」。
 //!
-//! v1 只做「出站」两件事：事件推 webhook、测试邮件。公告发布的**邮件**推送按施工图
-//! 放 v2（事件已经有了，加一个「事件 → 收件人」的表就能接上）。
+//! 出站三件事：事件推 webhook、测试邮件、**公告发布的邮件推送**（E2-6：开关
+//! `notify.email_notice_enabled`，默认关；收件人 = 全部启用且填了邮箱的账号，
+//! 发布者本人除外，逐个投递、best-effort）。
 use crate::crypto;
 use crate::error::ApiError;
-use crate::models::SysConfig;
+use crate::models::{Admin, SysConfig};
 use crate::state::AppState;
 use crate::util::now;
 use bee_orm::pool::mysql::Pool;
@@ -32,6 +33,9 @@ pub const KEY_SMTP_USER: &str = "notify.smtp_user";
 pub const KEY_SMTP_PASSWORD: &str = "notify.smtp_password";
 pub const KEY_SMTP_FROM: &str = "notify.smtp_from";
 pub const KEY_SMTP_ENCRYPTION: &str = "notify.smtp_encryption";
+/// 公告发布时给「全体启用且填了邮箱的账号（发布者本人除外）」发邮件（E2-6）。
+/// 默认 **0**：新装不会因为配了 SMTP 就突然开始群发。
+pub const KEY_EMAIL_NOTICE_ENABLED: &str = "notify.email_notice_enabled";
 
 /// SMTP 传输方式。`none` 是明文 —— 给本机 relay 与联调用（施工图验收就是本机假 SMTP），
 /// 跨公网必须用另外两种。
@@ -68,6 +72,9 @@ pub struct NotifyConfig {
     pub smtp_password: String,
     pub smtp_from: String,
     pub smtp_encryption: String,
+    /// 公告发布时给全体收件人发邮件（§E2-6）。**必须**出现在 `api::notify::to_json` 里：
+    /// 前端拿 GET 的回包回填整个表单再整体保存，少一个字段 = 保存一次就把它静默重置。
+    pub email_notice_enabled: bool,
 }
 
 impl NotifyConfig {
@@ -111,13 +118,14 @@ pub async fn load(db: &Pool) -> Result<NotifyConfig, OrmError> {
             let e = get(KEY_SMTP_ENCRYPTION).trim().to_ascii_lowercase();
             if e.is_empty() { DEFAULT_ENCRYPTION.into() } else { e }
         },
+        email_notice_enabled: truthy(&get(KEY_EMAIL_NOTICE_ENABLED)),
     })
 }
 
 /// 落库（幂等 upsert，缺行就补）。`smtp_password` 传**要存进库的形态**（密文；空 = 置空）
 /// ——「留空不改」是接口层的语义，在调用它之前就决掉。
 pub async fn save(state: &AppState, cfg: &NotifyConfig) -> Result<(), ApiError> {
-    let pairs: [(&str, String); 9] = [
+    let pairs: [(&str, String); 10] = [
         (KEY_WEBHOOK_ENABLED, bool_str(cfg.webhook_enabled)),
         (KEY_WEBHOOK_URL, cfg.webhook_url.clone()),
         (KEY_SMTP_ENABLED, bool_str(cfg.smtp_enabled)),
@@ -127,6 +135,7 @@ pub async fn save(state: &AppState, cfg: &NotifyConfig) -> Result<(), ApiError> 
         (KEY_SMTP_PASSWORD, cfg.smtp_password.clone()),
         (KEY_SMTP_FROM, cfg.smtp_from.clone()),
         (KEY_SMTP_ENCRYPTION, cfg.smtp_encryption.clone()),
+        (KEY_EMAIL_NOTICE_ENABLED, bool_str(cfg.email_notice_enabled)),
     ];
     for (key, value) in pairs {
         let row = SysConfig::query()
@@ -212,11 +221,14 @@ pub fn validate(cfg: &NotifyConfig) -> Result<(), ApiError> {
     Ok(())
 }
 
-/// 发一个事件（**异步、不阻塞业务**）：webhook 关着或没配地址就什么都不做。
+/// 发一个事件（**异步、不阻塞业务**）：webhook 与公告邮件各自开关、互不影响。
 ///
 /// 用 `tokio::spawn` 而不是直接 await：公告发布不该等一个可能挂住的第三方。
 /// 代价是「投递失败只进日志」—— 验收与排错看日志，不看接口返回值。
-pub fn emit(state: &AppState, event: &'static str, data: Value) {
+///
+/// `actor` 是**触发事件的人**（公告发布者）：邮件推送要把本人排除掉，不给自己发信。
+/// 与事件无关的场景（账号锁定）传 `None`。
+pub fn emit(state: &AppState, event: &'static str, data: Value, actor: Option<i64>) {
     let state = state.clone();
     tokio::spawn(async move {
         let cfg = match load(&state.db).await {
@@ -226,14 +238,94 @@ pub fn emit(state: &AppState, event: &'static str, data: Value) {
                 return;
             }
         };
-        if !cfg.webhook_enabled || cfg.webhook_url.is_empty() {
-            return;
+        if cfg.webhook_enabled && !cfg.webhook_url.is_empty() {
+            let body =
+                json!({ "event": event, "at": chrono::Utc::now().timestamp(), "data": data });
+            if let Err(e) = post_webhook(&cfg.webhook_url, &body).await {
+                tracing::warn!("Webhook 投递失败（{event} → {}）: {e}", cfg.webhook_url);
+            }
         }
-        let body = json!({ "event": event, "at": chrono::Utc::now().timestamp(), "data": data });
-        if let Err(e) = post_webhook(&cfg.webhook_url, &body).await {
-            tracing::warn!("Webhook 投递失败（{event} → {}）: {e}", cfg.webhook_url);
+        // 公告邮件（E2-6）：只认「发布」这一个事件；开关关着就什么都不做（默认就是关的）
+        if event == EVENT_NOTICE_PUBLISHED && cfg.email_notice_enabled {
+            mail_notice_published(&state, &cfg, &data, actor).await;
         }
     });
+}
+
+/// 公告发布的邮件推送：收件人 = **全部启用且填了邮箱**的账号，**排除发布者本人**。
+///
+/// 逐个投递（一人一封、一人一次 SMTP 会话）：收件人之间互不抄送 —— 谁都能从
+/// `To:` 里看到全体邮箱不合适，一个人失败也不该连累后面的人。**best-effort**：
+/// 单封失败只记日志（不带收件地址），不重投、不回滚发布。
+///
+/// 开销是 **O(n) 次 SMTP 投递**（n = 符合条件的账号数）：公告发布本身不等它
+/// （在 [`emit`] 的异步任务里跑），但发给一万人就是一万次会话 —— 大团队请先确认
+/// SMTP 服务的发送配额（见 docs/usage.md §3.13）。
+async fn mail_notice_published(
+    state: &AppState,
+    cfg: &NotifyConfig,
+    data: &Value,
+    actor: Option<i64>,
+) {
+    // SMTP 没启用 = 用户没打算让它发信；别为每条公告刷一屏「连不上」的日志
+    if !cfg.smtp_enabled || cfg.smtp_host.is_empty() {
+        tracing::warn!("公告邮件推送开着但 SMTP 未启用/没配服务器，这次不发信");
+        return;
+    }
+    let rows = match Admin::query().filter_eq("status", 1i8) {
+        Ok(qs) => match qs.all(&state.db).await {
+            Ok(rows) => rows,
+            Err(e) => {
+                tracing::warn!("公告邮件推送：查收件人失败: {e}");
+                return;
+            }
+        },
+        Err(e) => {
+            tracing::warn!("公告邮件推送：查收件人失败: {e}");
+            return;
+        }
+    };
+    let password = match cfg.password(state) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!("公告邮件推送：解 SMTP 口令失败: {e:?}");
+            return;
+        }
+    };
+    let title = data["title"].as_str().unwrap_or_default();
+    let subject = format!("通知公告：{title}");
+    let body = format!("公告《{title}》已发布，请登录 bee-rust-admin 后台查看全文。");
+    let (mut sent, mut failed, mut skipped) = (0usize, 0usize, 0usize);
+    for a in rows {
+        if Some(a.id) == actor {
+            continue; // 发布者本人不发
+        }
+        // email 是密文列（与个人中心同口径），空串 = 没填，解不开 = 这条跳过
+        let to = match crypto::plain(&state.crypto, &a.email) {
+            Ok(v) => v.trim().to_string(),
+            Err(e) => {
+                failed += 1;
+                tracing::warn!("公告邮件推送：账号 {} 的邮箱解不开: {e}", a.id);
+                continue;
+            }
+        };
+        if to.is_empty() {
+            skipped += 1;
+            continue;
+        }
+        match send_mail(cfg, &to, &password, &subject, &body).await {
+            Ok(()) => sent += 1,
+            Err(e) => {
+                failed += 1;
+                // 不拼收件地址：邮箱是个人数据，日志里只留账号 id
+                tracing::warn!("公告邮件推送：发给账号 {} 失败: {e}", a.id);
+            }
+        }
+    }
+    tracing::info!(
+        "公告邮件推送（{}）: 发出 {sent} 封、失败 {failed}、没填邮箱 {skipped} 个",
+        data["id"].as_str().unwrap_or("?")
+    );
 }
 
 /// 投一个 JSON 体，失败重试（见 [`MAX_ATTEMPTS`]）。返回最后一次的原因，成功返回 `Ok`。
@@ -261,16 +353,33 @@ async fn post_webhook(url: &str, body: &Value) -> Result<(), String> {
 /// 面板上要能看出「为什么发不出去」。原因里不含口令：lettre 不回显凭据，
 /// 这里也不拼任何配置值（发件人地址都不拼，那也算配置内容）。
 pub async fn send_test_mail(cfg: &NotifyConfig, to: &str, password: &str) -> Result<(), String> {
+    send_mail(
+        cfg,
+        to,
+        password,
+        "bee-rust-admin 邮件通知测试",
+        "这是一封来自 bee-rust-admin「通知设置」的测试邮件。收到即说明 SMTP 配置可用。",
+    )
+    .await
+}
+
+/// 发一封纯文本邮件：SMTP 连接/加密/认证这套公共部分（测试邮件与公告推送共用）。
+/// 每次调用是一条独立的 SMTP 会话 —— 公告推送的「逐个投递」就是按这个粒度做的。
+async fn send_mail(
+    cfg: &NotifyConfig,
+    to: &str,
+    password: &str,
+    subject: &str,
+    text: &str,
+) -> Result<(), String> {
     let from = if cfg.smtp_from.is_empty() { &cfg.smtp_user } else { &cfg.smtp_from };
     let email = Message::builder()
         .from(from.parse::<Mailbox>().map_err(|e| format!("发件人地址不合法（{from}）: {e}"))?)
         .to(to
             .parse::<Mailbox>()
             .map_err(|e| format!("收件人地址不合法（{to}）: {e}"))?)
-        .subject("bee-rust-admin 邮件通知测试")
-        .body(String::from(
-            "这是一封来自 bee-rust-admin「通知设置」的测试邮件。收到即说明 SMTP 配置可用。",
-        ))
+        .subject(subject)
+        .body(String::from(text))
         .map_err(|e| format!("组装邮件失败: {e}"))?;
 
     let host = cfg.smtp_host.as_str();

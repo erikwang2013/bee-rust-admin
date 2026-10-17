@@ -197,6 +197,20 @@ export default function NotifyPage() {
           <Input placeholder={t('notify.smtp_from_placeholder')} allowClear />
         </Form.Item>
 
+        <Divider />
+
+        {/* 公告邮件推送（E2-6）：开关存在 sys_config 的 notify.email_notice_enabled，
+            GET /notify/config 会回包（少一个字段就是保存一次静默重置，后端有注释钉住） */}
+        <Typography.Title level={5}>{t('notify.email_notice_title')}</Typography.Title>
+        <Form.Item
+          name="email_notice_enabled"
+          label={t('notify.email_notice_enabled')}
+          valuePropName="checked"
+          extra={t('notify.email_notice_hint')}
+        >
+          <Switch />
+        </Form.Item>
+
         <Auth code="system:notify:edit">
           <Space wrap>
             <Button type="primary" htmlType="submit" loading={saving}>{t('common.save')}</Button>

@@ -566,7 +566,7 @@ pub async fn ensure_jobs(db: &Pool, sk: &Shared) -> Result<(), bee_orm::OrmError
 /// `/configs/public` 是免登录接口，公开等于把 SMTP 服务器、webhook 地址抖给全世界。
 /// 版权文字里的年份是**种子时**的年份（字面量，不玩动态替换）：管理员改过一次后
 /// 启动流程绝不覆盖，跨年想换自己改。
-const DEFAULT_CONFIGS: [(&str, &str, &str, &str, &str, i8); 13] = [
+const DEFAULT_CONFIGS: [(&str, &str, &str, &str, &str, i8); 14] = [
     ("site.copyright", "", "string", "site", "页脚版权文字（原样显示，如 © 2026 erik）", 1),
     (
         "site.repo_url",
@@ -581,7 +581,7 @@ const DEFAULT_CONFIGS: [(&str, &str, &str, &str, &str, i8); 13] = [
     // ── 通知渠道（项 6）：键名与 `src/notify.rs` 的常量同源，改名只改常量 ──
     (crate::notify::KEY_WEBHOOK_ENABLED, "false", "bool", "notify", "Webhook 总开关（事件：公告发布 / 账号锁定）", 0),
     (crate::notify::KEY_WEBHOOK_URL, "", "string", "notify", "Webhook 地址（http/https，超时 5s、失败重试 3 次）", 0),
-    (crate::notify::KEY_SMTP_ENABLED, "false", "bool", "notify", "SMTP 总开关（v1 只用于「发测试邮件」）", 0),
+    (crate::notify::KEY_SMTP_ENABLED, "false", "bool", "notify", "SMTP 总开关（测试邮件与公告邮件推送都走它）", 0),
     (crate::notify::KEY_SMTP_HOST, "", "string", "notify", "SMTP 服务器地址", 0),
     (crate::notify::KEY_SMTP_PORT, "587", "string", "notify", "SMTP 端口（starttls 587 / ssl 465）", 0),
     (crate::notify::KEY_SMTP_USER, "", "string", "notify", "SMTP 认证用户名（空 = 不认证）", 0),
@@ -596,6 +596,14 @@ const DEFAULT_CONFIGS: [(&str, &str, &str, &str, &str, i8); 13] = [
     ),
     (crate::notify::KEY_SMTP_FROM, "", "string", "notify", "发件人地址（空 = 用认证用户名）", 0),
     (crate::notify::KEY_SMTP_ENCRYPTION, "starttls", "string", "notify", "加密方式：starttls / ssl / none", 0),
+    (
+        crate::notify::KEY_EMAIL_NOTICE_ENABLED,
+        "false",
+        "bool",
+        "notify",
+        "公告发布时给全体启用且填了邮箱的账号发邮件（发布者本人除外），默认关",
+        0,
+    ),
 ];
 
 /// 幂等补齐内置配置键（每次启动都跑）：缺哪个补哪个，已存在的行一律不改写

@@ -26,6 +26,9 @@ fn to_json(cfg: &NotifyConfig) -> Value {
         "smtp_user": cfg.smtp_user,
         "smtp_from": cfg.smtp_from,
         "smtp_encryption": cfg.smtp_encryption,
+        // 这个字段**必须**回：前端拿 GET 的回包回填整个表单、再整体保存，
+        // 少回一个 = 用户点一次保存就把它静默重置成 false（见 notify::NotifyConfig 的注释）
+        "email_notice_enabled": cfg.email_notice_enabled,
         // 口令本身永不出口；前端拿这个布尔决定口令框的占位提示
         "smtp_password_set": cfg.password_set(),
     })
@@ -69,6 +72,9 @@ pub struct NotifyBody {
     pub smtp_from: String,
     #[serde(default = "default_encryption")]
     pub smtp_encryption: String,
+    /// 公告发布时给全体启用账号发邮件（默认关）
+    #[serde(default)]
+    pub email_notice_enabled: bool,
 }
 
 fn default_port() -> u16 {
@@ -94,6 +100,7 @@ fn default_encryption() -> String {
 #[apidoc::param(name = "smtp_password", ty = "string", desc = "认证口令（缺省 = 不改）")]
 #[apidoc::param(name = "smtp_from", ty = "string", desc = "发件人地址（空 = 用用户名）")]
 #[apidoc::param(name = "smtp_encryption", ty = "string", desc = "starttls / ssl / none，默认 starttls")]
+#[apidoc::param(name = "email_notice_enabled", ty = "bool", desc = "公告发布时给全体启用账号发邮件（发布者本人除外），默认 false")]
 #[apidoc::response_status("200")]
 #[apidoc::response_status("400")]
 #[apidoc::response_status("403")]
@@ -127,6 +134,7 @@ pub async fn save_config(
         smtp_password,
         smtp_from: body.smtp_from.trim().to_string(),
         smtp_encryption: body.smtp_encryption.trim().to_ascii_lowercase(),
+        email_notice_enabled: body.email_notice_enabled,
     };
     notify::validate(&new)?;
     notify::save(&state, &new).await?;
@@ -142,6 +150,7 @@ pub async fn save_config(
         .field("smtp_user", old.smtp_user.clone(), new.smtp_user.clone())
         .field("smtp_from", old.smtp_from.clone(), new.smtp_from.clone())
         .field("smtp_encryption", old.smtp_encryption.clone(), new.smtp_encryption.clone())
+        .field("email_notice_enabled", old.email_notice_enabled, new.email_notice_enabled)
         .masked("smtp_password", pw_changed)
         .done();
     Ok((changes, ok(Value::Null)))

@@ -205,6 +205,7 @@ fn record_login_failure(state: &AppState, username: &str, ip: &str) {
             state,
             crate::notify::EVENT_ACCOUNT_LOCKED,
             json!({ "username": username, "ip": ip, "until": until }),
+            None, // 账号锁定与公告邮件无关（邮件只认 notice.published）
         ),
         Ok(_) => {}
         Err(e) => tracing::error!("登录限流计数失败 ({uk}): {e}"),

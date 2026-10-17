@@ -367,7 +367,7 @@ export const zhCN = {
 
   // ---- 通知设置（项 6）----
   'notify.title': '通知设置',
-  'notify.hint': 'Webhook 把事件 POST 成 JSON（5 秒超时、失败重试 3 次）；SMTP 用于「发测试邮件到我邮箱」。口令 AES-256-GCM 加密落库：接口不回显，审计只记「已变更」。',
+  'notify.hint': 'Webhook 把事件 POST 成 JSON（5 秒超时、失败重试 3 次）；SMTP 用于「发测试邮件到我邮箱」与「公告邮件推送」。口令 AES-256-GCM 加密落库：接口不回显，审计只记「已变更」。',
   'notify.webhook_enabled': '启用 Webhook',
   'notify.webhook_url': 'Webhook 地址',
   'notify.webhook_hint': '事件：公告发布（notice.published）/ 账号锁定（account.locked）',
@@ -385,6 +385,9 @@ export const zhCN = {
   'notify.clear_password_confirm': '清空已保存的 SMTP 口令？清空后要重新设置口令才能发信。',
   'notify.smtp_from': '发件人',
   'notify.smtp_from_placeholder': '空 = 用用户名',
+  'notify.email_notice_title': '公告邮件推送',
+  'notify.email_notice_enabled': '公告发布时发邮件',
+  'notify.email_notice_hint': '给所有「已启用且填了邮箱」的账号各发一封（发布者本人除外），用上面的 SMTP 配置逐个投递；单封失败只记服务端日志、不重投。每个收件人占一次 SMTP 投递，人多时注意发信配额；SMTP 没启用时不发。',
   'notify.test': '发测试邮件到我邮箱',
   'notify.test_hint': '测试用的是**已保存**的配置 —— 改完先保存再测；发不出去会给失败原因。',
   'notify.test_sent': '已发往 {to}，去收件箱看看',

@@ -125,6 +125,8 @@ export interface NotifyConfig {
   smtp_enabled: boolean; smtp_host: string; smtp_port: number;
   smtp_user: string; smtp_from: string;
   smtp_encryption: 'starttls' | 'ssl' | 'none';
+  /** 公告发布时给全体启用账号发邮件（发布者本人除外）；SMTP 开关关着时不发 */
+  email_notice_enabled: boolean;
   smtp_password_set: boolean;
 }
 

@@ -142,6 +142,7 @@ pub async fn create(
             &state,
             notify::EVENT_NOTICE_PUBLISHED,
             json!({ "id": hid::enc(n.id), "title": n.title }),
+            Some(auth.admin.id), // 邮件推送要排除发布者本人
         );
     }
     Ok(ok(json!({ "id": hid::enc(n.id) })))
@@ -192,6 +193,7 @@ pub async fn update(
             &state,
             notify::EVENT_NOTICE_PUBLISHED,
             json!({ "id": hid::enc(n.id), "title": n.title }),
+            Some(auth.admin.id), // 邮件推送要排除发布者本人
         );
     }
     Ok(ok(Value::Null))
