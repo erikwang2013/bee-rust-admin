@@ -125,6 +125,9 @@ async fn find_or_create_device(
         .map_err(ApiError::from)?
         .filter_eq("status", 1)
         .map_err(ApiError::from)?
+        // (admin_id, UA) 没有唯一键：并发登录可能留下两行。取**最早**那一行（id ASC）
+        // 是确定的：新行出现不会让已发的 token 改绑到别的行。
+        .order_by("id ASC")
         .all(&state.db)
         .await
         .map_err(ApiError::from)?;

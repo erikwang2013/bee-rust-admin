@@ -143,6 +143,8 @@ impl FromRequestParts<AppState> for Auth {
             let dev = AdminLoginDevice::query()
                 .filter_eq("id", device_id)
                 .map_err(ApiError::from)?
+                // 主键查询本来就唯一；显式排序让「取哪一行」不依赖引擎的执行计划
+                .order_by("id ASC")
                 .one(&state.db)
                 .await
                 .map_err(ApiError::from)?;

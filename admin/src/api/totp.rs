@@ -169,6 +169,8 @@ pub async fn devices(State(state): State<AppState>, auth: Auth) -> Result<Json<V
         .filter_eq("status", 1)
         .map_err(ApiError::from)?
         .order_by("last_active_at DESC")
+        // 同一秒活跃的多台设备顺序也要稳定：没有 tie-break 时翻页/刷新可能换序
+        .order_by("id DESC")
         .all(&state.db)
         .await
         .map_err(ApiError::from)?;
