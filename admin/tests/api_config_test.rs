@@ -71,10 +71,10 @@ async fn sys_config_and_public() {
     assert_eq!(st, 200, "超管可读配置列表: {v}");
     let list = v["data"]["list"].as_array().expect("list 数组").clone();
     assert_eq!(v["data"]["total"], json!(list.len()), "total 与 list 一致: {v}");
-    // 种子 13 个键（site 4 + 通知 9），但列表**只回 12**：项 6 的 SMTP 口令键
+    // 种子 14 个键（site 4 + 通知 10），但列表**只回 13**：项 6 的 SMTP 口令键
     // 被 `is_secret_key` 挡在管理页外（列出来等于让每个能读配置的人改它的值，
     // 「加密存」就白做了）。口令键的存在只在「通知设置」页看得到。
-    assert_eq!(list.len(), 12, "种子 13 个键 - 1 个口令键: {v}");
+    assert_eq!(list.len(), 13, "种子 14 个键 - 1 个口令键: {v}");
     assert!(
         !list.iter().any(|x| x["key"] == "notify.smtp_password"),
         "口令键不上通用配置页: {v}"
