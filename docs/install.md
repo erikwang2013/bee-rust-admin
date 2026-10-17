@@ -108,11 +108,13 @@ initial_admin_password = <自己定一个>
 
 ### (a) 一键脚本（推荐）
 
-**下载后跑，别直接 `curl | bash`** —— 这个脚本要 root 装 systemd 与 nginx，值得先看一眼：
+**下载仓库后跑，别直接 `curl | bash`** —— 它要 root 装 systemd 与 nginx，值得先看一眼；
+而且 `install.sh` 只是入口，具体步骤在同仓库的 `scripts/lib/install-*.sh`（缺了会直接报错退出）：
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/erikwang2013/bee-rust-admin/main/install.sh
-less install.sh          # 先看一眼
+git clone --depth 1 https://github.com/erikwang2013/bee-rust-admin.git
+cd bee-rust-admin
+less install.sh          # 先看一眼（步骤在 scripts/lib/install-*.sh）
 bash install.sh          # 交互式：会问数据库口令
 ```
 

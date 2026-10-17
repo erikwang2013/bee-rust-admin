@@ -189,7 +189,8 @@ docker-compose.yml      MySQL + 后端 + 前端一键起栈
 > 生成密钥的命令、一份可直接改的 `app.conf`，以及常见坑。命令行党直接：
 >
 > ```bash
-> curl -fsSLO https://raw.githubusercontent.com/erikwang2013/bee-rust-admin/main/install.sh
+> git clone --depth 1 https://github.com/erikwang2013/bee-rust-admin.git
+> cd bee-rust-admin
 > less install.sh && bash install.sh      # 交互式；--help 看全部参数
 > ```
 >

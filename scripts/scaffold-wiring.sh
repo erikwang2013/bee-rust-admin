@@ -9,10 +9,10 @@ cat <<EOF
 
 ── 接线清单（脚本不替你做，逐条粘）───────────────────────────
 
-① 建表：admin/src/seed.rs 的 migrate 清单里加一行（不会删列，安全）
+① 建表：admin/src/seed/schema.rs 的 migrate 清单里加一行（不会删列，安全）
     migrate::sync::<crate::models::$CAMEL, _>(db).await?;
 
-② 菜单种子：同一个文件的 BUILTIN_MENUS 里加一条（权限码就是从这里发出来的）
+② 菜单种子：admin/src/seed/menus.rs 的 BUILTIN_MENUS 里加一条（权限码就是从这里发出来的）
     (
         "$LABEL",
         "$PAGE",
@@ -24,20 +24,20 @@ cat <<EOF
 
 ③ 路由挂载：admin/src/main.rs 的路由链上，任选合适位置（别塞进别的 ns 里）
     .ns("/api/v1$API_PATH", |ns| {
-        ns.get("", api::$MODULE::list)
-            .post("", api::$MODULE::create)
-            .put("/{id}", api::$MODULE::update)
-            .delete("/{id}", api::$MODULE::remove)
+        ns.get("", api::v1::$MODULE::list)
+            .post("", api::v1::$MODULE::create)
+            .put("/{id}", api::v1::$MODULE::update)
+            .delete("/{id}", api::v1::$MODULE::remove)
     })
-    （挂完把 src/api/$MODULE.rs 与 src/models/$MODULE.rs 顶上那两行 #![allow(dead_code)] 删掉：
-     它们是「还没接线」这段过渡期压编译警告用的，接完线就该没了）
+    （挂完把 admin/src/api/v1/$MODULE/mod.rs 与 admin/src/models/$MODULE.rs 顶上那两行
+     #![allow(dead_code)] 删掉：它们是「还没接线」这段过渡期压编译警告用的，接完线就该没了）
 
 ④ 前端路由：admin/web/src/router.tsx
     const ${CAMEL}Page = lazy(() => import('./pages/system/$MODULE/index'));
     // 路由表里（<L> 是登录守卫）：
     { path: '$ROUTE', element: <RequirePerm code="$PERM:list"><L><${CAMEL}Page /></L></RequirePerm> },
 
-⑤ 前端图标：页面菜单要显示的话，admin/src/seed.rs 里用的图标名必须在
+⑤ 前端图标：页面菜单要显示的话，admin/src/seed/menus.rs 里用的图标名必须在
     admin/web/src/icons.ts 的白名单里（ProfileOutlined 已有）。
 
 ⑥ 集成测试：admin/tests/common/mod.rs 的 reset_db 表清单里加 "$MODULE"

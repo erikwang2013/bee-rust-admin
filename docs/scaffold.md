@@ -41,21 +41,21 @@ scripts/scaffold-module.sh message system:message name:string:64 status:bool sor
 | 文件 | 内容 |
 | --- | --- |
 | `admin/src/models/<模块名>.rs` | 模型（`id` / 业务字段 / `created_at` / `updated_at`） |
-| `admin/src/api/<模块名>.rs` | list / create / update / remove + apidoc 注解 + 文本列长度校验与 datetime 解析（各含单测） |
+| `admin/src/api/v1/<模块名>/mod.rs` | list / create / update / remove + apidoc 注解 + 文本列长度校验与 datetime 解析（各含单测） |
 | `admin/tests/api_<模块名>_test.rs` | 真库真进程跑一遍 CRUD（含 401 闸门、空白名 400、datetime 格式错 400、删完查不到） |
 | `admin/web/src/api/<模块名>.ts` | 类型 + `xxxApi` 四个方法（类型留在模块自己的文件里，不动共享 `types.ts`） |
 | `admin/web/src/pages/system/<模块名>/index.tsx` | 列表 + 新建/编辑弹窗 + 删除（`Auth` 包着操作按钮） |
-| `admin/src/api/mod.rs`、`admin/src/models/mod.rs` | 各**追加一行** `pub mod`（不加，上面两个 .rs 根本不参与编译，自检就是假绿） |
+| `admin/src/api/v1/mod.rs`、`admin/src/models/mod.rs` | v1 追加一行 `pub mod`（插在既有 `pub mod` 声明块末尾）；模型追加 `pub mod` + `pub use`（不加，生成物根本不参与编译，自检就是假绿） |
 
 ## 接线清单（脚本会把这份原样打印出来）
 
 编号与脚本打印的完全一致：`①` `③` 粘完就能调接口，`④` 粘完页面才有入口。
 
 ```rust
-// ① admin/src/seed.rs 的 migrate 清单：建表（只加列不删列，安全）
+// ① admin/src/seed/schema.rs 的 migrate 清单：建表（只加列不删列，安全）
 migrate::sync::<crate::models::Message, _>(db).await?;
 
-// ② 同文件 BUILTIN_MENUS：菜单 + 四个权限码（不粘的话只有超管能调，普通角色一律 403）
+// ② admin/src/seed/menus.rs 的 BUILTIN_MENUS：菜单 + 四个权限码（不粘的话只有超管能调，普通角色一律 403）
 (
     "消息",
     "/system/message",
@@ -67,10 +67,10 @@ migrate::sync::<crate::models::Message, _>(db).await?;
 
 // ③ admin/src/main.rs 的路由链（位置随意，别塞进别人的 ns 里）
 .ns("/api/v1/messages", |ns| {
-    ns.get("", api::message::list)
-        .post("", api::message::create)
-        .put("/{id}", api::message::update)
-        .delete("/{id}", api::message::remove)
+    ns.get("", api::v1::message::list)
+        .post("", api::v1::message::create)
+        .put("/{id}", api::v1::message::update)
+        .delete("/{id}", api::v1::message::remove)
 })
 ```
 
@@ -90,7 +90,7 @@ const MessagePage = lazy(() => import('./pages/system/message/index'));
 `⑦` 字段名不在现有 `field.*` 词表里的话，脚本会附带一份 i18n 占位片段，粘不粘都行
 （不粘就是拿字段名当标签）。
 
-另外，接完线把 `admin/src/api/message.rs` 与 `admin/src/models/message.rs` 顶上那两行
+另外，接完线把 `admin/src/api/v1/message/mod.rs` 与 `admin/src/models/message.rs` 顶上那两行
 `#![allow(dead_code)]` 删掉 —— 它们是「还没接线」这段过渡期压编译警告用的，接完线就该消失。
 
 **为什么这些不让脚本自己改**：菜单种子、路由挂载、前端路由都是结构化编辑（挂哪个 ns、
@@ -102,7 +102,7 @@ const MessagePage = lazy(() => import('./pages/system/message/index'));
 
 **改脚本，不要改生成物把它糊过去。** 生成物是模板的输出，手工修一份只说明模板坏了，
 下一个模块还会坏一次。自检失败时脚本会**先整体回滚**（还原两个 `mod.rs`、删掉本次写下的
-文件与新建的页面目录）再退出并提示这一点 —— 工作树回到跑脚本之前，改了脚本重跑即可。
+文件与新建的接口/页面目录）再退出并提示这一点 —— 工作树回到跑脚本之前，改了脚本重跑即可。
 
 回滚不只挂在两道自检上：**写盘中途失败也算**（磁盘满、权限、目标是坏链接，或 Ctrl-C）——
 脚本装了 `EXIT`/`INT`/`TERM` 兜底，任何非零退出都走同一条回滚路。删哪些文件是按**实际写下
@@ -118,7 +118,7 @@ bash scripts/scaffold-module.sh dict system:dict \
   --label 字典管理 --out /tmp/sk
 ```
 
-生成物与仓库里人工写的 `admin/src/api/dict.rs`、`admin/src/models/dict.rs` 逐段对得上：
+生成物与仓库里人工写的 `admin/src/api/v1/dict/mod.rs`、`admin/src/models/dict.rs` 逐段对得上：
 
 - 模型：`#[bee(table)]` + `hid::ser_id/de_id` 的 `id` + `sql_type` + `created_at/updated_at` 两列，一致；
 - 接口：`auth.require("<码>")` → `page_size` → `filter_contains/filter_eq` → `fetch_page` →
@@ -134,7 +134,7 @@ bash scripts/scaffold-module.sh dict system:dict \
 - **不覆盖任何已有文件**：任一目标已存在就整体退出（一次误跑会清掉线上模块）。
   同理不修改任何既有模块的代码，除了上面那两个 `pub mod` 追加。
 - **不生成 DDL**：建表一律走 `migrate::sync`（加列不删列）。要复合唯一键、外键、
-  特殊索引，自己往 `seed.rs` 的裸 DDL 清单里加，写法照着现有的 `idx_attachment_entity`。
+  特殊索引，自己往 `seed/schema.rs` 的裸 DDL 清单里加，写法照着现有的 `idx_attachment_entity`。
 - **不生成业务语义**：`datetime` 只保证「字符串 ↔ `NaiveDateTime`」这条通道通（解析、
   回传、查询精确匹配、前端 DatePicker 折算），**时区不在里面** —— 存的就是本地墙钟的
   字面量（与 `util::now()` = `Local::now().naive_local()` 一个口径）。要跨时区、

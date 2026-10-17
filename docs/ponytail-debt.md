@@ -7,13 +7,13 @@
 
 | 位置 | 有意搁置什么（天花板） | 升级触发条件 / 路径 |
 |---|---|---|
-| [`admin/src/api/admin.rs:192`](../admin/src/api/admin.rs#L192) | 管理员列表每行一次关联查询（页 10 行 = 11 次查询） | 行数大改批量查 |
-| [`admin/src/api/auth.rs:174`](../admin/src/api/auth.rs#L174) | `/captcha/new` 限流阈值 60 次/分钟是拍的：正常用户一分钟开不了 60 次登录页，刷子被压到 60 条/分钟（按 TTL 300s 算单 IP 稳态 ≤ 300 条） | 要调就调这两个数（`threshold` / `window_secs`） |
-| [`admin/src/api/auth.rs:214`](../admin/src/api/auth.rs#L214) | 验证码全局限流的额度只在单进程内计数（多实例各算各的，总限量按实例数翻倍） | 多实例部署时挪到网关或换跨进程存储 |
-| [`admin/src/api/auth.rs:237`](../admin/src/api/auth.rs#L237) | 验证码「消费」的互斥锁只在单进程内有效 | 多实例部署要换插件的 Redis 存储，那才是真正跨进程的消费 |
-| [`admin/src/api/login_log.rs:78`](../admin/src/api/login_log.rs#L78) | 清空日志先全量取 id 再分批删（ORM 无按条件批量删） | 日志量极大时改为 ORM 批量删 |
-| [`admin/src/datascope.rs:207`](../admin/src/datascope.rs#L207) | 每行一次 `role_perms`（2 条查询）；角色是配置量级（几十个），不分批 | 注释未给触发条件 |
-| [`admin/src/jobs.rs:10`](../admin/src/jobs.rs#L10) | 调度假定单实例：同进程内靠 `last_run_at` 抢占，多实例下同一任务会重复跑 | 多实例部署前换成 DB 行锁 |
+| [`admin/src/api/v1/admin/mod.rs:197`](../admin/src/api/v1/admin/mod.rs#L197) | 管理员列表每行一次关联查询（页 10 行 = 11 次查询） | 行数大改批量查 |
+| [`admin/src/api/v1/auth/guard.rs:196`](../admin/src/api/v1/auth/guard.rs#L196) | `/captcha/new` 限流阈值 60 次/分钟是拍的：正常用户一分钟开不了 60 次登录页，刷子被压到 60 条/分钟（按 TTL 300s 算单 IP 稳态 ≤ 300 条） | 要调就调这两个数（`threshold` / `window_secs`） |
+| [`admin/src/api/v1/auth/guard.rs:236`](../admin/src/api/v1/auth/guard.rs#L236) | 验证码全局限流的额度只在单进程内计数（多实例各算各的，总限量按实例数翻倍） | 多实例部署时挪到网关或换跨进程存储 |
+| [`admin/src/api/v1/auth/guard.rs:259`](../admin/src/api/v1/auth/guard.rs#L259) | 验证码「消费」的互斥锁只在单进程内有效 | 多实例部署要换插件的 Redis 存储，那才是真正跨进程的消费 |
+| [`admin/src/api/v1/login_log/mod.rs:77`](../admin/src/api/v1/login_log/mod.rs#L77) | 清空日志先全量取 id 再分批删（ORM 无按条件批量删） | 日志量极大时改为 ORM 批量删 |
+| [`admin/src/datascope.rs:280`](../admin/src/datascope.rs#L280) | 每行一次 `role_perms`（2 条查询）；角色是配置量级（几十个），不分批 | 注释未给触发条件 |
+| [`admin/src/jobs/mod.rs:10`](../admin/src/jobs/mod.rs#L10) | 调度假定单实例：同进程内靠 `last_run_at` 抢占，多实例下同一任务会重复跑 | 多实例部署前换成 DB 行锁 |
 
 ## crates 框架（`crates/`）
 

@@ -6,7 +6,7 @@
 
 tpl_model() { cat <<EOF
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-// 还没接进 main.rs / seed.rs（见 docs/scaffold.md 的接线清单①③）之前，本模块没人引用，
+// 还没接进 main.rs / seed/schema.rs（见 docs/scaffold.md 的接线清单①③）之前，本模块没人引用，
 // 编译期会刷 dead_code 警告；接完线就把下面这行删掉。
 #![allow(dead_code)]
 use bee_orm::Model;
@@ -32,7 +32,7 @@ EOF
 tpl_api() { cat <<EOF
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 //! $LABEL（脚手架生成）：列表 / 新建 / 编辑 / 删除。
-//! 权限码 \`$PERM:list|add|edit|remove\` 由 seed.rs 的菜单种子发出来（片段见 docs/scaffold.md）；
+//! 权限码 \`$PERM:list|add|edit|remove\` 由 seed/menus.rs 的菜单种子发出来（片段见 docs/scaffold.md）；
 //! 没粘种子之前只有超管能调（超管短路），普通角色一律 403。
 // 还没挂进 main.rs（接线清单③）之前没人引用这几个 handler，会刷 dead_code；挂完删掉这行。
 #![allow(dead_code)]

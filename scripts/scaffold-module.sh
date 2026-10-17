@@ -19,22 +19,24 @@
 #    （两个 mod.rs 还原、本次写下的文件删掉）：自检不过、写盘 I/O 错（磁盘满 / 权限 / 目标是
 #    坏链接）、Ctrl-C 全走同一条路（EXIT 兜底），工作树回到跑脚本之前。
 # 2. **不覆盖任何已有文件**：任一目标已存在就整体退出（一次误跑会清掉线上模块）。
-# 3. 只追加 `api/mod.rs` 与 `models/mod.rs` 各一行 `pub mod`（不加，生成物不参与编译，
-#    自检就是假绿）；路由/菜单种子/前端路由/i18n 只**打印可粘贴片段** —— 结构化编辑
-#    脚本改错比不改更糟，位置只有人知道。
+# 3. 只追加 `api/v1/mod.rs` 一行 `pub mod`、`models/mod.rs` 的 `pub mod` + `pub use`
+#    （不加，生成物不参与编译，自检就是假绿）；接口模块落 `admin/src/api/v1/<模块>/mod.rs`
+#    （与 v1 的「目录 + mod.rs」约定一致）。路由/菜单种子/前端路由/i18n 只**打印可粘贴片段**
+#    —— 结构化编辑脚本改错比不改更糟，位置只有人知道。
 #
 # 想先看骨架长什么样：`--out /tmp/sk` 重造既有模块做对照（如用字典管理的字段清单重造 dict）。
 set -euo pipefail
 
 die() { echo "scaffold: $*" >&2; exit 1; }
 
-# 模板与接线清单在 scripts/scaffold-templates.sh / scaffold-wiring.sh（同 shell source 进来，
-# heredoc 的展开语义一样；拆开只为守住「文件 <500 行」的家规）。$ 展开与反引号转义在那边照旧。
+# 模板 / 接线清单 / 字段展开在 scripts/scaffold-templates.sh / scaffold-wiring.sh /
+# scaffold-fields.sh（同 shell source 进来，heredoc 与变量语义一样；拆开只为守住
+# 「文件 <500 行」的家规）。$ 展开与反引号转义在那边照旧。
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" 2>/dev/null && pwd -P) || die "定位不到脚本所在目录"
-[ -f "$SCRIPT_DIR/scaffold-templates.sh" ] || die "缺脚本模板：$SCRIPT_DIR/scaffold-templates.sh"
-. "$SCRIPT_DIR/scaffold-templates.sh"
-[ -f "$SCRIPT_DIR/scaffold-wiring.sh" ] || die "缺接线清单：$SCRIPT_DIR/scaffold-wiring.sh"
-. "$SCRIPT_DIR/scaffold-wiring.sh"
+for lib in scaffold-templates.sh scaffold-wiring.sh scaffold-fields.sh; do
+    [ -f "$SCRIPT_DIR/$lib" ] || die "缺脚本依赖：$SCRIPT_DIR/$lib"
+    . "$SCRIPT_DIR/$lib"
+done
 
 usage() {
     # 打印头部说明到「三条硬规则」为止：按标题动态取，别写死行号（改注释就得多改一处）
@@ -120,297 +122,19 @@ ts_type() {
     esac
 }
 
-
-MODEL_FIELDS=""
-BODY_FIELDS=""
-QUERY_FIELDS=""
-QUERY_FILTERS=""
-CREATE_ASSIGN=""
-UPDATE_ASSIGN=""
-TS_ROW=""
-TS_FORM=""
-TS_QUERY=""
-FORM_ITEMS=""
-COLUMNS=""
-CHECKS=""
-CHECK_CALLS=""
-CHECK_TESTS=""
-ADOC_PARAMS=""
-ADOC_QUERIES=""
-I18N_ZH=""
-I18N_EN=""
-DEFAULTS=""
-NAME_FIELD=""
-NAME_MAX=128
-# 见过的字段名，带竖线包裹（"|a|b|"）：查重比数组省事，也不吃 set -u 的亏
-SEEN_FIELDS="|"
-# 页面按需 import：字段里没有数字/布尔/datetime 时引 InputNumber/Select/DatePicker 会是没用到的导入
-HAS_NUM=0
-HAS_BOOL=0
-HAS_DT=0
-
-for spec in "${FIELDS[@]}"; do
-    IFS=':' read -r fname ftype flen <<<"$spec"
-    ftype=${ftype:-string}
-    [[ $fname =~ ^[a-z][a-z0-9_]*$ ]] || die "字段名只能是小写字母/数字/下划线且字母开头：$spec"
-    # 保留名：id/created_at/updated_at 模型固定生成，page/size 是分页参数（Rust Query 结构体与
-    # TS 查询接口里都已有同名成员）—— 让它们进来就是重复列 / 重复字段，生成物必然编译不过
-    case "$fname" in
-        id | created_at | updated_at | page | size)
-            die "字段名是保留名：$fname（id/created_at/updated_at 由模型固定生成，page/size 是分页参数）" ;;
-    esac
-    case "$SEEN_FIELDS" in
-        *"|$fname|"*) die "字段名重复：$fname（同一个字段写两遍 = 重复列）" ;;
-    esac
-    SEEN_FIELDS="$SEEN_FIELDS$fname|"
-    case "$ftype" in
-        string | text | int | i64 | bool | datetime) ;;
-        *) die "字段类型只认 string/text/int/i64/bool/datetime：$spec" ;;
-    esac
-    flen=${flen:-128}
-    [[ $flen =~ ^[0-9]+$ ]] || die "字段长度要是数字：$spec"
-    [ "$flen" -ge 1 ] && [ "$flen" -le 20000 ] || die "字段长度要在 1..20000：$spec"
-    zh=$(known_zh "$fname")
-    label=$([ -n "$zh" ] && echo "t('field.$fname')" || echo "'$fname'")
-    # 中文说法：命中现有词表就用它，没命中退回字段名（400 文案 / apidoc 描述都用它）
-    FIELD_ZH=${zh:-$fname}
-    # 第一个 string 字段当选名称字段：列表模糊查、必填校验、超长校验都挂它
-    if [ -z "$NAME_FIELD" ] && [ "$ftype" = string ]; then
-        NAME_FIELD=$fname
-        NAME_MAX=$flen
-    fi
-
-    # 每个类型只在这里声明差异，下面的追加统一做（曾经按类型抄了四遍，改一处要改四处）
-    API_TY=""         # 接口面的类型（请求体 / 查询参数）——只有 datetime 与模型面不同
-    ADOC_SUFFIX=""    # apidoc 描述尾巴（datetime 要带上格式）
-    case "$ftype" in
-        string | text)
-            RUST_TY=String
-            TS_TY=string
-            ADOC_TY=string
-            FILTER=contains
-            TS_QUERY_TY=string
-            if [ "$ftype" = string ]; then
-                MODEL_DECL="    #[bee(sql_type = \"VARCHAR($flen)\")]
-    pub $fname: String,"
-                # `|| true` 不能省：set -e 下赋值里的 `$(失败的 test && …)` 会让整个赋值返回 1，
-                # 脚本静默退出（rc=1、零输出零落盘）—— 第二个及以后的 string 字段必然踩到
-                FORM_ITEM="<Input$([ "$fname" = "$NAME_FIELD" ] && echo " maxLength={$flen}" || true) />"
-            else
-                MODEL_DECL="    #[bee(sql_type = \"TEXT\")]
-    pub $fname: String,"
-                FORM_ITEM="<Input.TextArea rows={4} />"
-            fi
-            DEFAULT_V="format!(\"{unique}-$fname\")"
-            # 文本列一律在入口卡长度：不卡就是 MySQL 1406 → 500（与公告的 check_title/check_content 同款）
-            if [ "$ftype" = string ]; then
-                len_max=$flen
-                len_doc="/// $([ -n "$zh" ] && echo "$zh" || echo "$fname")的列长（与模型里的 VARCHAR 对齐）"
-            else
-                len_max=20000
-                len_doc="/// TEXT 列是 64KB 字节，按中文 3 字节算 20000 字仍在列内（与公告正文一个口径）"
-            fi
-            if [ "$fname" = "$NAME_FIELD" ]; then
-                NAME_MAX=$len_max
-            else
-                CHECK_CALLS+="    check_${fname}(&body.$fname)?;
-"
-                CHECK_TESTS+="
-    #[test]
-    fn check_${fname}_rejects_too_long() {
-        assert!(check_${fname}(\"\").is_ok(), \"空值允许（空串是合法的内容）\");
-        assert!(check_${fname}(&\"x\".repeat(${fname^^}_MAX)).is_ok());
-        assert!(check_${fname}(&\"x\".repeat(${fname^^}_MAX + 1)).is_err());
-    }
-"
-            fi
-            CHECKS+="
-$len_doc
-const ${fname^^}_MAX: usize = $len_max;
-"
-            if [ "$fname" != "$NAME_FIELD" ]; then
-                CHECKS+="
-fn check_${fname}(value: &str) -> Result<(), ApiError> {
-    check_len(\"$fname\", value, ${fname^^}_MAX)
-}
-"
-            fi
-            ;;
-        int | i64)
-            HAS_NUM=1
-            RUST_TY=$([ "$ftype" = int ] && echo i32 || echo i64)
-            MODEL_DECL="    pub $fname: $RUST_TY,"
-            TS_TY=number
-            TS_QUERY_TY=number
-            ADOC_TY=int
-            FILTER=eq
-            DEFAULT_V=1
-            FORM_ITEM='<InputNumber style={{ width: '\''100%'\'' }} />'
-            ;;
-        bool)
-            HAS_BOOL=1
-            RUST_TY=i8
-            MODEL_DECL="    /// 1 是 / 0 否
-    pub $fname: i8,"
-            TS_TY=number
-            TS_QUERY_TY=number
-            ADOC_TY=int
-            FILTER=eq
-            DEFAULT_V=1
-            FORM_ITEM='<Select options={yesNo} />'
-            ;;
-        datetime)
-            HAS_DT=1
-            DT_FIELDS+=("$fname")
-            # 模型面是 NaiveDateTime，接口面是字符串：chrono 的原生 serde 只认 "T" 分隔，
-            # 本仓契约是空格分隔的 "YYYY-MM-DD HH:MM:SS"（见 docs/scaffold.md）
-            API_TY=String
-            RUST_TY=NaiveDateTime
-            TS_TY=string
-            TS_QUERY_TY=string
-            ADOC_TY=string
-            ADOC_SUFFIX="（YYYY-MM-DD HH:MM:SS）"
-            FILTER=dt
-            DEFAULT_V='"2026-01-02 03:04:05"'
-            FORM_ITEM='<DatePicker showTime style={{ width: '\''100%'\'' }} />'
-            MODEL_DECL="    /// $FIELD_ZH（DATETIME，秒精度；接口收发都是 \"YYYY-MM-DD HH:MM:SS\" 字符串）
-    #[serde(serialize_with = \"crate::util::ser_dt\")]
-    pub $fname: NaiveDateTime,"
-            CHECKS+="
-/// $FIELD_ZH的解析：契约是 \"YYYY-MM-DD HH:MM:SS\"（空格分隔、秒精度 —— 与本仓其它时间字段
-/// 一个口径）。收字符串再显式解析，是因为 chrono 的 Deserialize 只认 \`T\` 分隔：直接拿
-/// NaiveDateTime 当请求体字段，前端按契约传空格分隔反而被判 400。
-/// 解析失败回 400（动态文案、无稳定错误码，前端回落 msg）。
-fn parse_$fname(value: &str) -> Result<NaiveDateTime, ApiError> {
-    NaiveDateTime::parse_from_str(value.trim(), \"%Y-%m-%d %H:%M:%S\")
-        .map_err(|_| ApiError::BadRequest(format!(\"{}格式需为 YYYY-MM-DD HH:MM:SS\", \"$FIELD_ZH\")))
-}
-"
-            # 校验放在发号之前（与名称字段的 check 同一位置）：格式错不消耗 id
-            CHECK_CALLS+="    parse_$fname(&body.$fname)?;
-"
-            CHECK_TESTS+="
-    #[test]
-    fn parse_${fname}_accepts_contract_format_only() {
-        assert!(parse_$fname(\"2026-01-02 03:04:05\").is_ok());
-        assert!(parse_$fname(\"  2026-01-02 03:04:05  \").is_ok(), \"两侧空白 trim 后放行\");
-        for bad in [\"2026-01-02T03:04:05\", \"2026-01-02\", \"2026-01-02 03:04\", \"\", \"2026-02-30 00:00:00\"] {
-            assert!(parse_$fname(bad).is_err(), \"格式不对要拒：{bad}\");
-        }
-    }
-"
-            ;;
-    esac
-    # 没单列声明接口面类型的（除 datetime 外都如此）：两边同型
-    API_TY=${API_TY:-$RUST_TY}
-
-    MODEL_FIELDS+="$MODEL_DECL
-"
-    BODY_FIELDS+="    pub $fname: $API_TY,
-"
-    QUERY_FIELDS+="    pub $fname: Option<$API_TY>,
-"
-    TS_ROW+="  $fname: $TS_TY;
-"
-    TS_FORM+="  $fname: $TS_TY;
-"
-    TS_QUERY+=" $fname?: $TS_QUERY_TY;"
-    ADOC_DESC=$FIELD_ZH
-    ADOC_PARAMS+="#[apidoc::param(name = \"$fname\", ty = \"$ADOC_TY\", required, desc = \"$ADOC_DESC$ADOC_SUFFIX\")]
-"
-    # 名称字段的测试值直接用唯一串：列表要按它查得到
-    if [ "$fname" = "$NAME_FIELD" ]; then
-        DEFAULTS+=" \"$fname\": unique,"
-    else
-        DEFAULTS+=" \"$fname\": $DEFAULT_V,"
-    fi
-    if [ "$FILTER" = contains ]; then
-        QUERY_FILTERS+="    if let Some(v) = q.$fname.as_deref().filter(|s| !s.trim().is_empty()) {
-        qs = qs.filter_contains(\"$fname\", v.trim()).map_err(ApiError::from)?;
-    }
-"
-        ADOC_QUERIES+="#[apidoc::query(name = \"$fname\", ty = \"string\", desc = \"$ADOC_DESC（模糊匹配）\")]
-"
-    elif [ "$FILTER" = dt ]; then
-        # 查询参数同样是字符串：解析成 NaiveDateTime 再当绑定参数（筛选值是用户输入，不进 SQL 串）
-        QUERY_FILTERS+="    if let Some(v) = q.$fname.as_deref().filter(|s| !s.trim().is_empty()) {
-        qs = qs.filter_eq(\"$fname\", parse_$fname(v)?).map_err(ApiError::from)?;
-    }
-"
-        ADOC_QUERIES+="#[apidoc::query(name = \"$fname\", ty = \"string\", desc = \"$ADOC_DESC（精确匹配，格式 YYYY-MM-DD HH:MM:SS）\")]
-"
-    else
-        QUERY_FILTERS+="    if let Some(v) = q.$fname {
-        qs = qs.filter_eq(\"$fname\", v).map_err(ApiError::from)?;
-    }
-"
-        ADOC_QUERIES+="#[apidoc::query(name = \"$fname\", ty = \"int\", desc = \"$ADOC_DESC\")]
-"
-    fi
-    # 名称字段（必填 + trim）、bool（1/0 显成启用/禁用）才要特殊处理
-    if [ "$fname" = "$NAME_FIELD" ]; then
-        CREATE_ASSIGN+="        $fname: body.$fname.trim().to_string(),
-"
-        UPDATE_ASSIGN+="    row.$fname = body.$fname.trim().to_string();
-"
-        FORM_ITEMS+="          <Form.Item
-            name=\"$fname\"
-            label={$label}
-            rules={[{ required: true, whitespace: true, message: t('validate.required', { field: $label }) }]}
-          >
-            $FORM_ITEM
-          </Form.Item>
-"
-    else
-        # 接口面与模型面不同型（datetime）：赋值处顺手转一次，create/update 都不会把原串塞进库
-        ASSIGN_EXPR="body.$fname"
-        [ "$API_TY" = "$RUST_TY" ] || ASSIGN_EXPR="parse_$fname(&body.$fname)?"
-        CREATE_ASSIGN+="        $fname: $ASSIGN_EXPR,
-"
-        UPDATE_ASSIGN+="    row.$fname = $ASSIGN_EXPR;
-"
-        rules=""
-        [ "$RUST_TY" != String ] && rules="
-            rules={[{ required: true, message: t('validate.required', { field: $label }) }]}"
-        FORM_ITEMS+="          <Form.Item name=\"$fname\" label={$label}$rules>
-            $FORM_ITEM
-          </Form.Item>
-"
-    fi
-    case "$ftype" in
-        bool)
-            COLUMNS+="    {
-      title: $label, dataIndex: '$fname', width: 90,
-      render: (v: number) => (v === 1 ? t('common.enabled') : t('common.disabled')),
-    },
-" ;;
-        # 时间串是 YYYY-MM-DD HH:MM:SS（19 字符），给足宽度别折行（与 created_at 列同宽）
-        datetime) COLUMNS+="    { title: $label, dataIndex: '$fname', width: 170 },
-" ;;
-        *) COLUMNS+="    { title: $label, dataIndex: '$fname' },
-" ;;
-    esac
-    # 字段名不在现有词表里时，附一份 i18n 占位（粘不粘都行，见 docs/scaffold.md）
-    if [ -z "$zh" ]; then
-        I18N_ZH+="  '$MODULE.$fname': '$fname',
-"
-        I18N_EN+="  '$MODULE.$fname': '$fname',
-"
-    fi
-done
-
-[ -n "$NAME_FIELD" ] || die "字段清单里至少要有一个 string 字段（当名称字段用），例如 name:string:64"
-# 名称字段的中文说法（命中现有词表就用它，没命中就退回字段名）
-NAME_ZH=$(known_zh "$NAME_FIELD")
-NAME_ZH=${NAME_ZH:-$NAME_FIELD}
+# 字段清单 → 各模板要用的变量（MODEL_FIELDS / CHECKS / COLUMNS / ...）。
+# 展开逻辑在 scripts/scaffold-fields.sh（拆开只为守「文件 <500 行」家规）。
+build_fields
 
 # ── 落点 ────────────────────────────────────────────────────
-API_RS="admin/src/api/$MODULE.rs"
+# 接口模块落 v1：目录 + mod.rs（与 api/v1/mod.rs 头部约定一致，后续拆分不用搬家）
+API_DIR="admin/src/api/v1/$MODULE"
+API_RS="$API_DIR/mod.rs"
 MODEL_RS="admin/src/models/$MODULE.rs"
 TEST_RS="admin/tests/api_${MODULE}_test.rs"
 WEB_TS="admin/web/src/api/$MODULE.ts"
 WEB_TSX="admin/web/src/pages/system/$MODULE/index.tsx"
-API_MOD="admin/src/api/mod.rs"
+API_MOD="admin/src/api/v1/mod.rs"
 MODELS_MOD="admin/src/models/mod.rs"
 
 if [ -n "$OUT" ]; then
@@ -424,6 +148,7 @@ else
     for f in "$API_RS" "$MODEL_RS" "$TEST_RS" "$WEB_TS" "$WEB_TSX"; do
         [ -e "$ROOT/$f" ] && die "已存在，拒绝覆盖：$f（换个模块名，或先自己删掉它）"
     done
+    [ -e "$ROOT/$API_DIR" ] && die "已存在，拒绝覆盖：$API_DIR/（换个模块名，或先自己删掉它）"
     grep -q "^pub mod ${MODULE};" "$ROOT/$API_MOD" && die "$API_MOD 里已有 pub mod $MODULE;"
     grep -q "^pub mod ${MODULE};" "$ROOT/$MODELS_MOD" && die "$MODELS_MOD 里已有 pub mod $MODULE;"
 fi
@@ -533,7 +258,7 @@ write_one() { # $1 = 仓库相对路径，stdin = 内容
     echo "  生成 $1" >&2
 }
 
-# 回滚：还原两个 mod.rs、删掉本次写下的文件与新建的页面目录，最后清掉备份目录。
+# 回滚：还原两个 mod.rs、删掉本次写下的文件与新建的接口/页面目录，最后清掉备份目录。
 # 按 WROTE 名单删，不硬编码那 5 条路径 —— 中途失败时可能只写了前几个，`--out` 模式的
 # 落点还在仓库外。幂等（ROLLED 闸）：显式调用的失败分支与下面的 EXIT 兜底可能各来一次。
 rollback() {
@@ -546,6 +271,7 @@ rollback() {
     local f
     for f in ${WROTE[@]+"${WROTE[@]}"}; do rm -f -- "$f"; done
     rm -f -- "$ROOT/$API_MOD.tmp" "$ROOT/$MODELS_MOD.tmp"
+    [ -n "$OUT" ] || rmdir "$ROOT/$API_DIR" 2>/dev/null || true
     [ -n "$OUT" ] || rmdir "$ROOT/admin/web/src/pages/system/$MODULE" 2>/dev/null || true
     [ -z "$BAKDIR" ] || rm -rf -- "$BAKDIR"
     local what="本次写下的文件已删"
@@ -575,22 +301,22 @@ write_one "$TEST_RS" <<<"$TEST_SRC"
 write_one "$WEB_TS" <<<"$WEB_API_SRC"
 write_one "$WEB_TSX" <<<"$WEB_TSX_SRC"
 
-# mod.rs 各追加一行：不加，上面两个 .rs 根本不参与编译，自检就是假绿。
-# 插在最后一条同类语句之后（保持「声明聚成一块」的形状，不打断现有排序）。
+# mod.rs 追加声明：不加，上面的 .rs 根本不参与编译，自检就是假绿。
+# - api/v1/mod.rs 只插 `pub mod`，位置在最后一条 `pub mod` 之后（声明聚成一块）；
+#   不碰 `pub use v1::*;`——那是 api/mod.rs 的稳定兼容路径，不是模块声明块。
+# - models/mod.rs 插 `pub mod` 与 `pub use`（两个块各自最后一条之后，保持原排序）。
 if [ -z "$OUT" ]; then
     # 自检失败要能整体回退：先给两个 mod.rs 留底（放临时目录，别在仓库里留垃圾）
     BAKDIR=$(mktemp -d) || die "建不了临时目录"
     cp "$ROOT/$API_MOD" "$BAKDIR/api_mod.rs"
     cp "$ROOT/$MODELS_MOD" "$BAKDIR/models_mod.rs"
-    awk -v line="pub mod $MODULE;" -v use_line="pub use $MODULE::$CAMEL;" '
+    awk -v line="pub mod $MODULE;" '
         { buf[NR] = $0 }
         /^pub mod / { last_mod = NR }
-        /^pub use / { last_use = NR }
         END {
             for (i = 1; i <= NR; i++) {
                 print buf[i];
                 if (i == last_mod) print line;
-                if (i == last_use) print use_line;
             }
         }' "$ROOT/$API_MOD" >"$ROOT/$API_MOD.tmp"
     mv "$ROOT/$API_MOD.tmp" "$ROOT/$API_MOD"
