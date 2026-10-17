@@ -509,16 +509,14 @@ mod tests {
     /// 「已在跑」闸：同一 code 只放一个进去（连点触发不能叠出第二份任务）。
     #[test]
     fn busy_gate_holds_only_one_run_per_code() {
-        assert!(!is_running("log_retention"));
         let held = Busy::acquire("log_retention").expect("第一次能占上");
-        assert!(is_running("log_retention"));
         assert!(Busy::acquire("log_retention").is_none(), "同一 code 第二次占不上");
         let other = Busy::acquire("export_run").expect("别的 code 不受影响");
         drop(held);
-        assert!(!is_running("log_retention"), "释放后能再占");
-        assert!(is_running("export_run"), "释放一个不影响另一个");
+        assert!(Busy::acquire("log_retention").is_some(), "释放后能再占");
+        assert!(Busy::acquire("export_run").is_none(), "释放一个不影响另一个");
         drop(other);
-        assert!(!is_running("export_run"));
+        assert!(Busy::acquire("export_run").is_some(), "另一个也释放后能再占");
     }
 
     /// S2 保护期：新文件（含读不到 mtime 的）不碰，过了保护期的才收 —— 这条测试钉的是
