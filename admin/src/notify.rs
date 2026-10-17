@@ -172,27 +172,29 @@ pub async fn save(state: &AppState, cfg: &NotifyConfig) -> Result<(), ApiError> 
     Ok(())
 }
 
-/// 从 URL 里取主机字面量：去掉 userinfo、端口、路径与查询；IPv6 取方括号里的内容。
-/// 只给 [`reject_unsafe_webhook_host`] 用，不追求完整 URL 解析。
-fn url_host(url: &str) -> Option<&str> {
-    let authority = url.split_once("://")?.1.split(['/', '?', '#']).next()?;
-    let host_port = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
-    if let Some(inner) = host_port.strip_prefix('[') {
-        return inner.split_once(']').map(|(h, _)| h);
-    }
-    Some(host_port.split(':').next().unwrap_or(host_port))
-}
-
 /// Webhook 出站的**最小** SSRF 防线：IP 字面量不许是链路本地（169.254/16、fe80::/10）
 /// 或未指定（0.0.0.0、::）—— 典型目标是云厂商元数据服务（169.254.169.254）。
 /// 回环放行：本机联调与既有验收依赖 127.0.0.1。
 ///
+/// 必须用 reqwest 自己的解析器（`Url::parse`）取 host：反斜杠按 `/`、十进制/十六进制/
+/// 八进制 IPv4、尾点、内嵌 tab 的归一化都与真正发请求时一致，手写切分会被解析差异绕过。
+///
 /// shortcut: 不做 DNS 解析 —— 域名解析到 link-local 仍可绕过这一层；真正的出站白名单
 /// 应由部署侧网络策略承担，这里只挡「最省事的误配/探测」。
 fn reject_unsafe_webhook_host(url: &str) -> Result<(), ApiError> {
-    let Some(host) = url_host(url) else { return Ok(()) };
-    // IPv6 zone id（%eth0 / URL 里写作 %25eth0）不参与地址判定
-    let host = host.split('%').next().unwrap_or(host);
+    // 解析不了的地址一定发不出去（reqwest 用的是同一个解析器），且 zone id 这类
+    // 写法会在这里失败；直接拦，别留「校验放行、发送才炸」的口子。
+    let Ok(parsed) = reqwest::Url::parse(url) else {
+        return Err(ApiError::BadRequest(
+            "Webhook 地址无法解析（IPv6 不支持 zone id，如 %eth0）".into(),
+        ));
+    };
+    let Some(host) = parsed.host_str() else { return Ok(()) };
+    // IPv6 的 host_str 带方括号（[fe80::1]），去掉后按 IP 字面量判
+    let host = host
+        .strip_prefix('[')
+        .and_then(|h| h.strip_suffix(']'))
+        .unwrap_or(host);
     let Ok(ip) = host.parse::<std::net::IpAddr>() else {
         return Ok(()); // 不是 IP 字面量（域名）：本层不处理
     };
@@ -555,10 +557,16 @@ mod tests {
         for bad in [
             "http://169.254.169.254/latest/meta-data",
             "http://[fe80::1]/hook",
-            "http://[fe80::1%25eth0]/hook",
             "http://0.0.0.0/hook",
             "http://[::]/hook",
             "http://[::ffff:169.254.169.254]/hook",
+            // 解析差异绕过：reqwest（WHATWG）会把下面这些归一成 169.254.169.254
+            r"http://169.254.169.254\@example.com/hook",
+            "http://2852039166/",
+            "http://0xa9fea9fe/",
+            "http://0251.0376.0251.0376/",
+            "http://169.254.169.254./",
+            "http://169.254.\t169.254/",
         ] {
             let mut c = cfg();
             c.webhook_enabled = true;
@@ -570,6 +578,14 @@ mod tests {
                 ),
                 other => panic!("{bad} 应 400，实际 {other:?}"),
             }
+        }
+        // IPv6 zone id 被 reqwest 的解析器直接拒（发不出去），提示与链路本地不同
+        let mut c = cfg();
+        c.webhook_enabled = true;
+        c.webhook_url = "http://[fe80::1%25eth0]/hook".into();
+        match validate(&c) {
+            Err(ApiError::BadRequest(msg)) => assert!(msg.contains("无法解析"), "{msg}"),
+            other => panic!("zone id 应 400，实际 {other:?}"),
         }
         for ok in [
             "http://127.0.0.1:9/hook",
