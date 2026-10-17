@@ -18,6 +18,8 @@ pub struct AuditListQuery {
     pub size: Option<u32>,
     pub username: Option<String>,
     pub module: Option<String>,
+    /// 动作名，精确匹配（trim 后；空串/纯空白不过滤）
+    pub action: Option<String>,
     pub status: Option<i8>,
     /// "YYYY-MM-DD HH:MM:SS"
     pub start: Option<String>,
@@ -35,6 +37,9 @@ fn filtered(
     }
     if let Some(m) = q.module.as_deref().filter(|s| !s.trim().is_empty()) {
         qs = qs.filter_eq("module", m.trim()).map_err(ApiError::from)?;
+    }
+    if let Some(a) = q.action.as_deref().filter(|s| !s.trim().is_empty()) {
+        qs = qs.filter_eq("action", a.trim()).map_err(ApiError::from)?;
     }
     if let Some(s) = q.status {
         qs = qs.filter_eq("status", s).map_err(ApiError::from)?;
@@ -92,6 +97,7 @@ pub async fn list(
 #[apidoc::query(name = "username", ty = "string", desc = "操作人用户名模糊匹配")]
 #[apidoc::query(name = "module", ty = "string", desc = "模块名")]
 #[apidoc::query(name = "action", ty = "string", desc = "动作名")]
+#[apidoc::query(name = "status", ty = "int", desc = "结果：1 成功（2xx）/ 0 失败")]
 #[apidoc::query(name = "start", ty = "string", desc = "开始时间")]
 #[apidoc::query(name = "end", ty = "string", desc = "结束时间")]
 #[apidoc::response_status("200")]
@@ -137,6 +143,7 @@ mod tests {
             size: None,
             username: None,
             module: Some("dict".into()),
+            action: None,
             status: None,
             start: Some("2026-01-02 03:04:05".into()),
             end: Some("2026-01-02 09:00:00".into()),
@@ -155,6 +162,35 @@ mod tests {
                 dt("2026-01-02 09:00:01"), // end + 1s（`<= end`）
             ],
         );
+    }
+
+    /// action 与 module 同款：trim 后精确匹配；空串/纯空白等于没传。
+    #[test]
+    fn action_filter_is_trimmed_exact_match_and_empty_ignored() {
+        let base = || AuditListQuery {
+            page: None,
+            size: None,
+            username: None,
+            module: None,
+            action: None,
+            status: None,
+            start: None,
+            end: None,
+        };
+        let scope = DataScope { all: true, ..Default::default() };
+
+        let mut q = base();
+        q.action = Some("  新增管理员 ".into());
+        let qs = filtered(&q, &scope).unwrap();
+        assert!(qs.to_sql().contains("action = ?"), "{}", qs.to_sql());
+        assert_eq!(qs.params(), &[Value::from("新增管理员")], "trim 后按等号匹配");
+
+        for empty in ["", "   "] {
+            let mut q = base();
+            q.action = Some(empty.into());
+            let qs = filtered(&q, &scope).unwrap();
+            assert!(!qs.to_sql().contains("action"), "{empty:?} 不过滤: {}", qs.to_sql());
+        }
     }
 }
 
@@ -207,6 +243,7 @@ pub(crate) async fn export_batch(
 #[apidoc::query(name = "username", ty = "string", desc = "操作人用户名模糊匹配")]
 #[apidoc::query(name = "module", ty = "string", desc = "模块名")]
 #[apidoc::query(name = "action", ty = "string", desc = "动作名")]
+#[apidoc::query(name = "status", ty = "int", desc = "结果：1 成功（2xx）/ 0 失败")]
 #[apidoc::query(name = "start", ty = "string", desc = "开始时间")]
 #[apidoc::query(name = "end", ty = "string", desc = "结束时间")]
 #[apidoc::response_status("200")]
