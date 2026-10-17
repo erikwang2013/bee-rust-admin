@@ -172,6 +172,50 @@ pub async fn save(state: &AppState, cfg: &NotifyConfig) -> Result<(), ApiError> 
     Ok(())
 }
 
+/// 从 URL 里取主机字面量：去掉 userinfo、端口、路径与查询；IPv6 取方括号里的内容。
+/// 只给 [`reject_unsafe_webhook_host`] 用，不追求完整 URL 解析。
+fn url_host(url: &str) -> Option<&str> {
+    let authority = url.split_once("://")?.1.split(['/', '?', '#']).next()?;
+    let host_port = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+    if let Some(inner) = host_port.strip_prefix('[') {
+        return inner.split_once(']').map(|(h, _)| h);
+    }
+    Some(host_port.split(':').next().unwrap_or(host_port))
+}
+
+/// Webhook 出站的**最小** SSRF 防线：IP 字面量不许是链路本地（169.254/16、fe80::/10）
+/// 或未指定（0.0.0.0、::）—— 典型目标是云厂商元数据服务（169.254.169.254）。
+/// 回环放行：本机联调与既有验收依赖 127.0.0.1。
+///
+/// shortcut: 不做 DNS 解析 —— 域名解析到 link-local 仍可绕过这一层；真正的出站白名单
+/// 应由部署侧网络策略承担，这里只挡「最省事的误配/探测」。
+fn reject_unsafe_webhook_host(url: &str) -> Result<(), ApiError> {
+    let Some(host) = url_host(url) else { return Ok(()) };
+    // IPv6 zone id（%eth0 / URL 里写作 %25eth0）不参与地址判定
+    let host = host.split('%').next().unwrap_or(host);
+    let Ok(ip) = host.parse::<std::net::IpAddr>() else {
+        return Ok(()); // 不是 IP 字面量（域名）：本层不处理
+    };
+    use std::net::IpAddr;
+    let bad = match ip {
+        IpAddr::V4(v4) => v4.is_link_local() || v4.is_unspecified(),
+        IpAddr::V6(v6) => {
+            let link_local = (v6.segments()[0] & 0xffc0) == 0xfe80;
+            // ::ffff:169.254.169.254 这类映射地址按内层 v4 判
+            let mapped_bad = v6
+                .to_ipv4_mapped()
+                .is_some_and(|v4| v4.is_link_local() || v4.is_unspecified());
+            link_local || v6.is_unspecified() || mapped_bad
+        }
+    };
+    if bad {
+        return Err(ApiError::BadRequest(
+            "Webhook 地址不能指向链路本地或未指定地址（169.254.0.0/16、fe80::/10、0.0.0.0、::）".into(),
+        ));
+    }
+    Ok(())
+}
+
 /// 存之前的校验：只拦「一定发不出去」的配置，别拦「配了但对方不认」的（那要看失败原因）。
 pub fn validate(cfg: &NotifyConfig) -> Result<(), ApiError> {
     // 长度与开关无关：关着也拦。这些值整条进审计摘要（`changes`），存个超长值会让
@@ -189,6 +233,11 @@ pub fn validate(cfg: &NotifyConfig) -> Result<(), ApiError> {
         if v.chars().count() > 255 {
             return Err(ApiError::BadRequest(format!("{label}过长（≤ 255 字符）")));
         }
+    }
+    // SSRF 最小防线与开关无关：值先存下来，之后任何一次开启都会真发出去 —— 拦在入口
+    // 比拦在出站便宜。只对 http(s) 判（别的 scheme 在启用时另有拒绝）。
+    if cfg.webhook_url.starts_with("http://") || cfg.webhook_url.starts_with("https://") {
+        reject_unsafe_webhook_host(&cfg.webhook_url)?;
     }
     if cfg.webhook_enabled {
         if cfg.webhook_url.is_empty() {
@@ -496,6 +545,44 @@ mod tests {
         assert!(validate(&c).is_ok());
         c.smtp_encryption = "tls".into();
         assert!(validate(&c).is_err(), "加密方式只认三种");
+    }
+
+    /// A4：Webhook 的 **IP 字面量**不许指向链路本地（169.254/16、fe80::/10）或未指定
+    /// （0.0.0.0、::）—— 典型目标是云厂商元数据服务。回环 127.0.0.1 保持放行
+    /// （本机联调与既有验收依赖它）；域名解析到 link-local 不在本层拦（见函数注释）。
+    #[test]
+    fn webhook_rejects_link_local_and_unspecified_literals() {
+        for bad in [
+            "http://169.254.169.254/latest/meta-data",
+            "http://[fe80::1]/hook",
+            "http://[fe80::1%25eth0]/hook",
+            "http://0.0.0.0/hook",
+            "http://[::]/hook",
+            "http://[::ffff:169.254.169.254]/hook",
+        ] {
+            let mut c = cfg();
+            c.webhook_enabled = true;
+            c.webhook_url = bad.into();
+            match validate(&c) {
+                Err(ApiError::BadRequest(msg)) => assert!(
+                    msg.contains("链路本地") && msg.contains("未指定"),
+                    "{bad} 的提示要说清拦的是什么: {msg}"
+                ),
+                other => panic!("{bad} 应 400，实际 {other:?}"),
+            }
+        }
+        for ok in [
+            "http://127.0.0.1:9/hook",
+            "http://192.168.1.2/hook",
+            "https://example.com/hook",
+            // 主机名不是 IP 字面量：本层不解析
+            "http://localhost:9/hook",
+        ] {
+            let mut c = cfg();
+            c.webhook_enabled = true;
+            c.webhook_url = ok.into();
+            assert!(validate(&c).is_ok(), "{ok} 应放行");
+        }
     }
 
     /// M2：投递失败的原因里不能出现收件地址（日志/面板只留账号 id）。

@@ -317,6 +317,23 @@ async fn notify_webhook_events_and_smtp_test_mail() {
     }))).await;
     assert_eq!(st, 400, "SMTP 关着也要拦超长服务器地址: {v}");
 
+    // ── 3c. Webhook IP 字面量：link-local / 未指定 → 400，回环放行 ──────
+    // 接口层的接线验证（单测覆盖其余地址形态）：元数据地址是 SSRF 的典型目标。
+    let mut meta = cfg.clone();
+    meta["webhook_url"] = json!("http://169.254.169.254/latest/meta-data");
+    let (st, v) = call(&c, Method::PUT, api("/notify/config"), Some(&token), Some(meta)).await;
+    assert_eq!(st, 400, "webhook 指向 169.254.169.254 要 400: {v}");
+    let msg = v["msg"].as_str().unwrap_or_default();
+    assert!(msg.contains("链路本地"), "提示要说清拦的是什么: {msg}");
+
+    let mut loopback = cfg.clone();
+    loopback["webhook_url"] = json!("http://127.0.0.1:9/hook");
+    let (st, v) = call(&c, Method::PUT, api("/notify/config"), Some(&token), Some(loopback)).await;
+    assert_eq!(st, 200, "回环 127.0.0.1 保持放行: {v}");
+    // 恢复成假 webhook 地址，§4 的事件照常收
+    let (st, v) = call(&c, Method::PUT, api("/notify/config"), Some(&token), Some(cfg.clone())).await;
+    assert_eq!(st, 200, "恢复假 webhook 地址: {v}");
+
     // ── 4. 公告发布 → webhook 收到事件体 ──────────────────────
     let (st, v) = publish(&c, &base, &token, "通知渠道验收公告", 1).await;
     assert_eq!(st, 200, "发公告: {v}");
