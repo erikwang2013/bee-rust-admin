@@ -79,11 +79,25 @@ fn exists(p: &str) -> bool {
     std::path::Path::new(p).exists()
 }
 
+/// 一个任务在盘上**所有**的半份（E2 修复轮起 `.part` 名字带代次：`{id}.{代次}.csv.part`，
+/// 旧的 `{id}.csv.part` 也认）。按「{id}. 前缀 + .csv.part 后缀」扫，不赌具体代次。
+fn parts_of(id: i64) -> Vec<std::path::PathBuf> {
+    let prefix = format!("{id}.");
+    let Ok(rd) = std::fs::read_dir(OUT) else { return Vec::new() };
+    rd.flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            name.starts_with(&prefix) && name.ends_with(".csv.part")
+        })
+        .collect()
+}
+
 /// 等一条**取消行**的收尾落定：半份与成品都不在盘上、`file_path` 也擦干净了。
-/// 执行者收尾是「改名 → 记 file_path → 抢终态 → 抢不到就撤成品 + 擦列」，
-/// 松开表锁之后这几步还在跑 —— 所以要**等到**（等到是确定的；等不到才是真漏了）。
+/// 执行者收尾是「改名 → 抢终态 → 抢不到就撤成品」，松开表锁之后这几步还在跑 ——
+/// 所以要**等到**（等到是确定的；等不到才是真漏了）。
 async fn wait_cancel_settled(pool: &sqlx::MySqlPool, id: i64) {
-    let (csv, part) = (format!("{OUT}/{id}.csv"), format!("{OUT}/{id}.csv.part"));
+    let csv = format!("{OUT}/{id}.csv");
     let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
     loop {
         let fp: String = sqlx::query_scalar("SELECT file_path FROM export_task WHERE id = ?")
@@ -91,27 +105,27 @@ async fn wait_cancel_settled(pool: &sqlx::MySqlPool, id: i64) {
             .fetch_one(pool)
             .await
             .unwrap();
-        if fp.is_empty() && !exists(&csv) && !exists(&part) {
+        let parts = parts_of(id);
+        if fp.is_empty() && !exists(&csv) && parts.is_empty() {
             return;
         }
         assert!(
             tokio::time::Instant::now() < deadline,
-            "取消的收尾 30 秒内没落定：file_path={fp:?} csv={} part={}",
-            exists(&csv),
-            exists(&part)
+            "取消的收尾 30 秒内没落定：file_path={fp:?} csv={} parts={parts:?}",
+            exists(&csv)
         );
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
 }
 
-/// 等文件出现（上限 10 秒）。认领（status=1、心跳已写）与「.part 已落盘」之间隔着
-/// 查发起人、建目录、open 几步 —— 直接断言两者同时成立就是赌时序。这里的现场是
+/// 等任务的半份文件出现（上限 10 秒）。认领（status=1、心跳已写）与「.part 已落盘」之间
+/// 隔着查发起人、建目录、open 几步 —— 直接断言两者同时成立就是赌时序。这里的现场是
 /// 「执行者被表锁冻在取数那一步」，文件只可能**出现**（冻住之后不会再消失），
 /// 所以等一下是确定的，不是碰运气。
-async fn wait_file(p: &str) {
+async fn wait_part(id: i64) {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
-    while !exists(p) {
-        assert!(tokio::time::Instant::now() < deadline, "10 秒内没等到 {p}");
+    while parts_of(id).is_empty() {
+        assert!(tokio::time::Instant::now() < deadline, "10 秒内没等到任务 {id} 的 .part");
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
 }
@@ -276,8 +290,7 @@ async fn export_cancel_progress_and_heartbeat() {
     assert!(hb.is_some() && hb >= started, "运行中就该有心跳（判活只看它，M1）: {hb:?} / {started:?}");
     let (_, _, prog2, _) = snapshot(&pool, id2).await;
     assert_eq!(prog2, 0, "第一批还没落盘：进度回写发生在批界");
-    let part2 = format!("{OUT}/{id2}.csv.part");
-    wait_file(&part2).await; // 跑起来的任务先落 .part（冻结现场的一部分）
+    wait_part(id2).await; // 跑起来的任务先落 .part（冻结现场的一部分）
 
     let (st, v) = call(&c, Method::POST, url(&format!("{EXP}/{}/cancel", sid(&t2))), Some(&admin), None).await;
     assert_eq!((st, v["data"]["canceled"].as_i64()), (200, Some(1)), "执行中的也能取消: {v}");
@@ -286,7 +299,7 @@ async fn export_cancel_progress_and_heartbeat() {
     // 解锁后执行者接着跑：写完第一批 → 下一轮取数**之前**先探取消（谓词 status = 1 命中 0 行）
     // → 收手。.part 是看守在 drop 里删的 —— 它消失就是「批间生效」的可见信号
     wait_cancel_settled(&pool, id2).await;
-    assert!(!exists(&part2), "取消后不留半份: {part2}");
+    assert!(parts_of(id2).is_empty(), "取消后不留半份: {:?}", parts_of(id2));
     assert!(!exists(&format!("{OUT}/{id2}.csv")), "取消的任务不许有成品");
     let (status, rows2, prog2b, msg2) = snapshot(&pool, id2).await;
     assert_eq!((status, rows2, prog2b), (4, 0, 0), "执行者收手后行仍停在 4，终态没被改写: {msg2}");
@@ -330,7 +343,16 @@ async fn export_cancel_progress_and_heartbeat() {
     let (status3b, rows3, prog3, msg3b) = wait_status(&pool, id3, &[2, 3]).await;
     assert_eq!(status3b, 2, "心跳断了要能重跑: {msg3b}");
     assert_eq!(rows3, prog3, "跑完时进度补齐到行数（终态那一写带上进度）");
-    assert!(!exists(&fake3), "重跑把 .part 用掉了（改名成 .csv）: {fake3}");
+    assert!(exists(&format!("{OUT}/{id3}.csv")), "重跑产出了完整成品");
+    // 旧代次的 .part 不会被新执行者挪用/截断（代次隔离），它成了终态行的孤儿，
+    // 留给清理收 —— 这正是 I2 修复后「旧执行者留下的垃圾」该走的路。
+    assert_eq!(parts_of(id3), vec![std::path::PathBuf::from(&fake3)],
+        "重跑用的是自己的代次，不碰旧半份: {:?}", parts_of(id3));
+    let before = common::last_log_id(&pool, "export_clean").await;
+    common::trigger(&c, &base, &clean_id, &admin).await;
+    let (jstatus, jmsg, _) = common::wait_job_log(&pool, "export_clean", before).await;
+    assert_eq!(jstatus, 1, "{jmsg}");
+    assert!(!exists(&fake3), "旧代次的孤儿 .part 最终由清理收走: {fake3}");
 
     // ── 4. 跨批运行：进度收尾 + 跨批产物与同步导出一致 ──
     // 6000 行 > BATCH(5000)：异步导出必然分两批取数（keyset 翻页），产物必须与一次性
@@ -417,8 +439,7 @@ async fn export_cancel_progress_and_heartbeat() {
     let waiting: Vec<i64> = sqlx::query_scalar("SELECT id FROM export_task WHERE status = 0")
         .fetch_all(&pool).await.unwrap();
     assert_eq!(waiting.len(), 1, "排队那一个还是待处理: {waiting:?}");
-    let queued_part = format!("{OUT}/{}.csv.part", waiting[0]);
-    assert!(!exists(&queued_part), "没认领就不该碰盘: {queued_part}");
+    assert!(parts_of(waiting[0]).is_empty(), "没认领就不该碰盘: {:?}", parts_of(waiting[0]));
 
     // 收摊：取消那两个在跑的，解锁 —— 它们各自在批间收手（半份不留）
     for id in &running {
@@ -429,8 +450,7 @@ async fn export_cancel_progress_and_heartbeat() {
     drop(lock);
     for id in &running {
         wait_cancel_settled(&pool, *id).await;
-        let part = format!("{OUT}/{id}.csv.part");
-        assert!(!exists(&part), "取消的在跑任务不留半份: {part}");
+        assert!(parts_of(*id).is_empty(), "取消的在跑任务不留半份: {:?}", parts_of(*id));
         let (status, _, _, _) = snapshot(&pool, *id).await;
         assert_eq!(status, 4, "收手后停在 4");
     }

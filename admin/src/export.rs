@@ -9,16 +9,19 @@
 //!   `export_run` 每分钟把待处理任务跑掉，`export_clean` 每天清过期（记录 + 文件）。
 //! - 数据权限在**执行时**按发起人**当前**的角色重算（`datascope::from_roles`），不是发起时
 //!   快照：权限被收窄后，还没跑完的任务不会把已经看不到的数据导出去；发起人被删 → 任务失败。
-//! - 文件落在 `{upload_dir}/exports/<任务 id>.csv`（先写 `.part` 再改名，中断不留半份）。
-//! - 任务可以**取消**（行置 4）：执行者每批回写进度时顺带探一次（谓词 `status = 1` 命中
-//!   0 行 = 被取消），批间收手、半份由 `PartFile` 清掉；同一批 5000 行内不多停。
-//!   收尾那一步也把行抢在改名前（见 `run_one` 尾部）：抢不到就把刚改名的成品撤掉 ——
-//!   取消过的行不会在盘上留下成品，也就没有「行是 4、文件还在」的孤儿（清理任务的收集
-//!   分支只是最后一道兜底）。
+//! - 文件落在 `{upload_dir}/exports/<任务 id>.csv`（先写 `{id}.{代次}.csv.part` 再改名，
+//!   中断不留半份）。代次 = 认领时写的 `started_at`：同一行被重新认领后，新旧执行者的
+//!   `.part` 互不覆盖，输家的 `PartFile` 也只会删自己那份。
+//! - 任务可以**取消**（行置 4）：执行者每批回写进度时顺带探一次（谓词 `status = 1` 且
+//!   `started_at = 本代次` 命中 0 行 = 被取消或被新执行者接管），批间收手、半份由
+//!   `PartFile` 清掉；同一批 5000 行内不多停。收尾那一写也用同一把 fencing token
+//!   （见 `finish`）：没写进去时**先读行的现状**——只有已取消（4）或行已被删才撤成品，
+//!   写库失败/被接管都把文件留给赢家（M1：不能出现「status=2 却没有文件」）。
 //! - 进度与**心跳**一起回写（`progress_rows` / `heartbeat_at`）：判「进程崩过」与收残留
 //!   `.part` 都看心跳（`last_seen`），长任务因此不会被误判成死任务重跑（M1）。
-//! - 任务是**并发派发**的（`tokio::spawn` + 信号量 `EXPORT_CONCURRENCY`），`run()` 派发完
-//!   就返回，不占住 job 循环；每个任务各自排他认领，互不干扰。
+//! - 任务是**并发派发**的（`tokio::spawn` + **进程级共享**信号量 `EXPORT_CONCURRENCY`），
+//!   `run()` 派发完就返回，不占住 job 循环；跨 tick / 多次手动触发共用同一个闸，不会
+//!   叠加出超过 2 个同时执行的任务；同一行仍由认领排他保证只有一个执行者。
 use crate::api::{audit_log, csv, login_log};
 use crate::datascope::{self, DataScope};
 use crate::error::ApiError;
@@ -27,13 +30,14 @@ use crate::state::AppState;
 use crate::util::now;
 use crate::relations::RelationsExt;
 use bee_orm::Value;
+use chrono::NaiveDateTime;
 use serde_json::Value as JsonVal;
 use std::future::Future;
 use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 type BatchFuture = Pin<Box<dyn Future<Output = Result<Vec<(i64, String)>, ApiError>> + Send>>;
 
@@ -106,9 +110,18 @@ const STALE_CLAIM_SECS: i64 = 600;
 
 /// 进程内同时跑几个导出任务。取数批接口是 `LIMIT 5000` 的顺序读，开 2 条既能把
 /// 「一个慢任务堵住别人」摊平，又不至于把库压垮（后台任务，慢一点没关系）。
-/// 上限是**每个派发器实例**的：认领排他（同一行只被一个实例认领），跨 tick 不会叠加 ——
-/// 第二个 tick 看到的执行中的行都有心跳，不在它的派发名单里。
+/// 上限是**进程级**的：`gate()` 里那一个信号量由所有 `dispatch()` 调用共享 —— 跨 tick /
+/// 多次手动触发也不会叠加（旧实现每次派发新建一个，两批各跑各的，实际能超过 2）。
+/// 同一行只被一个执行者认领由 `claim` 的排他谓词保证，与本闸是两回事。
 const EXPORT_CONCURRENCY: usize = 2;
+const _: () = assert!(EXPORT_CONCURRENCY > 0, "并发闸给 0 会死等");
+
+/// 进程级并发闸（与 job Busy 的进程内语义一致）：懒建一次，之后所有派发共用。
+/// 只在本模块里取用，没人会 `close()` 它 —— `acquire_owned` 因此不会返回错误。
+fn gate() -> Arc<tokio::sync::Semaphore> {
+    static GATE: OnceLock<Arc<tokio::sync::Semaphore>> = OnceLock::new();
+    GATE.get_or_init(|| Arc::new(tokio::sync::Semaphore::new(EXPORT_CONCURRENCY))).clone()
+}
 
 /// `export_run`：把待处理（或卡住的）任务派发出去，每个任务自己抢并发额度。
 /// **不再占住 job 循环**：派发完就返回，成败看任务行自己的状态 —— `job_log.msg` 因此
@@ -149,23 +162,22 @@ pub async fn run(state: AppState) -> Result<String, String> {
             }
         })
         .collect();
-    dispatch(EXPORT_CONCURRENCY, jobs);
+    dispatch(gate(), jobs);
     Ok(format!("导出任务 {n} 个（已派发，并发上限 {EXPORT_CONCURRENCY}）"))
 }
 
-/// 并发闸 + 派发：把任务交给后台跑（最多 `limit` 个同时在跑，其余排队等额度），
-/// **派发完就返回** —— 这是 E2-1 要的形态：一个跑几分钟的大导出不再占住 job 循环
-/// （循环里还排着备份、清理那些任务）。终态写回、失败日志都在 `run_claimed` 内部，
+/// 并发闸 + 派发：把任务交给后台跑（闸上最多 `EXPORT_CONCURRENCY` 个同时在跑，其余排队
+/// 等额度），**派发完就返回** —— 这是 E2-1 要的形态：一个跑几分钟的大导出不再占住 job
+/// 循环（循环里还排着备份、清理那些任务）。终态写回、失败日志都在 `run_claimed` 内部，
 /// 这里不需要结果；单个任务 panic 也只丢它自己（`tokio::spawn` 把 panic 挡在里面）。
 /// 额度在**每个 spawn 出去的任务内部**才申请 —— 不是在派发循环里等（那样又串行了）。
-fn dispatch<F, Fut, T>(limit: usize, jobs: Vec<F>)
+/// `sem` 由调用方给（生产就是进程级 `gate()`）：两次派发传同一个闸，就会互相排队。
+fn dispatch<F, Fut, T>(sem: Arc<tokio::sync::Semaphore>, jobs: Vec<F>)
 where
     F: FnOnce() -> Fut + Send + 'static,
     Fut: Future<Output = T> + Send + 'static,
     T: Send + 'static,
 {
-    assert!(limit > 0, "并发闸至少给 1 个额度：给 0 会死等");
-    let sem = Arc::new(tokio::sync::Semaphore::new(limit));
     for job in jobs {
         let sem = sem.clone();
         tokio::spawn(async move {
@@ -179,24 +191,24 @@ where
 /// 拿到并发额度之后：认领 → 跑 → 写终态。认领不上就静默跳过（别的执行者先拿到，
 /// 或行已经被取消/删掉）。
 async fn run_claimed(state: AppState, task: ExportTask) {
-    match claim(&state, &task).await {
-        Ok(true) => {}
-        Ok(false) => return,
+    let seen = match claim(&state, &task).await {
+        Ok(Some(seen)) => seen,
+        Ok(None) => return,
         Err(e) => {
             tracing::warn!("认领导出任务 {} 失败: {e}", task.id);
             return;
         }
-    }
-    match run_one(&state, &task).await {
-        Ok(RunEnd::Done) => {} // 终态已由 run_one 写好（改名前抢的行）
-        // 取消：行已经是 4（`api::export::cancel` 写的），这里**一个字段都不写** ——
-        // 写就是把「已取消」盖回去。进度停在取消那一刻的部分值，留着给人看
-        Ok(RunEnd::Canceled) => tracing::info!("导出任务 {} 被取消，收手", task.id),
+    };
+    match run_one(&state, &task, seen).await {
+        Ok(RunEnd::Done) => {} // 终态已由 run_one 写好（收尾那一写带本代次 token）
+        // 行已不归本执行者（取消 / 被新执行者接管 / 行被删）：这里**一个字段都不写**，
+        // 写了就是把别人的状态盖回去。进度停在收手那一刻的部分值，留着给人看。
+        Ok(RunEnd::Lost) => tracing::info!("导出任务 {} 的行已不归本执行者，收手", task.id),
         Err(e) => {
             tracing::warn!("导出任务 {} 失败: {e}", task.id);
             // 失败行也把 msg 落库：界面上要看得见原因，不然只能翻日志
             let msg: String = e.chars().take(255).collect();
-            let _ = finish(&state, task.id, 3, 0, 0, &msg).await;
+            let _ = finish(&state, task.id, seen, 3, 0, 0, "", &msg).await;
         }
     }
 }
@@ -210,7 +222,10 @@ async fn run_claimed(state: AppState, task: ExportTask) {
 ///   与 `heartbeat_at` **一起**刷成现在，第二个执行者的 `started_at < 超时线` 不再命中。
 ///   （挑行看心跳、认领仍看 `started_at`，两边不矛盾：认领一次把两个时戳同时刷新，
 ///   所以第二个执行者按哪个看，看到的值都变成「刚刚」。）
-async fn claim(state: &AppState, task: &ExportTask) -> Result<bool, String> {
+/// 认领成功时返回**本次写进 `started_at` 的时刻**：它是这一代执行者的 fencing token，
+/// 后面 `beat` / `finish` 的 UPDATE 都带 `AND started_at = ?`。行被重新认领后 token 变掉，
+/// 旧执行者从此写不进一个字段（活着的旧执行者超时复活也不会和新认领者同写）。
+async fn claim(state: &AppState, task: &ExportTask) -> Result<Option<NaiveDateTime>, String> {
     let sql = claim_sql(task.status);
     let ts = now();
     let mut args = vec![Value::from(ts), Value::from(ts), Value::from(task.id)];
@@ -222,7 +237,7 @@ async fn claim(state: &AppState, task: &ExportTask) -> Result<bool, String> {
         .execute(sql, &args)
         .await
         .map_err(|e| format!("认领导出任务 {} 失败: {e}", task.id))?;
-    Ok(n > 0)
+    Ok((n > 0).then_some(ts))
 }
 
 /// 认领用的两条语句。单独成函数是为了能被**无库单测**钉住谓词：集成测试在另一个 crate
@@ -239,37 +254,42 @@ fn claim_sql(status: i8) -> &'static str {
     }
 }
 
-/// 每批回写进度 + 心跳。一次 UPDATE 干三件事：报进度、发心跳、**探取消** ——
-/// 谓词带 `status = 1`，被取消（4）或被删的行命中 0 行，0 行就是「别再干了」的信号，
-/// 不额外多一次 SELECT。单独成函数同 `claim_sql`：谓词钉在单测里。
+/// 每批回写进度 + 心跳。一次 UPDATE 干三件事：报进度、发心跳、**探取消/探归属** ——
+/// 谓词带 `status = 1` 与 `started_at = ?`（本代次 token）：被取消（4）、被删、或被新
+/// 执行者重新认领（token 变了）的行都命中 0 行，0 行就是「别再干了」的信号，不额外
+/// 多一次 SELECT。单独成函数同 `claim_sql`：谓词钉在单测里。
 fn beat_sql() -> &'static str {
-    "UPDATE export_task SET progress_rows = ?, heartbeat_at = ? WHERE id = ? AND status = 1"
+    "UPDATE export_task SET progress_rows = ?, heartbeat_at = ? WHERE id = ? AND status = 1 AND started_at = ?"
 }
 
-/// 回写进度 / 心跳；`false` = 这行已经不归我们了（被取消或被删），批间就该收手。
-async fn beat(state: &AppState, id: i64, rows: i64) -> Result<bool, String> {
+/// 回写进度 / 心跳；`false` = 这行已经不归我们了（被取消、被删或被接管），批间就该收手。
+async fn beat(state: &AppState, id: i64, seen: NaiveDateTime, rows: i64) -> Result<bool, String> {
     let n = state
         .db
-        .execute(beat_sql(), &[Value::from(rows), Value::from(now()), Value::from(id)])
+        .execute(
+            beat_sql(),
+            &[Value::from(rows), Value::from(now()), Value::from(id), Value::from(seen)],
+        )
         .await
         .map_err(|e| format!("回写导出进度失败: {e}"))?;
     Ok(n > 0)
 }
 
-/// 一个任务的结局。取消要能**区分出来**：终态由调用方写，而取消行的终态是取消自己写的
-/// （4）—— 执行者再写一遍就把「已取消」盖回「已完成」了（见 `finish_sql` 的谓词）。
+/// 一个任务的结局。终态由执行者自己写；取消（4）是取消端点写的，执行者再写一遍就会
+/// 把「已取消」盖回「已完成」（见 `finish_sql` 的谓词），所以要能区分出来。
 enum RunEnd {
-    /// 已完成：行（状态 2、行数、文件路径/大小、进度）在 `run_one` 收尾时就写好了，
-    /// 而且是在改名前抢下来的 —— 调用方不用再补一笔
+    /// 已完成：行（状态 2、行数、文件路径/大小、进度）在 `run_one` 收尾那一写里落好，
+    /// 调用方不用再补一笔
     Done,
-    /// 被取消：行保持 4 不动，成品/半份都已经撤掉
-    Canceled,
+    /// 行已不归本执行者：取消 / 被新执行者接管 / 行被删。行一个字段都不动；
+    /// 成品按 `should_remove_artifact` 的判定处理（取消/删除才撤，被接管留给赢家）
+    Lost,
 }
 
 /// 跑一个任务：按发起人重算数据范围 → 取数写文件（.part → 改名）。
-/// 每批开始前回写进度 + 心跳（`beat`），顺带看这一行还在不在自己手上：不在 = 被取消，
-/// 立刻收手 —— 所以取消在**批间**生效（最多多跑一批 5000 行）。
-async fn run_one(state: &AppState, task: &ExportTask) -> Result<RunEnd, String> {
+/// 每批开始前回写进度 + 心跳（`beat`，带本代次 token），顺带看这一行还在不在自己手上：
+/// 不在（取消 / 被接管）立刻收手 —— 所以取消在**批间**生效（最多多跑一批 5000 行）。
+async fn run_one(state: &AppState, task: &ExportTask, seen: NaiveDateTime) -> Result<RunEnd, String> {
     let kind = spec(&task.kind).ok_or_else(|| format!("未知导出类型「{}」", task.kind))?;
     let scope = owner_scope(state, task.admin_id).await?;
     let params: JsonVal =
@@ -278,7 +298,9 @@ async fn run_one(state: &AppState, task: &ExportTask) -> Result<RunEnd, String> 
     let dir = dir(state);
     std::fs::create_dir_all(&dir).map_err(|e| format!("建导出目录 {} 失败: {e}", dir.display()))?;
     let path = dir.join(format!("{}.csv", task.id));
-    let part = dir.join(format!("{}.csv.part", task.id));
+    // 半份文件按**代次**隔离（`{id}.{started_at}.csv.part`）：同一行被重新认领后，新旧
+    // 执行者各写各的文件，不会互相截断；输家的 `PartFile` 也只会删自己那份
+    let part = part_path(&dir, task.id, seen);
     // 半份文件不留：写盘/取名任何一步失败（或 panic）都清掉 .part（口径同 backup.rs）。
     // 成功时文件已改名搬走，这里的 remove 只会拿到 NotFound —— 不用单独解除。
     let _part_guard = PartFile(part.clone());
@@ -298,9 +320,9 @@ async fn run_one(state: &AppState, task: &ExportTask) -> Result<RunEnd, String> 
     let mut rows = 0i64;
     let mut last = None;
     loop {
-        // 取数之前先报进度 + 心跳 + 看取消：取消最多等一批生效，心跳保证长任务不被误判
-        if !beat(state, task.id, rows).await? {
-            return Ok(RunEnd::Canceled);
+        // 取数之前先报进度 + 心跳 + 看归属：取消最多等一批生效，心跳保证长任务不被误判
+        if !beat(state, task.id, seen, rows).await? {
+            return Ok(RunEnd::Lost);
         }
         let batch = (kind.batch)(state.clone(), params.clone(), scope.clone(), last)
             .await
@@ -333,29 +355,53 @@ async fn run_one(state: &AppState, task: &ExportTask) -> Result<RunEnd, String> 
     //   半份交给看守清。于是「行是 4、盘上却有 .csv」这种孤儿不存在。
     std::fs::rename(&part, &path).map_err(|e| format!("导出文件改名失败: {e}"))?;
     let size = std::fs::metadata(&path).map(|m| m.len() as i64).unwrap_or(0);
-    // 路径记进任务行：清理与下载都以行为准，不信目录里扫出来的文件名
-    state
-        .db
-        .execute(
-            "UPDATE export_task SET file_path = ?, file_size = ? WHERE id = ?",
-            &[Value::from(path.to_string_lossy().as_ref()), Value::from(size), Value::from(task.id)],
-        )
-        .await
-        .map_err(|e| format!("回写导出文件失败: {e}"))?;
-    if !finish(state, task.id, 2, rows, size, &format!("导出 {rows} 行")).await {
-        // 抢不到 = 已被取消：撤下成品，并把上面那两列也擦掉 —— 取消的行不该指着一个
-        // 不存在的文件（这一笔只在输了的这条路上跑，正常收尾不受影响）
-        let _ = std::fs::remove_file(&path);
-        let _ = state
-            .db
-            .execute(
-                "UPDATE export_task SET file_path = '', file_size = 0 WHERE id = ?",
-                &[Value::from(task.id)],
-            )
-            .await;
-        return Ok(RunEnd::Canceled);
+    // 路径与终态同一次写回（带本代次 token）：清理与下载都以行为准，不信目录里扫出来的
+    // 文件名。没写进去（取消赢 / 被接管 / 写库失败）就交给 `settle_lost` 按行的现状决定
+    // 盘上这份成品撤不撤 —— 不再无脑删（那样会把赢家的文件删掉，见 M1/I2）
+    let msg = format!("导出 {rows} 行");
+    if !finish(state, task.id, seen, 2, rows, size, &path.to_string_lossy(), &msg).await {
+        settle_lost(state, task.id, &path).await;
+        return Ok(RunEnd::Lost);
     }
     Ok(RunEnd::Done)
+}
+
+/// 半份文件的代次路径：`{id}.{started_at}.csv.part`（`%Y%m%d%H%M%S%6f`，20 位数字）。
+/// 代次就是 fencing token，同一行重新认领后两位执行者各写各的，互不截断。
+fn part_path(dir: &Path, id: i64, seen: NaiveDateTime) -> PathBuf {
+    dir.join(format!("{id}.{}.csv.part", seen.format("%Y%m%d%H%M%S%6f")))
+}
+
+/// 终态那一写没命中之后，盘上成品撤不撤。**先读行的现状**（M1：写库失败 ≠ 取消赢）：
+/// - 行没了（运行中被管理员删掉）或 status=4（取消赢）：撤 —— 取消的语义是不留成品；
+/// - 其他（写库失败、行还是 1 被新执行者接管、赢家已经写了 2/3）：留着 —— 成品与赢家
+///   可能共用同一个最终路径，撤了就是「status=2 却没有文件」。
+/// 单独成函数是为了能被**无库单测**钉住（同 `claim_sql`）。
+fn should_remove_artifact(row: Option<&ExportTask>) -> bool {
+    match row {
+        None => true,
+        Some(t) => t.status == 4,
+    }
+}
+
+/// 收尾失败后的善后：查一次行的现状，按 [`should_remove_artifact`] 决定去留。
+/// 查行本身失败时**不动成品**（保守：删错了没法恢复，留着最多是下一轮清理收走）。
+async fn settle_lost(state: &AppState, id: i64, path: &Path) {
+    let row = match ExportTask::query().filter_eq("id", id) {
+        Ok(q) => q.one(&state.db).await.map_err(|e| e.to_string()),
+        Err(e) => Err(e.to_string()),
+    };
+    match row {
+        Ok(row) => {
+            if should_remove_artifact(row.as_ref()) {
+                let _ = std::fs::remove_file(path);
+                tracing::info!("导出任务 {id} 的终态没写回（已取消或行已删），撤下成品");
+            } else {
+                tracing::info!("导出任务 {id} 的终态没写回（写库失败或被接管），成品留给行当前的归属");
+            }
+        }
+        Err(e) => tracing::warn!("导出任务 {id} 终态判定查行失败，保守起见不动成品: {e}"),
+    }
 }
 
 /// 未完成的 `.part` 的看守：`run_one` 活着它就活着，Drop 时清掉残留。
@@ -367,29 +413,44 @@ impl Drop for PartFile {
     }
 }
 
-/// 写终态的语句。谓词带 `status = 1`：**取消赢** —— 用户在任务写完最后一批的同时点了取消，
-/// 行已经是 4，这一写就命中 0 行，不会把「已取消」盖成「已完成」。同 `claim_sql` 的理由，
-/// 谓词钉在单测里。进度也在这一写补齐（跑完时 = 行数；取消的行停在部分值，不走这里）。
+/// 写终态的语句。谓词除了 `status = 1`，还带 `started_at = ?`（本代次 token）：
+/// - **取消赢**：用户在任务写完最后一批的同时点了取消，行已经是 4，这一写命中 0 行，
+///   不会把「已取消」盖成「已完成」；
+/// - **归属 fencing**：行被判超时后由新执行者重新认领（started_at 换了），旧执行者
+///   复活后的这一写也命中 0 行，不会覆盖赢家的终态，也不会去动赢家的文件。
+/// 文件路径/大小与终态**同一次写**（不再单独 UPDATE），清理与下载都以行为准。
+/// 同 `claim_sql` 的理由，谓词钉在单测里。
 fn finish_sql() -> &'static str {
-    "UPDATE export_task SET status = ?, row_count = ?, file_size = ?, finished_at = ?, msg = ?, progress_rows = ? WHERE id = ? AND status = 1"
+    "UPDATE export_task SET status = ?, row_count = ?, file_size = ?, file_path = ?, finished_at = ?, msg = ?, progress_rows = ? WHERE id = ? AND status = 1 AND started_at = ?"
 }
 
-/// 写终态（成功/失败都走这里）。返回「这一写有没有命中」（谓词 `status = 1` 的行）。
-/// **不返回错误**：命中 0 行不是错误（那是「刚被取消或删掉」），写库真失败也帮不上忙了 ——
-/// 落日志等人工看。返回值只有成功路径用得上：抢不到行就不许留成品（见 `run_one` 收尾）。
-async fn finish(state: &AppState, id: i64, status: i8, rows: i64, size: i64, msg: &str) -> bool {
+/// 写终态（成功/失败都走这里）。返回「这一写有没有命中」（谓词 `status = 1` 且 token 相符）。
+/// **不返回错误**：命中 0 行不是错误（取消 / 被接管 / 行被删），写库真失败也帮不上忙了 ——
+/// 落日志等人工看。成功路径用返回值决定成品去留（见 `run_one` 尾与 `settle_lost`）。
+async fn finish(
+    state: &AppState,
+    id: i64,
+    seen: NaiveDateTime,
+    status: i8,
+    rows: i64,
+    size: i64,
+    path: &str,
+    msg: &str,
+) -> bool {
     let args = [
         Value::from(status),
         Value::from(rows),
         Value::from(size),
+        Value::from(path),
         Value::from(now()),
         Value::from(msg),
         Value::from(rows),
         Value::from(id),
+        Value::from(seen),
     ];
     match state.db.execute(finish_sql(), &args).await {
         Ok(0) => {
-            tracing::info!("导出任务 {id} 的终态没写进去：这一行刚被取消或删掉");
+            tracing::info!("导出任务 {id} 的终态没写进去：行已不归本执行者（取消/接管/删除）");
             false
         }
         Ok(_) => true,
@@ -518,9 +579,10 @@ fn collectable(row: Option<&ExportTask>, now_: chrono::NaiveDateTime, stale: chr
     }
 }
 
-/// 扫出目录里所有 `{id}.csv.part`。名字对不上的一律不看 —— 目录里还有运维手放的、
-/// 别的进程写的文件，名字约定是唯一的认领凭据。目录不存在 = 从没导出过，空手而归
-/// （不是错误：清理任务是卫生工作，不该因为「还没有导出过」整轮失败）。
+/// 扫出目录里所有导出半份：`{id}.csv.part`（旧格式/手工兜底）与
+/// `{id}.{20 位代次}.csv.part`（E2 起的执行者格式）。名字对不上的一律不看 —— 目录里
+/// 还有运维手放的、别的进程写的文件，名字约定是唯一的认领凭据。目录不存在 = 从没导出过，
+/// 空手而归（不是错误：清理任务是卫生工作，不该因为「还没有导出过」整轮失败）。
 fn part_files(dir: &Path) -> std::io::Result<Vec<(i64, PathBuf)>> {
     let mut out = Vec::new();
     let entries = match std::fs::read_dir(dir) {
@@ -532,8 +594,18 @@ fn part_files(dir: &Path) -> std::io::Result<Vec<(i64, PathBuf)>> {
         let path = entry.path();
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
         let Some(stem) = name.strip_suffix(".csv.part") else { continue };
-        let Ok(id) = stem.parse::<i64>() else { continue };
-        out.push((id, path));
+        let mut segs = stem.split('.');
+        let Some(id) = segs.next().and_then(|s| s.parse::<i64>().ok()) else { continue };
+        // 代次段可有可无；有就必须是 part_path() 产出的 20 位数字，多一段都不认
+        let ok = match segs.next() {
+            None => true,
+            Some(g) => g.len() == 20
+                && g.bytes().all(|b| b.is_ascii_digit())
+                && segs.next().is_none(),
+        };
+        if ok {
+            out.push((id, path));
+        }
     }
     Ok(out)
 }
@@ -555,20 +627,75 @@ mod tests {
         assert_eq!(codes.len(), n, "注册表里的 code 不能重复");
     }
 
-    /// 名字约定：`{id}.csv.part` 才是回收对象，别的名字（运维手放的、别的进程写的、
-    /// id 不是数字的）一律不看；目录不存在 = 空手而归而不是报错。
+    /// 名字约定：旧格式 `{id}.csv.part` 与 E2 起的 `{id}.{20 位代次}.csv.part` 才是回收
+    /// 对象；别的名字（运维手放的、别的进程写的、代次不是 20 位数字的）一律不看；
+    /// 目录不存在 = 空手而归而不是报错。
     #[test]
     fn part_files_only_matches_the_naming_convention() {
         let dir = std::env::temp_dir().join(format!("bee-parts-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        for name in ["7.csv.part", "abc.csv.part", "readme.txt", "9.csv"] {
+        for name in [
+            "7.csv.part",                       // 旧格式（升级前残留 / 手工兜底）
+            "8.20261017123456123456.csv.part",  // 新格式：{id}.{代次}.csv.part
+            "abc.csv.part",                     // id 不是数字
+            "readme.txt",
+            "9.csv",
+            "10.123.csv.part",                  // 代次不是 20 位
+            "11.2026101712345612345x.csv.part", // 代次里有非数字
+            "12.20261017123456123456.x.csv.part", // 多一段
+        ] {
             std::fs::write(dir.join(name), b"x").unwrap();
         }
         let mut got: Vec<i64> = part_files(&dir).unwrap().into_iter().map(|(id, _)| id).collect();
         got.sort_unstable();
-        assert_eq!(got, vec![7], "只认 {{id}}.csv.part");
+        assert_eq!(got, vec![7, 8], "只认两种导出半份名字");
         assert!(part_files(&dir.join("nope")).unwrap().is_empty(), "目录不存在 = 空手而归");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 半份文件按代次隔离：同一行两次认领必须落到两个不同的 `.part` 路径。
+    /// （否则旧执行者复活后会和新认领者截断/删除同一个文件。）
+    #[test]
+    fn part_path_is_generation_scoped() {
+        let dir = Path::new("/tmp/exports");
+        let a = part_path(dir, 42, now());
+        let b = part_path(dir, 42, now() + chrono::Duration::microseconds(1));
+        assert_ne!(a, b, "不同代次不能共用同一个 .part");
+        let name = a.file_name().unwrap().to_str().unwrap();
+        assert!(name.starts_with("42.") && name.ends_with(".csv.part"), "命名约定: {name}");
+        // 造出来的名字必须能被回收器认回来
+        let tmp = std::env::temp_dir().join(format!("bee-part-gen-{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(tmp.join(name), b"x").unwrap();
+        assert_eq!(part_files(&tmp).unwrap(), vec![(42, tmp.join(name))], "回收器认新名字");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// 进程级闸只该有一个：两次 `gate()` 拿到同一个 Arc（旧实现每次 dispatch 新建 →
+    /// 跨 tick 叠加）。这条红了说明并发上限只能管住单次派发。
+    #[test]
+    fn gate_is_process_wide() {
+        assert!(Arc::ptr_eq(&gate(), &gate()), "所有 dispatch 必须共享同一个进程级信号量");
+    }
+
+    /// 终态没写进去时撤不撤成品（M1）：只有**取消赢**（4）或行被删才撤；
+    /// 写库失败 / 被新执行者接管（行还是 1）/ 赢家已写 2、3 都必须留给赢家 ——
+    /// 否则会出现「status=2 却没有文件」。
+    #[test]
+    fn lost_finish_keeps_artifact_unless_canceled_or_deleted() {
+        let r = |status: i8| {
+            let mut t = sample_task();
+            t.status = status;
+            t
+        };
+        assert!(should_remove_artifact(None), "行没了：成品是孤儿，撤");
+        assert!(should_remove_artifact(Some(&r(4))), "取消赢：不留成品");
+        for status in [0, 1, 2, 3] {
+            assert!(
+                !should_remove_artifact(Some(&r(status))),
+                "status={status}：不是取消赢，成品留给行当前的归属"
+            );
+        }
     }
 
     /// 认领谓词必须**排他**（I1）：老写法 `status IN (0, 1)` 在第一次把行推成 1 之后
@@ -606,12 +733,19 @@ mod tests {
 
         let beat = beat_sql();
         assert!(beat.contains("progress_rows = ?") && beat.contains("heartbeat_at = ?"), "一次写回两列: {beat}");
-        // 谓词带 status = 1：被取消（4）的行命中 0 行 = 批间的取消信号（M1·取消生效点）
-        assert!(beat.ends_with("AND status = 1"), "被取消的行不该再被写回: {beat}");
+        // 谓词带 status = 1 + 代次 token：取消（4）、被删、被新执行者重新认领的行都不许再写回
+        assert!(
+            beat.ends_with("AND status = 1 AND started_at = ?"),
+            "心跳必须带归属 fencing（旧执行者复活后写不进）: {beat}"
+        );
 
         let done = finish_sql();
         assert!(done.contains("progress_rows = ?"), "终态要把进度补齐（取消的行停在部分值）: {done}");
-        assert!(done.ends_with("AND status = 1"), "取消与完成抢同一刻时取消赢：终态不许覆盖 4: {done}");
+        assert!(done.contains("file_path = ?"), "路径与终态同一次写回: {done}");
+        assert!(
+            done.ends_with("AND status = 1 AND started_at = ?"),
+            "取消赢 + 归属 fencing：终态不许覆盖 4，也不许覆盖赢家: {done}"
+        );
     }
 
     /// 失联判定看心跳：跑得久但心跳还在的活任务不算死（M1 的正题），没见过心跳才回落
@@ -657,11 +791,15 @@ mod tests {
         assert!(!collectable(Some(&r(1, Some(dead), 1)), now_, stale), "没到过期时刻不介入");
     }
 
-    /// 并发闸：任务数超过上限时排队，且**每个任务都要跑到**。
-    /// 导出任务在真库里是毫秒级的，集成测试观测不到重叠，所以「上限真的生效」只能在这里
-    /// 钉（负控：给 1 个额度时峰值必须是 1；这条红了说明闸没接在 spawn 里面）。
+    /// 并发闸：任务数超过上限时排队，且**每个任务都要跑到**；两次派发共享同一个闸
+    /// 时也不许叠加。导出任务在真库里是毫秒级的，集成测试观测不到重叠，所以「上限真的
+    /// 生效」只能在这里钉。
+    ///
+    /// I1 的回归就在第二个场景：第一次 tick 派 4 个（还有 2 个在跑）、第二次 tick 再派 4 个
+    /// （待处理的行没变，仍会被扫到）—— 旧实现每次 `dispatch` 新建一个信号量，两批各跑
+    /// 各的，峰值会到 4；共享闸后峰值只能是 2。负控：额度 1 时峰值必须是 1。
     #[tokio::test]
-    async fn dispatch_caps_concurrency_and_runs_every_job() {
+    async fn dispatch_caps_concurrency_across_calls() {
         use std::sync::atomic::{AtomicUsize, Ordering};
         let peak = Arc::new(AtomicUsize::new(0));
         let live = Arc::new(AtomicUsize::new(0));
@@ -693,11 +831,20 @@ mod tests {
                     .expect("发送端不会提前关闭");
             }
         }
-        dispatch(2, jobs(6));
-        drain(&mut rx, 6).await;
-        assert_eq!(peak.load(Ordering::SeqCst), 2, "6 个任务抢 2 个额度：峰值正好 2");
+        // 同一个闸 + 两次派发（= 两次 tick）交错：4+4 个任务抢 2 个额度
+        let shared = Arc::new(tokio::sync::Semaphore::new(2));
+        dispatch(shared.clone(), jobs(4));
+        dispatch(shared.clone(), jobs(4));
+        drain(&mut rx, 8).await;
+        assert_eq!(
+            peak.load(Ordering::SeqCst),
+            2,
+            "两次派发必须共享同一个闸：峰值超过 2 就是旧实现的叠加 bug"
+        );
+        // 负控：闸只有 1 个额度时峰值必须 1
         peak.store(0, Ordering::SeqCst);
-        dispatch(1, jobs(3));
+        let one = Arc::new(tokio::sync::Semaphore::new(1));
+        dispatch(one.clone(), jobs(3));
         drain(&mut rx, 3).await;
         assert_eq!(peak.load(Ordering::SeqCst), 1, "额度 1 时不许有并发");
     }
