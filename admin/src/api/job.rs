@@ -47,6 +47,10 @@ fn check_cron(cron: &str) -> Result<String, ApiError> {
 #[apidoc::method("GET")]
 #[apidoc::tag("任务")]
 #[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::query(name = "page", ty = "int", desc = "页码，从 1 开始，默认 1")]
+#[apidoc::query(name = "size", ty = "int", desc = "每页条数，默认 10，上限 100")]
+#[apidoc::query(name = "name", ty = "string", desc = "任务名模糊匹配")]
+#[apidoc::query(name = "status", ty = "int", desc = "状态：1 启用 / 0 停用")]
 #[apidoc::response_status("200")]
 pub async fn list(
     State(state): State<AppState>,
@@ -78,9 +82,8 @@ pub async fn list(
 #[apidoc::tag("任务")]
 #[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
 #[apidoc::route_param(name = "id", ty = "string", required, desc = "任务对外 id（hashids 短串）")]
-#[apidoc::param(name = "cron", ty = "string", desc = "cron 表达式（与 interval_secs 二选一）")]
-#[apidoc::param(name = "interval_secs", ty = "int", desc = "间隔秒数，必须 > 0")]
-#[apidoc::param(name = "status", ty = "int", desc = "状态：1 启用 / 0 停用")]
+#[apidoc::param(name = "cron", ty = "string", required, desc = "间隔秒数（字符串形式的正整数，必须 > 0）")]
+#[apidoc::param(name = "status", ty = "int", required, desc = "状态：1 启用 / 0 停用")]
 #[apidoc::response_status("200")]
 #[apidoc::response_status("400")]
 pub async fn update(
@@ -176,8 +179,10 @@ pub struct JobLogQuery {
 #[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
 #[apidoc::query(name = "page", ty = "int", desc = "页码，从 1 开始，默认 1")]
 #[apidoc::query(name = "size", ty = "int", desc = "每页条数，默认 10，上限 100")]
-#[apidoc::query(name = "job_id", ty = "string", desc = "任务短串（只看某个任务的记录）")]
+#[apidoc::query(name = "job_code", ty = "string", desc = "任务注册键 code（只看某个任务的记录）")]
 #[apidoc::query(name = "status", ty = "int", desc = "执行结果：1 成功 / 0 失败")]
+#[apidoc::query(name = "start", ty = "string", desc = "开始时间（闭区间，格式 YYYY-MM-DD HH:MM:SS）")]
+#[apidoc::query(name = "end", ty = "string", desc = "结束时间（闭区间）")]
 #[apidoc::response_status("200")]
 pub async fn log_list(
     State(state): State<AppState>,

@@ -82,6 +82,8 @@ pub async fn list(
 #[apidoc::method("POST")]
 #[apidoc::tag("导出")]
 #[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::param(name = "kind", ty = "string", required, desc = "导出类型：audit-log / login-log")]
+#[apidoc::param(name = "params", ty = "object", desc = "筛选条件，字段与同步导出的 query 一致（省略 = 全量）")]
 #[apidoc::response_status("200")]
 #[apidoc::returned(name = "data", ty = "object", desc = "新建的任务（id / kind / status）")]
 pub async fn create(
@@ -136,6 +138,7 @@ pub async fn create(
 #[apidoc::method("GET")]
 #[apidoc::tag("导出")]
 #[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "任务对外 id（hashids 短串）")]
 #[apidoc::response_status("200")]
 #[apidoc::not_debug]
 pub async fn download(
@@ -172,6 +175,7 @@ pub async fn download(
 #[apidoc::method("POST")]
 #[apidoc::tag("导出")]
 #[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "任务对外 id（hashids 短串）")]
 #[apidoc::response_status("200")]
 #[apidoc::response_status("403")]
 #[apidoc::response_status("409")]
@@ -228,6 +232,7 @@ fn not_cancelable() -> ApiError {
 #[apidoc::method("DELETE")]
 #[apidoc::tag("导出")]
 #[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "任务对外 id（hashids 短串）")]
 #[apidoc::response_status("200")]
 #[apidoc::returned(name = "data", ty = "object", desc = "deleted：实际删除条数")]
 pub async fn remove(

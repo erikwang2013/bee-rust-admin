@@ -390,6 +390,7 @@ fn filtered_items(q: &DictItemQuery) -> Result<bee_orm::QuerySet<DictItem>, ApiE
 #[apidoc::query(name = "size", ty = "int", desc = "每页条数，默认 10，上限 100")]
 #[apidoc::query(name = "type_code", ty = "string", desc = "所属字典标识 code")]
 #[apidoc::query(name = "label", ty = "string", desc = "标签模糊匹配")]
+#[apidoc::query(name = "status", ty = "int", desc = "状态：1 启用 / 0 停用")]
 #[apidoc::response_status("200")]
 pub async fn item_list(
     State(state): State<AppState>,
@@ -573,6 +574,7 @@ async fn export_batch(
 #[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
 #[apidoc::query(name = "type_code", ty = "string", desc = "所属字典标识 code")]
 #[apidoc::query(name = "label", ty = "string", desc = "标签模糊匹配")]
+#[apidoc::query(name = "status", ty = "int", desc = "状态：1 启用 / 0 停用")]
 #[apidoc::response_status("200")]
 #[apidoc::not_debug]
 pub async fn item_export(

@@ -327,6 +327,7 @@ pub struct AttachQuery {
 #[apidoc::query(name = "size", ty = "int", desc = "每页条数，默认 10，上限 100")]
 #[apidoc::query(name = "name", ty = "string", desc = "原始文件名模糊匹配")]
 #[apidoc::query(name = "entity_type", ty = "string", desc = "关联类型：notice / none（未绑定）")]
+#[apidoc::query(name = "entity_id", ty = "string", desc = "关联对象短串（配合 entity_type 精确定位）")]
 #[apidoc::response_status("200")]
 #[apidoc::returned(name = "data", ty = "object", desc = "分页结果", children = [
     {name = "list", ty = "array", desc = "附件行（含 admin_name / entity_label / is_public）"},
