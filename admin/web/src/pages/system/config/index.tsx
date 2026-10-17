@@ -3,10 +3,11 @@ import {
   App, Button, Card, Empty, Form, Input, Modal, Popconfirm, Select, Space, Switch, Tag, Typography,
 } from 'antd';
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
-import { configApi, type ConfigForm } from '../../../api/config';
+import { configApi, type ConfigForm, type ConfigUpdateForm } from '../../../api/config';
 import type { SysConfig } from '../../../api/types';
 import Auth from '../../../auth/Auth';
 import { useI18n, type TFunc } from '../../../i18n';
+import { configPatch } from './patch';
 
 /** 分组名 → 词表键；未知分组原样显示（分组是数据，不强制翻译） */
 const GROUP_TEXT: Record<string, string> = {
@@ -183,26 +184,42 @@ function GroupCard({
   const { t } = useI18n();
   const [form] = Form.useForm<ConfigFormValues>();
   const [saving, setSaving] = useState(false);
+  /**
+   * 公开开关不挂在 Form 里，用显式 state：开关在每项的 `extra` 栏（值控件旁边），
+   * 与「值」是两个独立字段。这样「值改了但开关没动」「只拨开关」都只提交各自那半边
+   * （后端 PUT 本来就是部分更新），也不用依赖嵌套 Form.Item 的字段注册行为。
+   */
+  const [publics, setPublics] = useState<Record<string, boolean>>({});
 
-  // items 变化（保存后重载/删除）时把表单值同步回服务端最新值
+  // items 变化（保存后重载/删除）时把表单值与公开开关都同步回服务端最新值
   useEffect(() => {
     const v: ConfigFormValues = {};
-    for (const it of items) v[it.key] = toControl(it);
+    const p: Record<string, boolean> = {};
+    for (const it of items) {
+      v[it.key] = toControl(it);
+      p[it.key] = it.is_public === 1;
+    }
     form.setFieldsValue(v);
+    setPublics(p);
   }, [items, form]);
 
-  /** 只提交改动过的项：全量 PUT 会在「只改了 A、B 的服务端值恰好也变了」时互相覆盖 */
+  /** 只提交改动过的项（值与公开开关各自比较）：全量 PUT 会在「只改了 A、B 的服务端值
+   *  恰好也变了」时互相覆盖；开关也走部分更新，不用「删了重建」。 */
   const save = async () => {
     const vals = form.getFieldsValue();
-    const changed = items.filter((it) => controlToValue(it, vals[it.key]) !== it.value);
+    const changed: { it: SysConfig; patch: ConfigUpdateForm }[] = [];
+    for (const it of items) {
+      const patch = configPatch(it, controlToValue(it, vals[it.key]), publics[it.key] === true);
+      if (patch) changed.push({ it, patch });
+    }
     if (changed.length === 0) {
       message.info(t('config.no_change'));
       return;
     }
     setSaving(true);
     try {
-      for (const it of changed) {
-        await configApi.update(it.id, { value: controlToValue(it, vals[it.key]) });
+      for (const { it, patch } of changed) {
+        await configApi.update(it.id, patch);
       }
       message.success(t('common.saved'));
       onChanged();
@@ -238,10 +255,22 @@ function GroupCard({
             }
             style={{ marginBottom: 16 }}
             extra={
-              <Space size={8}>
+              <Space size={8} wrap>
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                   {it.key}
                 </Typography.Text>
+                <Auth code="system:config:edit">
+                  <Space size={4}>
+                    <Switch
+                      size="small"
+                      checked={publics[it.key] === true}
+                      onChange={(v) => setPublics((p) => ({ ...p, [it.key]: v }))}
+                    />
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      {t('config.public')}
+                    </Typography.Text>
+                  </Space>
+                </Auth>
                 <Auth code="system:config:edit">
                   <Popconfirm
                     title={t('config.delete_confirm', { key: it.key })}
