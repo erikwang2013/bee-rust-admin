@@ -22,9 +22,10 @@
 #            并把将要执行的 gh 命令原样打出来。
 # --skip-images：跳过镜像与 compose 包（本机没有 docker daemon 时的后路），只发前两个。
 # --commit REF：发一个**已经进主干**的历史提交（补发一个漏掉的版本、或按老源码重打包）。
-#            源码取自 REF 的临时 worktree（CARGO_TARGET_DIR 指回主仓库的 target/，不在主仓库里
-#            checkout 来 checkout 去）；REF 必须是 origin/main 的祖先 —— 发不在主干的提交等于
-#            绕过评审直接发布。给了它就不再要求「在 main、工作树干净、HEAD 已推送」。
+#            源码取自 REF 的临时 worktree（含**前端镜像的构建上下文**与 **compose 包里的文件**；
+#            CARGO_TARGET_DIR 指回主仓库的 target/，不在主仓库里 checkout 来 checkout 去）；
+#            REF 必须是 origin/main 的祖先 —— 发不在主干的提交等于绕过评审直接发布。
+#            给了它就不再要求「在 main、工作树干净、HEAD 已推送」。
 set -euo pipefail
 
 PROG=${0##*/}
@@ -61,7 +62,8 @@ BRA 发版脚本
   --dry-run           真构建、真打包、真自检，打印将要执行的 gh 命令后退出
   --skip-images       跳过镜像与 compose 包，只发前两个产物（本机没有 docker daemon
                       时的后路）；镜像包与 compose 包本来是随每个 release 一起发的
-  --commit REF        发一个已经进主干的历史提交：源码取自 REF 的临时 worktree，
+  --commit REF        发一个已经进主干的历史提交：源码取自 REF 的临时 worktree
+                      （后端 / 前端 dist / 前端镜像 / compose 包都取自它），
                       Release 的 tag 钉在 REF 上（gh release create --target REF）。
                       REF 必须是 origin/main 的祖先；给了它就不再要求「在 main、
                       工作树干净、HEAD 已推送」（发的是 REF，不是当前工作树）
@@ -111,6 +113,17 @@ COMMIT_SHA=''
 if [ -n "$COMMIT" ]; then
   COMMIT_SHA=$(git rev-parse -q --verify "$COMMIT^{commit}") \
     || die "--commit 的 ref 不是一个提交：$COMMIT（tag、短 SHA、分支名都行）"
+  # 祖先校验看的是本地 origin/main：先拉一次，免得本地引用旧了，把「已经不在主干的
+  # 提交」（force-push 后）当成祖先放过去。拉不动（网络 / SSH / 离线）只警告并回落
+  # 本地引用 —— 后面还有 ls-remote 查 tag 的硬检查，这里不再多设一条死路。
+  # shortcut: 30 秒超时；GitHub SSH 偶发挂死，超时后按本地 origin/main 继续（记在台账）。
+  if have timeout; then
+    timeout 30 git fetch origin main >&2 \
+      || warn "--commit：git fetch origin main 失败或超时；按本地 origin/main 继续校验（可能旧）"
+  else
+    git fetch origin main >&2 \
+      || warn "--commit：git fetch origin main 失败；按本地 origin/main 继续校验（可能旧）"
+  fi
 fi
 
 need_cmds=(cargo pnpm strip tar install sha256sum)
@@ -191,7 +204,8 @@ fi
 # 正常结束 / die / Ctrl-C 都走同一个 EXIT 兜底把它收掉。两处关键：
 #   CARGO_TARGET_DIR 指回主仓库的 target/ —— 复用第三方依赖的编译缓存（不然新目录里是
 #     一次冷编译）；cargo 的指纹带源码路径，工作区自己的 crate 仍会重编，省下的是依赖那一大块。
-#   BIN_SRC 本来就落在 $ROOT/target 下，不用改；前端的 dist 则要从 worktree 里取。
+#   BIN_SRC 本来就落在 $ROOT/target 下，不用改；前端的 dist、**前端镜像的构建上下文**、
+#     **compose 包里的文件**都从 worktree 取 —— 发旧 ref 时不混进当前工作树的源码。
 # （compose 包的清理也挂在这一个 trap 上 —— 只能用一处，后装的会顶掉先装的。）
 BUILD_ROOT=$ROOT
 compose_pkg=''; WT_ROOT=''; WT=''
@@ -280,10 +294,13 @@ else
   say "构建镜像（后端用 deploy/Dockerfile.prebuilt 打上面那个 strip 产物、不重编译；前端在容器里 pnpm build）"
   docker info >/dev/null 2>&1 \
     || die "本机没有可用的 docker daemon；离线镜像包需要它（或用 --skip-images 跳过，见 --help）"
+  # 前端镜像的 context 必须是**源码根**下的 admin/web：--commit 时那就是 REF 的 worktree
+  # （旧实现写死 admin/web，补发旧版会把当前工作树的前端打进镜像，与 tag 对不上）。
+  info "源码根：$BUILD_ROOT（前端镜像 context = $BUILD_ROOT/admin/web；compose 包同样从它取）"
   docker build -f deploy/Dockerfile.prebuilt -t "bra-backend:$TAG" . \
     || die "后端镜像构建失败（deploy/Dockerfile.prebuilt）"
-  docker build -t "bra-web:$TAG" admin/web --build-arg BRA_VERSION="$TAG" \
-    || die "前端镜像构建失败（admin/web/Dockerfile）"
+  docker build -t "bra-web:$TAG" "$BUILD_ROOT/admin/web" --build-arg BRA_VERSION="$TAG" \
+    || die "前端镜像构建失败（$BUILD_ROOT/admin/web/Dockerfile）"
   info "bra-backend:$TAG / bra-web:$TAG 构建完成"
 
   say "导出离线镜像包（docker save | gzip）"
@@ -297,10 +314,11 @@ else
   compose_pkg=$(mktemp -d)
   pkg="$compose_pkg/bra-compose-$TAG"
   mkdir -p "$pkg/admin/conf"
-  cp docker-compose.yml "$pkg/docker-compose.yml"
-  cp admin/conf/app.conf.example "$pkg/admin/conf/app.conf.example"
-  cp compose-up.sh "$pkg/compose-up.sh"
-  cp .env.example "$pkg/.env.example"
+  # 全部从 $BUILD_ROOT 取：--commit 时是 REF 的 worktree（不能混入当前工作树的文件）
+  cp "$BUILD_ROOT/docker-compose.yml" "$pkg/docker-compose.yml"
+  cp "$BUILD_ROOT/admin/conf/app.conf.example" "$pkg/admin/conf/app.conf.example"
+  cp "$BUILD_ROOT/compose-up.sh" "$pkg/compose-up.sh"
+  cp "$BUILD_ROOT/.env.example" "$pkg/.env.example"
   # .env 与 README 用「引号 heredoc + @TAG@ 占位」生成：内容里全是 markdown 反引号，
   # 不引号的 heredoc 会把它们当命令替换执行掉
   cat > "$pkg/.env" <<'EOF'
@@ -358,7 +376,8 @@ docker load -i bra-images-@TAG@.tar.gz
 - 数据在 `mysql-data` 卷里：`docker compose down` 不删数据，`docker compose down -v` 才删
 - `mysql:8.4` 由 compose 首次 `up` 时从 Docker Hub 拉；完全离线的环境要自己把这个
   基础镜像弄进来（本包只带 BRA 自己的两个镜像）
-- 镜像 build 自本仓库 `@TAG@` 那个提交（后端 = 发布口径 strip 过的二进制）
+- 镜像 build 自本仓库 `@TAG@` 那个提交（`--commit` 时即该 REF；后端 = 发布口径 strip 过的
+  二进制，前端 = 该提交的 `admin/web` 源码）
 EOF
   sed -i "s/@TAG@/$TAG/g" "$pkg/.env" "$pkg/README.md"
   tar czf "$ASSETS/bra-compose-$TAG.tar.gz" -C "$compose_pkg" "bra-compose-$TAG" \

@@ -37,19 +37,26 @@ bash scripts/release.sh v2.13.1 --notes-file /tmp/notes-v2.13.1.md --commit 9253
   的源码来构建，收尾（正常结束 / 失败 / Ctrl-C）自动把 worktree 删掉。`CARGO_TARGET_DIR` 指回
   主仓库的 `target/`，第三方依赖的编译缓存复用得上（cargo 的指纹带源码路径，工作区自己的 crate
   仍会重编一遍）。不会在主仓库里 checkout 来 checkout 去。
+- **前端镜像与 compose 包也取自 REF**：`docker build` 的构建上下文是
+  `<worktree>/admin/web`（不是当前工作树的 `admin/web`），compose 包里的
+  `docker-compose.yml` / `compose-up.sh` / `.env.example` / `admin/conf/app.conf.example`
+  也都从 worktree 复制 —— 补发旧版不会把当前工作树的前端或配置混进去。后端镜像仍以主仓库根
+  为 context（要读 `target/release-assets/bee_admin`，那个二进制本身就是 REF 构建的）。
 - **前置换成一条更硬的**：REF 必须是 `origin/main` 的祖先（`git merge-base --is-ancestor`）——
-  发一个没进主干的提交等于绕过评审直接发布。本地 `origin/main` 旧的话先 `git fetch origin`；
-  在哪个分支、工作树干不干净、HEAD 推没推都与这次发布无关。
+  发一个没进主干的提交等于绕过评审直接发布。脚本会先 `git fetch origin main`（30 秒超时；
+  拉不动只警告并回落本地引用，代价见台账 Ruling）；在哪个分支、工作树干不干净、HEAD 推没推
+  都与这次发布无关。
 - **tag 钉在 REF 上**：`gh release create --target <REF 的 SHA>`，远端 tag 落在 REF 那个提交，
   而不是发版时远端的 HEAD。
 - **版本号仍是新 tag**：`BRA_VERSION=$TAG` 照传，二进制与前端报的是这次要发的版本（补发的是
   「用老源码打这个版本」，不是沿用老版本号）。
 - 不带 `--commit` 时行为完全不变（三道前置照旧、`--target` 是 HEAD、构建在主工作树里做）。
 
-拿历史 ref 干跑验一遍（`--skip-images` 可省，docker 段与 ref 无关）：
+拿历史 ref 干跑验一遍（**不要**带 `--skip-images`：镜像与 compose 包现在也取自 REF，
+正好要验这一段）：
 
 ```bash
-bash scripts/release.sh v0.0.1-drycommit --notes-file /tmp/notes.md --commit 92536ef --dry-run --skip-images
+bash scripts/release.sh v0.0.1-drycommit --notes-file /tmp/notes.md --commit 92536ef --dry-run
 ```
 
 改过 `install.sh` 之后，另跑一次 `bash scripts/smoke-install.sh`（在 `/tmp` 装一套 scratch 实例、

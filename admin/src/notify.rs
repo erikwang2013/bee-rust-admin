@@ -363,6 +363,17 @@ pub async fn send_test_mail(cfg: &NotifyConfig, to: &str, password: &str) -> Res
     .await
 }
 
+/// 错误串里不带收件地址：邮箱是个人数据，日志/面板只留账号 id。lettre 的解析错误与
+/// SMTP 拒绝响应都可能回显收件人（如「550 ... <a@b>」），拼进消息前替换掉。
+/// shortcut: 只做原文替换（大小写变体的回显漏网）；地址来自同一个字符串，够用。
+fn redact_addr(msg: String, to: &str) -> String {
+    if to.is_empty() {
+        msg
+    } else {
+        msg.replace(to, "<收件人>")
+    }
+}
+
 /// 发一封纯文本邮件：SMTP 连接/加密/认证这套公共部分（测试邮件与公告推送共用）。
 /// 每次调用是一条独立的 SMTP 会话 —— 公告推送的「逐个投递」就是按这个粒度做的。
 async fn send_mail(
@@ -377,7 +388,7 @@ async fn send_mail(
         .from(from.parse::<Mailbox>().map_err(|e| format!("发件人地址不合法（{from}）: {e}"))?)
         .to(to
             .parse::<Mailbox>()
-            .map_err(|e| format!("收件人地址不合法（{to}）: {e}"))?)
+            .map_err(|e| redact_addr(format!("收件人地址不合法: {e}"), to))?)
         .subject(subject)
         .body(String::from(text))
         .map_err(|e| format!("组装邮件失败: {e}"))?;
@@ -399,8 +410,9 @@ async fn send_mail(
     if !cfg.smtp_user.is_empty() {
         builder = builder.credentials(Credentials::new(cfg.smtp_user.clone(), password.to_string()));
     }
-    // 忽略成功响应的 SMTP 回话文本：面板只需要「发出去了 / 为什么没发出去」
-    builder.build().send(email).await.map(|_| ()).map_err(|e| format!("{e}"))
+    // 忽略成功响应的 SMTP 回话文本：面板只需要「发出去了 / 为什么没发出去」。
+    // 失败原因里若回显了收件人（SMTP 拒绝响应常见），替换掉再往外传。
+    builder.build().send(email).await.map(|_| ()).map_err(|e| redact_addr(format!("{e}"), to))
 }
 
 #[cfg(test)]
@@ -484,6 +496,21 @@ mod tests {
         assert!(validate(&c).is_ok());
         c.smtp_encryption = "tls".into();
         assert!(validate(&c).is_err(), "加密方式只认三种");
+    }
+
+    /// M2：投递失败的原因里不能出现收件地址（日志/面板只留账号 id）。
+    /// 解析错误与 SMTP 拒绝响应都可能回显地址，统一在 `redact_addr` 这一道替换。
+    #[test]
+    fn mail_errors_never_echo_the_recipient_address() {
+        let addr = "alice@example.com";
+        let rejected = format!("550 5.1.1 <{addr}>: Recipient address rejected");
+        let got = redact_addr(rejected, addr);
+        assert!(!got.contains(addr), "拒绝响应里的地址必须替换掉: {got}");
+        assert!(got.contains("<收件人>"), "替换成占位符，保留可读性: {got}");
+        let parse = redact_addr(format!("mailbox parse error: {addr}"), addr);
+        assert!(!parse.contains(addr), "解析错误同样不许带地址: {parse}");
+        assert_eq!(redact_addr("502 bad gateway".into(), addr), "502 bad gateway", "别的错误原样保留");
+        assert_eq!(redact_addr("no address".into(), ""), "no address", "空地址不替换");
     }
 
 }

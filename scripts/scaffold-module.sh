@@ -560,7 +560,12 @@ cleanup_on_exit() {
     [ "$rc" -eq 0 ] || rollback
     exit "$rc"
 }
-trap cleanup_on_exit EXIT INT TERM
+# Ctrl-C / kill 也不能把半套生成物留在工作树里：信号先转成非零退出码，再走同一个
+# EXIT 兜底。直接挂 INT/TERM 的话，信号恰好落在一条成功的命令之后时 `$?` 是 0，
+# 会被 cleanup_on_exit 当成成功退出而**跳过回滚**（release.sh 同款处理）。
+trap cleanup_on_exit EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # 用 here-string 而不是管道：管道右侧是子 shell，write_one 里往 WROTE 记的落点会丢在
 # 子 shell 里 —— 那正是「回滚时一个文件都没删」的成因（记账必须在当前 shell 生效）。
