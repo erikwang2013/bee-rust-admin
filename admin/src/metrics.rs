@@ -109,7 +109,8 @@ fn gate() -> std::sync::MutexGuard<'static, ()> {
 }
 
 /// 记一次观测：落进第一个 `secs <= 上界` 的档（都不满足就只进 +Inf）。
-/// 自带闸 —— 单测与其它直接调用点同样与抓取互斥。
+/// 自带闸 —— 与抓取互斥。生产路径走 [`observe`]（同锁内连状态码一起记），这个入口只给单测。
+#[cfg(test)]
 fn record(st: &PathStat, secs: f64) {
     let _gate = gate();
     record_locked(st, secs);
