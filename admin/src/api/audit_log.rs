@@ -62,6 +62,7 @@ fn filtered(
 #[apidoc::query(name = "username", ty = "string", desc = "操作人用户名模糊匹配")]
 #[apidoc::query(name = "module", ty = "string", desc = "模块名")]
 #[apidoc::query(name = "action", ty = "string", desc = "动作名")]
+#[apidoc::query(name = "status", ty = "int", desc = "结果：1 成功（2xx）/ 0 失败")]
 #[apidoc::query(name = "start", ty = "string", desc = "开始时间（闭区间，格式 YYYY-MM-DD HH:MM:SS）")]
 #[apidoc::query(name = "end", ty = "string", desc = "结束时间（闭区间）")]
 #[apidoc::response_status("200")]
