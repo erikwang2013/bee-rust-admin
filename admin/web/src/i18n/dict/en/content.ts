@@ -1,0 +1,47 @@
+// English dictionary (module split; merged by ../../en-US.ts).
+export const content = {
+  // ---- Unread notice bell ----
+  'notice.unread_title': 'Unread notices ({n})',
+  'notice.unread_empty': 'No unread notices',
+  'notice.mark_read': 'Mark as read',
+  'notice.unread_rest': '{n} more unread; only the latest 50 are listed here.',
+
+  // ---- Notices ----
+  'notice.published': 'Published',
+  'notice.draft': 'Draft',
+  'notice.publish': 'Publish',
+  'notice.unpublish': 'Unpublish',
+  'notice.unpublish_done': 'Unpublished',
+  'notice.unpublish_confirm': 'Once unpublished, signed-in users will no longer see it in their unread list.',
+  'notice.delete_confirm': 'Delete notice "{title}"?',
+  'notice.delete_desc': 'Read records will be deleted as well.',
+  'notice.hint': 'New notices are saved as drafts first, and drafts are completely invisible to regular users. Only after publishing will signed-in users see an unread badge in the top bar.',
+  'notice.saved_as_draft': 'Saved as a draft, publish it once you have checked it',
+  'notice.create_title': 'New notice',
+  'notice.edit_title': 'Edit notice: {title}',
+  'notice.title_max': 'Title is limited to 128 characters',
+  'notice.content_placeholder': 'Plain text; line breaks are preserved',
+  'notice.images': 'Images',
+  'notice.image_upload': 'Upload image',
+  'notice.image_hint': 'Images belong to this notice: once it is published, any signed-in user can view them (the attachment list itself stays limited by data scope, but public images are downloadable by everyone).',
+  'notice.image_need_save': 'Save the notice first, then come back to add images (an image binds to the notice id).',
+  'notice.image_no_perm': 'No attachment permission, images are hidden.',
+
+  // ---- Attachment center (item 5) ----
+  'attach.upload': 'Upload',
+  'attach.uploading': 'Uploading {percent}%',
+  'attach.uploaded': 'Uploaded {name}',
+  'attach.upload_failed': 'Attachment upload failed',
+  'attach.download': 'Download',
+  'attach.bind': 'Link',
+  'attach.bind_title': 'Link "{name}"',
+  'attach.bind_placeholder': 'Pick a notice',
+  'attach.bind_hint': 'Clearing the selection unlinks it. Once linked to a published notice, everyone signed in can download it (shown as "Public" in the list).',
+  'attach.bind_done': 'Linked',
+  'attach.unbind_done': 'Unlinked',
+  'attach.unbound': 'Unlinked',
+  'attach.entity_notice': 'Notice images',
+  'attach.public': 'Public',
+  'attach.delete_confirm': 'Delete "{name}"?',
+  'attach.hint': 'Up to 10 MB per file. Allowed: images (png/jpg/gif/webp/bmp), pdf, txt, csv, docx/xlsx/pptx, zip. Uploads beyond your quota are rejected. Uploading the same file twice within the same month keeps one copy on disk (named by content MD5, in a per-month subdirectory); every upload gets its own row, and deleting a row does not delete the file — unreferenced files are reclaimed by the attachment orphan cleanup after a protection window.',
+} as const;

@@ -1,0 +1,47 @@
+// 中文基准词表（模块化拆分；由 ../../zh-CN.ts 合并导出）。
+export const content = {
+  // ---- 未读公告铃铛 ----
+  'notice.unread_title': '未读公告（{n}）',
+  'notice.unread_empty': '暂无未读公告',
+  'notice.mark_read': '标记已读',
+  'notice.unread_rest': '还有 {n} 条未读，这里只列出最近 50 条。',
+
+  // ---- 通知公告 ----
+  'notice.published': '已发布',
+  'notice.draft': '草稿',
+  'notice.publish': '发布',
+  'notice.unpublish': '取消发布',
+  'notice.unpublish_done': '已取消发布',
+  'notice.unpublish_confirm': '取消发布后，登录用户将不再在未读里看到它。',
+  'notice.delete_confirm': '确认删除公告「{title}」？',
+  'notice.delete_desc': '已读记录会一并删除。',
+  'notice.hint': '新建的公告先存成草稿，草稿对普通用户完全不可见；「发布」之后登录用户才会在顶栏铃铛里收到未读提示。',
+  'notice.saved_as_draft': '已保存为草稿，确认无误后再发布',
+  'notice.create_title': '新增公告',
+  'notice.edit_title': '编辑公告：{title}',
+  'notice.title_max': '标题最长 128 个字',
+  'notice.content_placeholder': '纯文本，换行会原样保留',
+  'notice.images': '配图',
+  'notice.image_upload': '上传配图',
+  'notice.image_hint': '配图跟着这篇公告：公告发布后任何登录用户都能看到（附件中心按上传人的数据权限才看得到列表，但公开配图人人可下）。',
+  'notice.image_need_save': '先保存公告，再回来传配图（配图要绑到公告 id 上）。',
+  'notice.image_no_perm': '没有附件权限，看不到配图。',
+
+  // ---- 附件中心（项 5）----
+  'attach.upload': '上传附件',
+  'attach.uploading': '上传中 {percent}%',
+  'attach.uploaded': '已上传 {name}',
+  'attach.upload_failed': '附件上传失败',
+  'attach.download': '下载',
+  'attach.bind': '关联',
+  'attach.bind_title': '关联「{name}」',
+  'attach.bind_placeholder': '选一篇公告',
+  'attach.bind_hint': '清空选择 = 解绑。绑到已发布的公告后，这张图对所有登录用户可下（列表里标「公开」）。',
+  'attach.bind_done': '已关联',
+  'attach.unbind_done': '已解绑',
+  'attach.unbound': '未绑定',
+  'attach.entity_notice': '公告配图',
+  'attach.public': '公开',
+  'attach.delete_confirm': '删除「{name}」？',
+  'attach.hint': '单文件上限 10 MB，白名单：图片（png/jpg/gif/webp/bmp）、pdf、txt、csv、docx/xlsx/pptx、zip；超配额会拒绝。同一个文件在同一月内重复上传，磁盘上只留一份（文件名取内容 MD5、子目录按月），每次上传各一行记录；删行不删文件，没人引用的成品由「附件孤儿清理」按保护期收走。',
+} as const;

@@ -1,0 +1,42 @@
+// English dictionary (module split; merged by ../../en-US.ts).
+export const common = {
+  // ---- Common ----
+  'common.yes': 'Yes',
+  'common.no': 'No',
+  'common.none': '(none)',
+  'common.save': 'Save',
+  'common.cancel': 'Cancel',
+  'common.confirm': 'Confirm',
+  'common.add': 'New',
+  'common.actions': 'Actions',
+  'common.top': 'Top level',
+  'common.clear': 'Clear',
+  'common.edit': 'Edit',
+  'common.delete': 'Delete',
+  'common.refresh': 'Refresh',
+  'common.export': 'Export',
+  'common.import': 'Import',
+  'common.enabled': 'Enabled',
+  'common.disabled': 'Disabled',
+  'common.success': 'Success',
+  'common.failed': 'Failed',
+  'common.saved': 'Saved',
+  'common.created': 'Created',
+  'common.deleted': 'Deleted',
+  'common.updated': 'Updated',
+  'common.request_failed': 'Request failed',
+  'common.network_error': 'Network error',
+  'common.no_permission': 'Permission denied',
+  'common.export_failed': 'Export failed',
+  'common.mascot_alt': 'Ah Shou',
+
+  // ---- Local form validation ----
+  'validate.required': '{field} is required',
+  'validate.required_max': '{field} is required (max {max} characters)',
+  'validate.min_len': '{field} must be at least {n} characters',
+  'validate.max': 'At most {max} characters',
+  // same rule as the backend validate_password
+  'validate.weak_password': 'Password must be at least 8 characters and contain at least two of: letters, digits, symbols',
+  'validate.email': 'Invalid email address',
+  'validate.mismatch': 'The two passwords do not match',
+} as const;

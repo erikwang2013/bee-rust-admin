@@ -1,0 +1,42 @@
+// 中文基准词表（模块化拆分；由 ../../zh-CN.ts 合并导出）。
+export const common = {
+  // ---- 通用 ----
+  'common.yes': '是',
+  'common.no': '否',
+  'common.none': '（无）',
+  'common.save': '保存',
+  'common.cancel': '取消',
+  'common.confirm': '确认',
+  'common.add': '新增',
+  'common.actions': '操作',
+  'common.top': '顶级',
+  'common.clear': '清空',
+  'common.edit': '编辑',
+  'common.delete': '删除',
+  'common.refresh': '刷新',
+  'common.export': '导出',
+  'common.import': '导入',
+  'common.enabled': '启用',
+  'common.disabled': '禁用',
+  'common.success': '成功',
+  'common.failed': '失败',
+  'common.saved': '已保存',
+  'common.created': '已创建',
+  'common.deleted': '已删除',
+  'common.updated': '已更新',
+  'common.request_failed': '请求失败',
+  'common.network_error': '网络错误',
+  'common.no_permission': '没有权限',
+  'common.export_failed': '导出失败',
+  'common.mascot_alt': '阿守',
+
+  // ---- 表单校验（前端本地规则，与后端错误码无关）----
+  'validate.required': '请输入{field}',
+  'validate.required_max': '请输入{field}（最多 {max} 字）',
+  'validate.min_len': '{field}至少 {n} 位',
+  'validate.max': '最多 {max} 字',
+  // 与后端 validate_password 同口径（正则写在 password.ts，规则只有一份）
+  'validate.weak_password': '密码至少 8 位，且需包含字母、数字、符号中的至少两类',
+  'validate.email': '邮箱格式不正确',
+  'validate.mismatch': '两次输入不一致',
+} as const;
