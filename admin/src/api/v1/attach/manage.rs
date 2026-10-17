@@ -1,307 +1,5 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-//! 附件中心（项 5）：分片上传 / 列表 / 下载 / 多态关联 / 删除。
-//!
-//! 上传复用 `api::avatar` 那套 aetherupload 内核接线（同一份 `[app] upload_dir` 下的
-//! 另一个分组 `attach`，见 [`crate::api::avatar::build_runtime`]），差别只在闸门与落库：
-//! 附件上限 10MB（`AVATAR_MAX_BYTES` 的 20 倍），落 `attachment` 行、留原文件名与 sha256。
-//!
-//! **下载鉴权（本模块的核心口径）**：
-//! 1. 必须登录（不给公开路由 —— 头像那条公开路是给 `<img>` 的，附件不给）；
-//! 2. 绑定了**已发布**公告的附件 = 公开：公告本身对所有登录用户可见，配图必须跟着可见；
-//! 3. 其余一律按上传人的数据权限卡（与列表同一个口径 `datascope::ensure_admin_in_scope`）。
-//!
-//! 删除比下载更严：**公开规则不适用**（配图是公告的一部分，删附件得看数据权限），
-//! 且要求 `system:attach:remove`。
-use crate::api::{PagingExt, page_size};
-use crate::api::avatar::{problem_to_api_error, run_kernel};
-use crate::auth::Auth;
-use crate::datascope;
-use crate::error::{ApiError, AppJson, AppMultipart, AppPath, AppQuery, ok};
-use crate::hid;
-use crate::models::{Admin, Attachment, Notice};
-use crate::state::AppState;
-use crate::util::now;
-use aetherupload::json::{save_chunk_ok_to_json, upload_ok_to_json};
-use aetherupload::{ChunkBody, FormData, UploadController};
-use axum::Json;
-use axum::extract::{Multipart, State};
-use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
-use axum::response::{IntoResponse, Response};
-use bee_orm::{Model, Value as DbValue};
-use serde::Deserialize;
-use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
-use std::collections::HashMap;
-use std::path::Path;
-
-/// 上传分组名（落盘子目录）。与 `avatar` 一样**不能含下划线**：`saved_path` 是
-/// `group_subdir_name` 三段式，含下划线的分组名会让解码错位。
-pub(crate) const ATTACH_GROUP: &str = "attach";
-
-/// 单文件硬闸（字节）：与分组配置的 `resource_maxsize` 同源，前端先拦一道。
-pub(crate) const ATTACH_MAX_BYTES: u64 = 10 * 1024 * 1024;
-
-/// 允许的扩展名（分组白名单）。**两道都要过**：客户端声明的扩展名，以及插件按**真实
-/// 内容**反查出的扩展名（`partial.check_mime_type`）。所以这里的名单得让两边都认得：
-/// - 图片 / pdf / txt：魔数可识别，反查回同一族扩展名；
-/// - docx / xlsx / pptx 是 zip 容器：内容判为 `application/zip` → 反查回 `zip`（在列），
-///   客户端那份 `docx` 也在列 → 过；
-/// - **旧版 doc/xls/ppt（OLE2）收不了**：内容判为 `application/octet-stream` → 反查回
-///   `bin`，不在列。要收它就得放 `bin`（等于放行一切二进制），不做。
-pub(crate) const ATTACH_EXTS: [&str; 13] = [
-    "png", "jpg", "jpeg", "gif", "webp", "bmp", "pdf", "txt", "csv", "docx", "xlsx", "pptx",
-    "zip",
-];
-
-/// 原始文件名的最大长度（列宽 255）：超了截断，别让 MySQL 报 1406 变成 500。
-const NAME_MAX: usize = 255;
-
-/// 允许关联的对象类型。**白名单**：多态关联的另一头要能查得到、判得出「公不公开」，
-/// 放开任意字符串等于允许往库里写查不出来的幽灵关联。
-pub(crate) const ENTITY_TYPES: [&str; 1] = ["notice"];
-
-/// 关联排序的取值范围（同组配图顺序，前端按它排）。
-const SORT_MAX: i32 = 999;
-
-// ── 上传 ────────────────────────────────────────────────────
-
-/// `POST /api/v1/attachments/upload/preprocess` —— 校验参数（类型/大小/配额）、判秒传、建临时文件。
-#[apidoc::title("附件上传 · 预检")]
-#[apidoc::desc("校验扩展名白名单（415）、单文件上限 10MB 与**每人总配额**（400 `attach.too_large` / `attach.quota_exceeded`）、判秒传、建临时文件。需要 `system:attach:add`")]
-#[apidoc::url("/api/v1/attachments/upload/preprocess")]
-#[apidoc::method("POST")]
-#[apidoc::tag("附件")]
-#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
-#[apidoc::param(name = "resource_name", ty = "string", required, desc = "原始文件名（按扩展名校验，见白名单）", mock = "report.pdf")]
-#[apidoc::param(name = "resource_size", ty = "int", required, desc = "文件字节数，上限 10 MB", mock = "204800")]
-#[apidoc::param(name = "name", ty = "string", required, desc = "原始文件名（落库与下载用，可与 resource_name 相同）", mock = "report.pdf")]
-#[apidoc::param(name = "resource_hash", ty = "string", required, desc = "整文件 MD5（秒传索引键）", mock = "d41d8cd98f00b204e9800998ecf8427e")]
-#[apidoc::not_debug]
-#[apidoc::response_status("200")]
-#[apidoc::response_status("400")]
-#[apidoc::response_status("401")]
-#[apidoc::response_status("403")]
-#[apidoc::response_status("415")]
-#[apidoc::returned(name = "data", ty = "object", desc = "插件响应：saved_path 非空 = 秒传命中（同时带 attachment 行）；否则带分片信息（chunk_size 等）")]
-pub async fn preprocess(
-    State(state): State<AppState>,
-    auth: Auth,
-    AppMultipart(mut multipart): AppMultipart,
-) -> Result<Json<Value>, ApiError> {
-    auth.require("system:attach:add")?;
-    let (form, name) = read_form(&mut multipart).await?;
-    // 配额在预检处拦：分片都传上来了再拒，白费流量，文件也已落了一半
-    check_quota(&state, &auth, &form).await?;
-
-    let request = form.to_preprocess_request();
-    let result =
-        run_kernel(&state, move |runtime| UploadController::new(runtime).preprocess(&request))
-            .await?;
-
-    match result {
-        Ok(parsed) => {
-            let mut data = plugin_json(&upload_ok_to_json(&parsed))?;
-            // 秒传命中：拿到非空 saved_path 的前端会直接结束流程，不在这次落库就等于没传
-            if !parsed.saved_path.is_empty() {
-                data["attachment"] = finish(&state, &auth.admin.id, &parsed.saved_path, &name).await?;
-            }
-            Ok(ok(data))
-        }
-        Err(problem) => Err(problem_to_api_error(problem)),
-    }
-}
-
-/// `POST /api/v1/attachments/upload/chunk` —— 逐片追加；末片组装完成后落 `attachment` 行。
-#[apidoc::title("附件上传 · 上传分片")]
-#[apidoc::desc("multipart 逐片追加（128 KB/片）；末片组装完成后落库并回 attachment 行。失败按插件的真实状态码与稳定码返回（409 分块乱序时可带 `args.expected_index`，据它续传）。需要 `system:attach:add`")]
-#[apidoc::url("/api/v1/attachments/upload/chunk")]
-#[apidoc::method("POST")]
-#[apidoc::tag("附件")]
-#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
-#[apidoc::param(name = "resource_chunk", ty = "file", required, desc = "分片内容（单片不超过 preprocess 返回的 chunk_size，128 KB）")]
-#[apidoc::param(name = "chunk_index", ty = "int", required, desc = "分片序号，从 1 开始", mock = "1")]
-#[apidoc::param(name = "chunk_total", ty = "int", required, desc = "分片总数", mock = "3")]
-#[apidoc::param(name = "resource_hash", ty = "string", required, desc = "整文件 MD5（与预检同一个值）")]
-#[apidoc::not_debug]
-#[apidoc::response_status("200")]
-#[apidoc::response_status("400")]
-#[apidoc::response_status("403")]
-#[apidoc::response_status("409")]
-#[apidoc::response_status("413")]
-#[apidoc::response_status("415")]
-#[apidoc::response_status("422")]
-#[apidoc::returned(name = "data", ty = "object", desc = "插件响应；末片（saved_path 非空）额外带 attachment 行")]
-pub async fn chunk(
-    State(state): State<AppState>,
-    auth: Auth,
-    AppMultipart(mut multipart): AppMultipart,
-) -> Result<Json<Value>, ApiError> {
-    auth.require("system:attach:add")?;
-    let (form, name) = read_form(&mut multipart).await?;
-    let request = form.to_save_chunk_request();
-    let result =
-        run_kernel(&state, move |runtime| UploadController::new(runtime).save_chunk(&request))
-            .await?;
-
-    match result {
-        Ok(parsed) => {
-            let mut data = plugin_json(&save_chunk_ok_to_json(&parsed))?;
-            // `saved_path` 非空 = 组装完成（末片，或秒传命中后的幂等重发）；空串 = 中间片
-            if !parsed.saved_path.is_empty() {
-                data["attachment"] = finish(&state, &auth.admin.id, &parsed.saved_path, &name).await?;
-            }
-            Ok(ok(data))
-        }
-        Err(problem) => Err(problem_to_api_error(problem)),
-    }
-}
-
-/// 上传完成：按落盘文件算 size/sha256，落一行 `attachment`（未绑定）。
-/// 返回给前端的那一行的 JSON（与列表同形状）。
-async fn finish(
-    state: &AppState,
-    admin_id: &i64,
-    saved_path: &str,
-    name: &str,
-) -> Result<Value, ApiError> {
-    let path = state
-        .aether
-        .resource(saved_path)
-        .map(|r| r.path)
-        .filter(|p| p.is_file())
-        .ok_or_else(|| ApiError::internal(format!("上传成品读不到：{saved_path}")))?;
-
-    // 整份读进来算摘要：附件上限 10MB，丢阻塞线程池（同步 IO + 哈希都别占 async worker）
-    let (size, sha256) = tokio::task::spawn_blocking(move || {
-        let bytes = std::fs::read(&path)?;
-        Ok::<_, std::io::Error>((bytes.len() as i64, sha256_hex(&bytes)))
-    })
-    .await
-    .map_err(|e| ApiError::internal(format!("附件摘要任务执行失败: {e}")))?
-    .map_err(|e| ApiError::internal(format!("读附件成品失败: {e}")))?;
-
-    // 配额按**实测** size 复查：预检那道只看客户端声明的 resource_size，声明 1 字节即可绕过。
-    // 这里拒掉时行不落库，成品文件成孤儿 —— `attach_orphan_clean` 会连秒传索引一起清掉。
-    check_quota_bytes(state, *admin_id, size as u64).await?;
-
-    let ext = Path::new(saved_path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-
-    let row = Attachment {
-        id: state.next_id()?,
-        name: sanitize_name(name, saved_path),
-        mime: aetherupload::mime::mime_for_extension(&ext, &[]),
-        ext,
-        size,
-        sha256,
-        stored_path: saved_path.to_string(),
-        admin_id: *admin_id,
-        entity_type: String::new(),
-        entity_id: 0,
-        sort: 0,
-        created_at: now(),
-        updated_at: now(),
-    };
-    row.insert(&state.db).await.map_err(ApiError::from)?;
-
-    Ok(row_json(&row, &HashMap::new(), &HashMap::new()))
-}
-
-/// 原始文件名的清洗：去掉路径分隔符与控制字符（防「../」与终端转义混进文件头），
-/// 压缩空白、限长；清完为空就退回落盘文件名（别给一个空名字）。
-fn sanitize_name(name: &str, saved_path: &str) -> String {
-    let cleaned: String = name
-        .chars()
-        .map(|c| if c.is_control() || matches!(c, '/' | '\\' | '"' | '\'') { ' ' } else { c })
-        .collect();
-    let cleaned = cleaned.trim();
-    if cleaned.is_empty() {
-        return saved_path.rsplit('_').next().unwrap_or("attachment").to_string();
-    }
-    cleaned.chars().take(NAME_MAX).collect()
-}
-
-/// 十六进制 sha256。手写编码：仓库里没有 hex 依赖，为 20 行代码不值得加一个。
-fn sha256_hex(bytes: &[u8]) -> String {
-    use std::fmt::Write;
-    let mut out = String::with_capacity(64);
-    for b in Sha256::digest(bytes) {
-        let _ = write!(out, "{b:02x}");
-    }
-    out
-}
-
-/// 单文件上限（`attach.too_large`）：自己拦一道，给稳定码与准确文案；插件那道
-/// `payload_too_large`（413）当兜底。
-fn too_large_err() -> ApiError {
-    ApiError::Coded {
-        status: StatusCode::BAD_REQUEST,
-        err: "attach.too_large",
-        msg: TOO_LARGE_MSG.to_string(),
-        args: Value::Null,
-    }
-}
-
-/// 与 `error::ERR_TABLE` 共用一份（改文案只改这里，否则稳定码会静默消失）。
-pub(crate) const TOO_LARGE_MSG: &str = "附件不能超过 10 MB";
-
-/// 每人**在用附件总量**的配额闸（`[attach] quota_mb`，0 = 不限）。
-/// 口径是 `SUM(size)` 而不是「上传次数」：配额的意义是磁盘占用。
-async fn check_quota(state: &AppState, auth: &Auth, form: &FormData) -> Result<(), ApiError> {
-    let incoming: u64 = form
-        .text("resource_size")
-        .and_then(|s| s.trim().parse().ok())
-        .unwrap_or(0);
-    check_quota_bytes(state, auth.admin.id, incoming).await
-}
-
-/// 配额闸的唯一口径：`该管理员现有附件总量 + incoming > quota`（MB 折算后）就拒。
-///
-/// 两处调用，**入参的可信度不同**：预检拿的是客户端声明的 `resource_size`（要拦早，
-/// 不然分片白传；但它不可信，声明 1 字节就能过），`finish` 拿的是落盘文件的**实测**
-/// size（唯一拦得住的一道）。被 `finish` 拒掉的成品没人引用，交给 attach_orphan_clean。
-async fn check_quota_bytes(state: &AppState, admin_id: i64, incoming: u64) -> Result<(), ApiError> {
-    let quota_mb = state.cfg.attach_quota_mb;
-    if quota_mb <= 0 {
-        return Ok(());
-    }
-    let used = sum_size(state, admin_id).await?;
-    let quota = quota_mb as u64 * 1024 * 1024;
-    if used + incoming > quota {
-        return Err(ApiError::Coded {
-            status: StatusCode::BAD_REQUEST,
-            err: "attach.quota_exceeded",
-            msg: format!("附件总容量已超出配额（{quota_mb} MB），先删一些再传"),
-            args: json!({ "quota_mb": quota_mb, "used": used, "incoming": incoming }),
-        });
-    }
-    Ok(())
-}
-
-/// 某人的附件总量（字节）。ORM 没有聚合，走裸 SQL（表名与列名都是写死的常量，值走绑定）。
-///
-/// `CAST(… AS SIGNED)` 不能省：`SUM(bigint)` 在 MySQL 里是 **DECIMAL**，驱动把它当
-/// 字符串取回来，`as_i64()` 拿不到值 —— 那样配额会静默恒为「已用 0」（踩过，整个
-/// 配额闸形同虚设）。
-async fn sum_size(state: &AppState, admin_id: i64) -> Result<u64, ApiError> {
-    let rows = state
-        .db
-        .query(
-            "SELECT CAST(COALESCE(SUM(size), 0) AS SIGNED) AS total FROM attachment \
-             WHERE admin_id = ?",
-            &[DbValue::from(admin_id)],
-        )
-        .await
-        .map_err(ApiError::from)?;
-    Ok(rows
-        .first()
-        .and_then(|r| r.get("total"))
-        .and_then(|v| v.as_u64().or_else(|| v.as_i64().map(|n| n.max(0) as u64)))
-        .unwrap_or(0))
-}
+use super::*;
 
 // ── 列表 ────────────────────────────────────────────────────
 
@@ -372,11 +70,11 @@ pub async fn list(
 
 /// 列表附带的两个「翻译表」：上传人昵称、关联对象的（标题, 是否已发布）。
 /// 一次批量查完，别在行循环里逐条查库。
-type Names = HashMap<i64, String>;
+pub(crate) type Names = HashMap<i64, String>;
 /// 关联对象 id → (标题, 是否公开可见)
-type Labels = HashMap<i64, (String, bool)>;
+pub(crate) type Labels = HashMap<i64, (String, bool)>;
 
-async fn row_labels(state: &AppState, rows: &[Attachment]) -> Result<(Names, Labels), ApiError> {
+pub(crate) async fn row_labels(state: &AppState, rows: &[Attachment]) -> Result<(Names, Labels), ApiError> {
     let mut admin_ids: Vec<i64> = rows.iter().map(|a| a.admin_id).collect();
     admin_ids.sort_unstable();
     admin_ids.dedup();
@@ -416,7 +114,7 @@ async fn row_labels(state: &AppState, rows: &[Attachment]) -> Result<(Names, Lab
 
 /// 一行的对外形状。**不经模型序列化**：`stored_path` 是内部地址，手工挑字段
 /// 才不会哪天顺手把它带出去（判空逻辑也只有这一处）。
-fn row_json(a: &Attachment, names: &Names, labels: &Labels) -> Value {
+pub(crate) fn row_json(a: &Attachment, names: &Names, labels: &Labels) -> Value {
     let label = labels.get(&a.entity_id);
     json!({
         "id": hid::enc(a.id),
@@ -486,7 +184,7 @@ pub async fn download(
 /// 「能不能读这份附件」的唯一口径（下载用；列表另走数据权限）。
 /// 1) 绑定了已发布公告 → 放行（公开）；
 /// 2) 否则按上传人的数据权限。
-async fn ensure_readable(state: &AppState, auth: &Auth, row: &Attachment) -> Result<(), ApiError> {
+pub(crate) async fn ensure_readable(state: &AppState, auth: &Auth, row: &Attachment) -> Result<(), ApiError> {
     if row.entity_type == "notice" && row.entity_id != 0 {
         let notice = Notice::query()
             .filter_eq("id", row.entity_id)
@@ -519,7 +217,7 @@ async fn ensure_readable(state: &AppState, auth: &Auth, row: &Attachment) -> Res
 }
 
 /// 短串 → 行（不存在一律 404）。
-async fn load(state: &AppState, id: &str) -> Result<Attachment, ApiError> {
+pub(crate) async fn load(state: &AppState, id: &str) -> Result<Attachment, ApiError> {
     let id = hid::dec(id)?;
     Attachment::query()
         .filter_eq("id", id)
@@ -618,7 +316,7 @@ pub async fn bind(
 
 /// 写路径（改关联 / 删除）的数据权限：与下载的规则 2 同源，但**不看公开规则**
 /// —— 能下到一张公开配图不等于能改它。
-async fn ensure_writable(state: &AppState, auth: &Auth, row: &Attachment) -> Result<(), ApiError> {
+pub(crate) async fn ensure_writable(state: &AppState, auth: &Auth, row: &Attachment) -> Result<(), ApiError> {
     match Admin::query()
         .filter_eq("id", row.admin_id)
         .map_err(ApiError::from)?
@@ -674,7 +372,7 @@ pub async fn remove(
 
 /// multipart → 插件 `FormData`，顺带取出**原始文件名**（`name` 字段；插件不认它，
 /// 落库与下载要用）。字段名与头像那套逐字一致（`resource_*`）。
-async fn read_form(multipart: &mut Multipart) -> Result<(FormData, String), ApiError> {
+pub(crate) async fn read_form(multipart: &mut Multipart) -> Result<(FormData, String), ApiError> {
     let mut form = FormData::new();
     let mut name = String::new();
 
@@ -713,12 +411,12 @@ async fn read_form(multipart: &mut Multipart) -> Result<(FormData, String), ApiE
     Ok((form, name))
 }
 
-fn form_error(e: axum::extract::multipart::MultipartError) -> ApiError {
+pub(crate) fn form_error(e: axum::extract::multipart::MultipartError) -> ApiError {
     ApiError::BadRequest(format!("上传表单解析失败: {e}"))
 }
 
 /// 插件成功体原文 → `Value`（字段名原文透传，与头像一致）。
-fn plugin_json(raw: &str) -> Result<Value, ApiError> {
+pub(crate) fn plugin_json(raw: &str) -> Result<Value, ApiError> {
     serde_json::from_str(raw)
         .map_err(|e| ApiError::internal(format!("解析上传响应失败: {e}（原文 {raw}）")))
 }
@@ -732,52 +430,5 @@ pub(crate) fn group() -> aetherupload::GroupConfig {
         resource_extensions: ATTACH_EXTS.iter().map(|e| e.to_string()).collect(),
         event_before_upload_complete: false,
         event_upload_complete: false,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn group_name_and_whitelist_are_plugin_safe() {
-        // 分组名含下划线会让 saved_path 三段式解码错位（插件直接拒）
-        assert!(!ATTACH_GROUP.contains('_'));
-        assert!(ATTACH_GROUP.len() <= 20);
-        // 白名单里不能有可执行扩展名（黑名单那道只在白名单为空时才生效）
-        for ext in ATTACH_EXTS {
-            assert!(!matches!(ext, "php" | "exe" | "sh" | "js" | "jar" | "html" | "svg"), "{ext}");
-        }
-        // 内容反查用的扩展名（同族）也要在名单里，否则末片的内容校验过不去
-        for ext in ["png", "jpg", "txt", "zip"] {
-            assert!(ATTACH_EXTS.contains(&ext), "内容反查可能得出 {ext}");
-        }
-        // 旧版 office（OLE2）判成 octet-stream → 反查 bin，故意不收
-        assert!(!ATTACH_EXTS.contains(&"bin"));
-    }
-
-    #[test]
-    fn sha256_hex_matches_known_vector() {
-        assert_eq!(
-            sha256_hex(b""),
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-        );
-        assert_eq!(
-            sha256_hex(b"abc"),
-            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-        );
-    }
-
-    #[test]
-    fn sanitize_name_strips_paths_and_controls() {
-        assert_eq!(sanitize_name("logo.png", "attach_x_y.png"), "logo.png");
-        // 路径分隔符 / 控制字符 / 引号都换成空格（防「../」与引号破坏响应头）
-        assert_eq!(sanitize_name("../../etc/passwd", "attach_x_y.png"), ".. .. etc passwd");
-        assert_eq!(sanitize_name("a\"b\nc.png", "attach_x_y.png"), "a b c.png");
-        // 空 / 全清掉的 → 退回落盘文件名（别给一个空名字）
-        assert_eq!(sanitize_name("   ", "attach_202610_deadbeef.png"), "deadbeef.png");
-        assert_eq!(sanitize_name("中文名.pdf", "attach_x_y.pdf"), "中文名.pdf");
-        // 限长到列宽
-        assert_eq!(sanitize_name(&"x".repeat(300), "attach_x_y.png").chars().count(), NAME_MAX);
     }
 }

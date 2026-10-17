@@ -4,25 +4,13 @@ use crate::state::AppState;
 use bee_orm::pool::mysql::Pool;
 use bee_orm::{Model, OrmError, QuerySet, Value};
 
-pub mod admin;
-pub mod attach;
-pub mod audit_log;
-pub mod auth;
-pub mod avatar;
-pub mod config;
 pub mod csv;
-pub mod dashboard;
-pub mod import;
-pub mod dept;
-pub mod export;
-pub mod dict;
-pub mod job;
-pub mod login_log;
-pub mod menu;
-pub mod notice;
-pub mod notify;
-pub mod role;
-pub mod totp;
+pub mod v1;
+
+/// 版本化入口：业务接口全部挂在 `v1` 下（HTTP 面 `/api/v1`）。
+/// 这里 `pub use` 只为保持既有 `crate::api::<module>` 引用路径（含 `main.rs` 的路由
+/// 注册）零改动；新代码请直接写 `api::v1::<module>`。
+pub use v1::*;
 
 /// 按 id 分批删；返回**实际**删除条数。
 /// `table` 只传调用方写死的常量，id 来自数据库，值一律走绑定参数。
