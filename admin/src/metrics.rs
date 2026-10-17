@@ -54,8 +54,9 @@ const BUCKETS: [(&str, f64); 5] = [
 /// 兜底路由（未匹配路径）的固定标签：绝不用原始路径兜底，那正是高基数的来源。
 const UNMATCHED: &str = "<unmatched>";
 
-/// 单个路由模板的累计器。全是原子量，渲染时才读：请求路径上只做一次读锁取 `Arc`
-/// 加几个原子加，互不阻塞。
+/// 单个路由模板的累计器。字段是原子量；同一路由模板的 `Arc` 从 `PATHS` 取出后
+/// 长期复用。写入由全局 [`GATE`] 串行化到「一次请求」的粒度，抓取则持同一把闸抄出
+/// 整套值 —— 原子量本身只承担「多个 `Arc` 共享同一份计数」，不承担一致性。
 struct PathStat {
     count: AtomicU64,
     /// 各档**非累积**观测数（每个观测只落进第一个装得下的档）；
@@ -96,8 +97,26 @@ fn stat_for(path: &str) -> Arc<PathStat> {
         .clone()
 }
 
+/// 采集一致性闸：一次 `/metrics` 抓取要看到**同一时刻**的全套计数。写入侧是每个请求
+/// 一次极短的上锁（几个原子加），读取侧（抓取，秒级一次）持锁把值抄成普通结构再格式化
+/// —— 谁都不会读到对方的中间态。不用读写锁放行并发写：快照要的是「所有字段同刻」，
+/// 只有独占才能给；单把 Mutex 也不会在密集写者下把抓取饿死。
+static GATE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// 上闸。锁中毒 = 之前有人在临界区 panic，数据仍只是几个整数，继续用。
+fn gate() -> std::sync::MutexGuard<'static, ()> {
+    GATE.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// 记一次观测：落进第一个 `secs <= 上界` 的档（都不满足就只进 +Inf）。
+/// 自带闸 —— 单测与其它直接调用点同样与抓取互斥。
 fn record(st: &PathStat, secs: f64) {
+    let _gate = gate();
+    record_locked(st, secs);
+}
+
+/// 闸内的记账本体（调用方已持 [`GATE`]）。
+fn record_locked(st: &PathStat, secs: f64) {
     st.count.fetch_add(1, Ordering::Relaxed);
     st.sum_micros.fetch_add((secs * 1e6) as u64, Ordering::Relaxed);
     for (i, (_, bound)) in BUCKETS.iter().enumerate() {
@@ -109,11 +128,13 @@ fn record(st: &PathStat, secs: f64) {
 }
 
 /// 记一次请求。`path` 传 [`MatchedPath`] 的模板串（取不到时传 [`UNMATCHED`]）。
+/// 状态码大类与路径累计器在**同一次持锁**内更新：抓取不会看到只记了半边的一次请求。
 fn observe(path: &str, status: u16, secs: f64) {
+    let _gate = gate();
     if let Some(i) = class_index(status) {
         STATUS[i].fetch_add(1, Ordering::Relaxed);
     }
-    record(&stat_for(path), secs);
+    record_locked(&stat_for(path), secs);
 }
 
 /// 状态码 → 大类下标（2xx→0 … 5xx→3）。1xx 在本项目不出现（探活是 2xx），
@@ -149,8 +170,43 @@ pub async fn endpoint() -> impl IntoResponse {
     )
 }
 
+/// 快照里单个路由模板的一组值：同一把闸内一次抄出，字段之间天然同刻。
+struct PathValues {
+    count: u64,
+    buckets: [u64; BUCKETS.len()],
+    sum_micros: u64,
+}
+
+/// 一次抓取看到的完整指标。
+struct Snapshot {
+    status: [u64; 4],
+    paths: Vec<(String, PathValues)>,
+}
+
+/// 从累计器抄一组值（调用方持闸或单线程测试）。
+fn values_of(st: &PathStat) -> PathValues {
+    PathValues {
+        count: st.count.load(Ordering::Relaxed),
+        buckets: std::array::from_fn(|i| st.buckets[i].load(Ordering::Relaxed)),
+        sum_micros: st.sum_micros.load(Ordering::Relaxed),
+    }
+}
+
+/// 一次持锁采集全部指标。返回后闸已释放 —— 格式化不挡住新请求的计数，
+/// 新模板照旧被中间件记进表里，下一次抓取看得到。
+fn snapshot() -> Snapshot {
+    let _gate = gate();
+    let status = std::array::from_fn(|i| STATUS[i].load(Ordering::Relaxed));
+    let paths = {
+        let map = PATHS.read().unwrap();
+        map.iter().map(|(k, st)| (k.clone(), values_of(st))).collect()
+    };
+    Snapshot { status, paths }
+}
+
 /// 渲染全部指标。路径按字典序（BTreeMap）输出，抓取结果稳定、好 diff。
 fn render() -> String {
+    let snap = snapshot();
     let mut out = String::with_capacity(2048);
 
     out.push_str("# HELP process_start_time_seconds 进程启动时间（Unix 秒）\n");
@@ -162,62 +218,124 @@ fn render() -> String {
     for (i, class) in ["2xx", "3xx", "4xx", "5xx"].iter().enumerate() {
         out.push_str(&format!(
             "http_requests_total{{status=\"{class}\"}} {}\n",
-            STATUS[i].load(Ordering::Relaxed)
+            snap.status[i]
         ));
     }
 
-    // 快照一次：渲染期间不再持锁（新模板照旧被中间件记进表里，下一次抓取看得到）
-    let paths: Vec<(String, Arc<PathStat>)> = {
-        let map = PATHS.read().unwrap();
-        map.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
-    };
-
     out.push_str("# HELP http_requests_by_path_total 按路由模板的请求数（模板而非原始路径，防高基数）\n");
     out.push_str("# TYPE http_requests_by_path_total counter\n");
-    for (path, st) in &paths {
+    for (path, st) in &snap.paths {
         out.push_str(&format!(
             "http_requests_by_path_total{{path=\"{path}\"}} {}\n",
-            st.count.load(Ordering::Relaxed)
+            st.count
         ));
     }
 
     out.push_str("# HELP http_request_duration_seconds 请求耗时直方图（按路由模板）\n");
     out.push_str("# TYPE http_request_duration_seconds histogram\n");
-    for (path, st) in &paths {
+    for (path, st) in &snap.paths {
         write_histogram(&mut out, path, st);
     }
     out
 }
 
-/// 直方图一个模板的三件套（bucket 累积 / sum / count）。纯函数：喂一个 [`PathStat`]
+/// 直方图一个模板的三件套（bucket 累积 / sum / count）。纯函数：喂一组快照值
 /// 就出文本 —— 单测直接构造累计器验证累积语义，不必碰全局表。
-fn write_histogram(out: &mut String, path: &str, st: &PathStat) {
+fn write_histogram(out: &mut String, path: &str, st: &PathValues) {
     let mut cumulative = 0u64;
     for (i, (le, _)) in BUCKETS.iter().enumerate() {
-        cumulative += st.buckets[i].load(Ordering::Relaxed);
+        cumulative += st.buckets[i];
         out.push_str(&format!(
             "http_request_duration_seconds_bucket{{le=\"{le}\",path=\"{path}\"}} {cumulative}\n"
         ));
     }
     // +Inf 恒等于观测总数（count）：超过最大档的观测不进任何有限档，但都进 count
-    let count = st.count.load(Ordering::Relaxed);
     out.push_str(&format!(
-        "http_request_duration_seconds_bucket{{le=\"+Inf\",path=\"{path}\"}} {count}\n"
+        "http_request_duration_seconds_bucket{{le=\"+Inf\",path=\"{path}\"}} {}\n",
+        st.count
     ));
-    let micros = st.sum_micros.load(Ordering::Relaxed);
     out.push_str(&format!(
         "http_request_duration_seconds_sum{{path=\"{path}\"}} {}.{:06}\n",
-        micros / 1_000_000,
-        micros % 1_000_000
+        st.sum_micros / 1_000_000,
+        st.sum_micros % 1_000_000
     ));
     out.push_str(&format!(
-        "http_request_duration_seconds_count{{path=\"{path}\"}} {count}\n"
+        "http_request_duration_seconds_count{{path=\"{path}\"}} {}\n",
+        st.count
     ));
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::AtomicBool;
+
+    /// 取一条指标样本的值（行末那一段）。行首匹配用 `{path="..."}` 全串，避免前缀撞车。
+    fn line_value(out: &str, prefix: &str) -> u64 {
+        out.lines()
+            .find(|l| l.starts_with(prefix))
+            .and_then(|l| l.rsplit(' ').next())
+            .and_then(|v| v.parse().ok())
+            .unwrap_or_else(|| panic!("缺样本 {prefix}:\n{out}"))
+    }
+
+    /// `_sum` 是 `秒.微秒(6 位)`：按定点数还原成微秒，避免浮点比较。
+    fn sum_micros(out: &str, prefix: &str) -> u64 {
+        let text = out
+            .lines()
+            .find(|l| l.starts_with(prefix))
+            .and_then(|l| l.rsplit(' ').next())
+            .unwrap_or_else(|| panic!("缺样本 {prefix}:\n{out}"));
+        let (secs, frac) = text.split_once('.').unwrap_or_else(|| panic!("sum 不是定点小数: {text}"));
+        secs.parse::<u64>().unwrap() * 1_000_000 + frac.parse::<u64>().unwrap()
+    }
+
+    /// A1：一次抓取里的 total / count / sum 必须来自**同一个时刻**。并发记录下每次观测
+    /// 都记 1ms，`sum == count × 1000` 与 `by_path_total == histogram count` 应恒成立；
+    /// 旧实现先读 count、格式化一行、再读 sum（且 total 与 histogram 分两轮扫表），
+    /// 新观测落在两次读之间就会输出自相矛盾的快照。
+    #[test]
+    fn render_snapshot_is_atomic_under_concurrent_records() {
+        let path = "/a1/atomic";
+        let st = stat_for(path);
+        let stop = Arc::new(AtomicBool::new(false));
+        let writers: Vec<_> = (0..3)
+            .map(|_| {
+                let st = st.clone();
+                let stop = stop.clone();
+                std::thread::spawn(move || {
+                    let mut n = 0u32;
+                    while !stop.load(Ordering::Relaxed) {
+                        record(&st, 0.001);
+                        n += 1;
+                        // 让出 CPU：修好后快照要拿独占锁，密集读者不应把写者饿死
+                        if n % 64 == 0 {
+                            std::thread::yield_now();
+                        }
+                    }
+                })
+            })
+            .collect();
+
+        for i in 0..400 {
+            let out = render();
+            let prefix = format!("path=\"{path}\"");
+            let total = line_value(&out, &format!("http_requests_by_path_total{{{prefix}}} "));
+            let count = line_value(&out, &format!("http_request_duration_seconds_count{{{prefix}}} "));
+            let micros = sum_micros(&out, &format!("http_request_duration_seconds_sum{{{prefix}}} "));
+            assert_eq!(total, count, "第 {i} 次抓取：同一路径 total 与直方图 count 不是同刻:\n{out}");
+            assert_eq!(
+                micros,
+                count * 1000,
+                "第 {i} 次抓取：每次观测 1ms，sum 与 count 必须自洽（旧实现可读成 count 已加、sum 未加）:\n{out}"
+            );
+        }
+
+        stop.store(true, Ordering::Relaxed);
+        for w in writers {
+            w.join().unwrap();
+        }
+    }
 
     /// 只认 2xx–5xx：1xx（本项目不出现）与其它的不给序列，免得输出恒为 0 的噪音。
     #[test]
@@ -242,7 +360,7 @@ mod tests {
         record(&st, 3.0);
 
         let mut out = String::new();
-        write_histogram(&mut out, "/api/v1/health", &st);
+        write_histogram(&mut out, "/api/v1/health", &values_of(&st));
         let line = |le: &str| {
             format!("http_request_duration_seconds_bucket{{le=\"{le}\",path=\"/api/v1/health\"}} ")
         };
