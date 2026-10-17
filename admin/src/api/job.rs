@@ -144,12 +144,15 @@ pub async fn run(
     let Some(spec) = jobs::spec(&job.code) else {
         return Err(ApiError::job_not_registered(&job.code));
     };
-    // 已在跑就当场拒（连点/与调度撞车）：闸的权威判断在 jobs::run 里，这里只是让用户看得见
-    if jobs::is_running(spec.code) {
+    // acquire-first：先在**当前请求**里拿闸，拿不到当场 409；拿到才 spawn，permit 随
+    // 任务走。旧写法「先 is_running 预检、spawn 里再 acquire」有毫秒级窗口 —— 两个
+    // 请求都过预检时，后一个的任务体在 jobs::run 里拿不到闸、静默跳过，而接口已经
+    // 回了 200（用户看到「已触发」却没执行）。现在「受理」与「占住闸」是同一个动作。
+    let Some(permit) = jobs::Busy::acquire(spec.code) else {
         return Err(ApiError::job_running(&job.code));
-    }
+    };
     tokio::spawn(async move {
-        jobs::run(&state, job, spec).await;
+        jobs::run_holding(&state, job, spec, permit).await;
     });
     Ok(ok(json!({ "triggered": true })))
 }

@@ -144,15 +144,12 @@ fn due(job: &Job, now: chrono::NaiveDateTime) -> bool {
 /// 不同任务互不影响。shortcut: 只在单进程内生效（与调度同一前提），多实例部署要换成 DB 行锁。
 static RUNNING: std::sync::Mutex<Vec<&'static str>> = std::sync::Mutex::new(Vec::new());
 
-/// 这个任务是不是正在跑（接口层用它当场拒掉重复触发）。
-pub fn is_running(code: &str) -> bool {
-    RUNNING.lock().map(|v| v.contains(&code)).unwrap_or(false)
-}
-
-/// 占位凭据：`run` 全程持有，Drop 时释放 —— 正常返回、提前 return、panic 都不会漏放。
-struct Busy(&'static str);
+/// 占位凭据：执行全程持有，Drop 时释放 —— 正常返回、提前 return、panic 都不会漏放。
+/// 手动触发的接口在 **spawn 之前** 调 [`Busy::acquire`]（失败当场 409），把 permit
+/// 交给 [`run_holding`]；调度循环走 [`run`]（内部自己拿）。
+pub struct Busy(&'static str);
 impl Busy {
-    fn acquire(code: &'static str) -> Option<Self> {
+    pub fn acquire(code: &'static str) -> Option<Self> {
         let mut v = RUNNING.lock().ok()?;
         if v.contains(&code) {
             return None;
@@ -169,13 +166,25 @@ impl Drop for Busy {
     }
 }
 
-/// 执行一个任务：抢占 → 跑 → 写 `job_log` → 回写 job 行的执行结果。
-/// 手动触发与调度循环都走这里（`last_run_at` 两边都更新：UI 的「上次运行」要如实）。
-/// 已经在跑的任务直接跳过（不写 job_log、不动 `last_run_at`：没执行就不是一次执行记录）。
+/// 调度循环的入口：自己拿闸，拿不到就跳过（不写 job_log、不动 `last_run_at`：
+/// 没执行就不是一次执行记录）。
 pub async fn run(state: &AppState, job: Job, spec: &JobSpec) -> (i8, String, i64) {
-    let Some(_busy) = Busy::acquire(spec.code) else {
+    let Some(permit) = Busy::acquire(spec.code) else {
         return (0, format!("跳过：任务 {} 上一次还在执行中", spec.code), 0);
     };
+    run_holding(state, job, spec, permit).await
+}
+
+/// 执行一个任务（**调用方已持 permit**）：抢占 → 跑 → 写 `job_log` → 回写 job 行。
+/// 手动触发在接口层先 [`Busy::acquire`]，拿到才 spawn 到这里 —— 这样「受理」与
+/// 「占住闸」是同一个同步动作，不存在「接口回 200、任务体却静默跳过」的窗口。
+/// permit 随任务走到函数结束（Drop 释放）。
+pub async fn run_holding(
+    state: &AppState,
+    job: Job,
+    spec: &JobSpec,
+    _permit: Busy,
+) -> (i8, String, i64) {
     let started = now();
     // 抢占：先把 last_run_at 落库，同一进程的下一 tick 不会再选它
     let mut claimed = job.clone();
