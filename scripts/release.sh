@@ -4,6 +4,7 @@
 #   bash scripts/release.sh v2.9.0 --notes-file /tmp/notes-v2.9.0.md
 #   bash scripts/release.sh v2.9.0 --notes-file /tmp/notes-v2.9.0.md --dry-run
 #   bash scripts/release.sh v2.9.0 --notes-file /tmp/notes-v2.9.0.md --skip-images
+#   bash scripts/release.sh v2.9.0 --notes-file /tmp/notes-v2.9.0.md --commit 92536ef
 #
 # 产物口径（**别自己另搞一套**：install.sh 的 download 模式按前两个名字认）：
 #   bee_admin                  ELF 可执行，**strip 过** —— 不 strip 是 22MB，发布口径 16.6MB
@@ -20,6 +21,10 @@
 # --dry-run：真的构建、真的打包、真的自检，只在最后一步停下（不 push、不建 release），
 #            并把将要执行的 gh 命令原样打出来。
 # --skip-images：跳过镜像与 compose 包（本机没有 docker daemon 时的后路），只发前两个。
+# --commit REF：发一个**已经进主干**的历史提交（补发一个漏掉的版本、或按老源码重打包）。
+#            源码取自 REF 的临时 worktree（CARGO_TARGET_DIR 指回主仓库的 target/，不在主仓库里
+#            checkout 来 checkout 去）；REF 必须是 origin/main 的祖先 —— 发不在主干的提交等于
+#            绕过评审直接发布。给了它就不再要求「在 main、工作树干净、HEAD 已推送」。
 set -euo pipefail
 
 PROG=${0##*/}
@@ -47,7 +52,7 @@ usage() {
   cat <<'EOF'
 BRA 发版脚本
 
-用法：bash scripts/release.sh <tag> --notes-file FILE [--dry-run] [--skip-images]
+用法：bash scripts/release.sh <tag> --notes-file FILE [--dry-run] [--skip-images] [--commit REF]
 
   <tag>               形如 v2.9.0（拒绝重发：本地与远端都不能已有这个 tag）。
                       允许 v9.9.9-rc1 这样的预发布后缀 —— 带后缀的自动标 --prerelease
@@ -56,10 +61,15 @@ BRA 发版脚本
   --dry-run           真构建、真打包、真自检，打印将要执行的 gh 命令后退出
   --skip-images       跳过镜像与 compose 包，只发前两个产物（本机没有 docker daemon
                       时的后路）；镜像包与 compose 包本来是随每个 release 一起发的
+  --commit REF        发一个已经进主干的历史提交：源码取自 REF 的临时 worktree，
+                      Release 的 tag 钉在 REF 上（gh release create --target REF）。
+                      REF 必须是 origin/main 的祖先；给了它就不再要求「在 main、
+                      工作树干净、HEAD 已推送」（发的是 REF，不是当前工作树）
   --help              显示本帮助
 
 前置（一个不满足就退出，什么都没发）：
   在 main 分支 · 工作树干净 · HEAD 已推送（== origin/main）· tag 不存在 · gh 已登录
+  （带 --commit REF 时第一条换成：REF 在 origin/main 的历史里）
   （镜像与 compose 包另需本机 docker daemon —— 没有就用 --skip-images）
 
 产物（target/release-assets/，不入库）：
@@ -73,13 +83,14 @@ EOF
 # ══════════════════════════════════════════════════════════════════════════
 #  参数
 # ══════════════════════════════════════════════════════════════════════════
-TAG=''; NOTES=''; DRY_RUN=0; SKIP_IMAGES=0
+TAG=''; NOTES=''; DRY_RUN=0; SKIP_IMAGES=0; COMMIT=''
 need_val() { [ "$2" -ge 2 ] || die "$1 需要一个值（--help 看用法）"; }
 while [ $# -gt 0 ]; do
   case $1 in
     --notes-file)  need_val "$1" $#; NOTES=$2; shift 2;;
     --dry-run)     DRY_RUN=1; shift;;
     --skip-images) SKIP_IMAGES=1; shift;;
+    --commit)      need_val "$1" $#; COMMIT=$2; shift 2;;
     --help|-h)     usage; exit 0;;
     -*)            die "未知参数：$1（--help 看用法）";;
     *)             [ -z "$TAG" ] || die "多余的位置参数：$1（--help 看用法）"; TAG=$1; shift;;
@@ -93,6 +104,14 @@ done
 [ -n "$NOTES" ] || die "少了 --notes-file。标题里不写描述，描述全放这个文件"
 [ -f "$NOTES" ] && [ -r "$NOTES" ] || die "notes 文件读不到：$NOTES"
 NOTES=$(cd -- "$(dirname -- "$NOTES")" && pwd -P)/$(basename -- "$NOTES")
+
+# --commit REF：先把 REF 解析成一个具体提交（tag、短 SHA、分支名都收）。解析不出来是明摆着的
+# 用法错误，直接退（和 notes 文件读不到同级）—— 干跑也不放行，别让它带着一个假 ref 往下跑。
+COMMIT_SHA=''
+if [ -n "$COMMIT" ]; then
+  COMMIT_SHA=$(git rev-parse -q --verify "$COMMIT^{commit}") \
+    || die "--commit 的 ref 不是一个提交：$COMMIT（tag、短 SHA、分支名都行）"
+fi
 
 need_cmds=(cargo pnpm strip tar install sha256sum)
 # docker/gzip 只在做镜像与 compose 包时用（--skip-images 就不强求）
@@ -109,21 +128,32 @@ say "前置检查"
 problems=()
 add_problem() { problems+=("$1"); }
 
-branch=$(git rev-parse --abbrev-ref HEAD)
-[ "$branch" = main ] || add_problem "当前在 $branch 分支，发版要在 main 上（git switch main）"
-
-dirty=$(git status --porcelain)
-if [ -n "$dirty" ]; then
-  add_problem "工作树不干净（构建出来的东西会与 tag 指向的提交对不上）：
-$(printf '%s\n' "$dirty" | sed 's/^/        /')"
-fi
-
 HEAD=$(git rev-parse HEAD)
 origin_main=$(git rev-parse origin/main 2>/dev/null || echo '')
-if [ -z "$origin_main" ]; then
-  add_problem "没有 origin/main 这个引用（git fetch origin 再看看）"
-elif [ "$HEAD" != "$origin_main" ]; then
-  add_problem "HEAD（${HEAD:0:12}）≠ origin/main（${origin_main:0:12}）—— 先把 $branch 推上去（git push），别发一个源码不在远端的版本"
+
+if [ -n "$COMMIT_SHA" ]; then
+  # 发的是 REF 那个提交、不是当前工作树：在哪个分支、树干净不干净、HEAD 推没推都无所谓。
+  # 但 REF 必须已在 origin/main 的历史里 —— 发一个没进主干的提交等于绕过评审直接发布。
+  if [ -z "$origin_main" ]; then
+    add_problem "没有 origin/main 这个引用（git fetch origin 再看看）"
+  elif ! git merge-base --is-ancestor "$COMMIT_SHA" "$origin_main"; then
+    add_problem "--commit 的 $COMMIT（${COMMIT_SHA:0:12}）不在 origin/main（${origin_main:0:12}）的历史里 —— 没进主干的不发；本地 origin/main 旧的话先 git fetch origin"
+  fi
+else
+  branch=$(git rev-parse --abbrev-ref HEAD)
+  [ "$branch" = main ] || add_problem "当前在 $branch 分支，发版要在 main 上（git switch main）"
+
+  dirty=$(git status --porcelain)
+  if [ -n "$dirty" ]; then
+    add_problem "工作树不干净（构建出来的东西会与 tag 指向的提交对不上）：
+$(printf '%s\n' "$dirty" | sed 's/^/        /')"
+  fi
+
+  if [ -z "$origin_main" ]; then
+    add_problem "没有 origin/main 这个引用（git fetch origin 再看看）"
+  elif [ "$HEAD" != "$origin_main" ]; then
+    add_problem "HEAD（${HEAD:0:12}）≠ origin/main（${origin_main:0:12}）—— 先把 $branch 推上去（git push），别发一个源码不在远端的版本"
+  fi
 fi
 
 if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
@@ -148,6 +178,8 @@ if [ "${#problems[@]}" -gt 0 ]; then
     for p in "${problems[@]}"; do printf '    · %s\n' "$p" >&2; done
     exit 1
   fi
+elif [ -n "$COMMIT_SHA" ]; then
+  info "$COMMIT（${COMMIT_SHA:0:12}）在 origin/main 的历史里、tag $TAG 未用过、gh 已登录"
 else
   info "在 main、工作树干净、HEAD 已推送、tag $TAG 未用过、gh 已登录"
 fi
@@ -155,13 +187,46 @@ fi
 # ══════════════════════════════════════════════════════════════════════════
 #  构建
 # ══════════════════════════════════════════════════════════════════════════
+# --commit REF：源码取自 REF 的临时 worktree —— 不在主仓库里 checkout 来 checkout 去，
+# 正常结束 / die / Ctrl-C 都走同一个 EXIT 兜底把它收掉。两处关键：
+#   CARGO_TARGET_DIR 指回主仓库的 target/ —— 复用第三方依赖的编译缓存（不然新目录里是
+#     一次冷编译）；cargo 的指纹带源码路径，工作区自己的 crate 仍会重编，省下的是依赖那一大块。
+#   BIN_SRC 本来就落在 $ROOT/target 下，不用改；前端的 dist 则要从 worktree 里取。
+# （compose 包的清理也挂在这一个 trap 上 —— 只能用一处，后装的会顶掉先装的。）
+BUILD_ROOT=$ROOT
+compose_pkg=''; WT_ROOT=''; WT=''
+cleanup() {
+  local rc=$?
+  rm -rf "$compose_pkg"
+  if [ -n "$WT_ROOT" ]; then
+    git worktree remove --force "$WT" >/dev/null 2>&1 || true
+    rm -rf "$WT_ROOT"
+  fi
+  exit "$rc"
+}
+# Ctrl-C / kill 也不能把临时 worktree 留在 .git/worktrees 里：信号先转成非零退出码，
+# 再走同一个 EXIT 兜底（直接挂 INT/TERM 的话，$? 恰好是 0 时会被当成成功退出）
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+if [ -n "$COMMIT_SHA" ]; then
+  WT_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/bra-release-XXXXXX")
+  WT="$WT_ROOT/wt"
+  git worktree add --detach "$WT" "$COMMIT_SHA" >&2 || die "建临时 worktree 失败（$COMMIT_SHA）"
+  export CARGO_TARGET_DIR="$ROOT/target"
+  BUILD_ROOT=$WT
+  DIST_SRC="$WT/admin/web/dist"
+  info "源码取自 $COMMIT（${COMMIT_SHA:0:12}）的临时 worktree：$WT（收尾自动删）"
+  info "cargo target 复用主仓库的 $ROOT/target（第三方依赖不重编）"
+fi
+
 say "构建后端（这一步慢，几分钟到几十分钟；机器忙的时候更慢，别急着按 Ctrl-C）"
 # BRA_VERSION 同时给后端（admin/build.rs 注入 /api/v1/version）与前端（下面那行）
-( cd "$ROOT" && BRA_VERSION="$TAG" cargo build --release -p bee_admin ) || die "cargo 构建失败"
+( cd "$BUILD_ROOT" && BRA_VERSION="$TAG" cargo build --release -p bee_admin ) || die "cargo 构建失败"
 [ -x "$BIN_SRC" ] || die "$BIN_SRC 没生成"
 
 say "构建前端（pnpm install --frozen-lockfile + pnpm build）"
-( cd "$ROOT/admin/web" && pnpm install --frozen-lockfile && BRA_VERSION="$TAG" pnpm build ) || die "前端构建失败"
+( cd "$BUILD_ROOT/admin/web" && pnpm install --frozen-lockfile && BRA_VERSION="$TAG" pnpm build ) || die "前端构建失败"
 [ -f "$DIST_SRC/index.html" ] || die "$DIST_SRC/index.html 没生成"
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -208,8 +273,7 @@ info "bee-admin-web-dist.tar.gz $(stat -c%s "$ASSETS/bee-admin-web-dist.tar.gz")
 #  `docker load -i` 之后 `docker compose up -d`（不带 --build）就能起栈。
 #  只有这一节需要 docker daemon；--skip-images 整节跳过（只发前两个产物）。
 # ══════════════════════════════════════════════════════════════════════════
-compose_pkg=''
-trap 'rm -rf "$compose_pkg"' EXIT
+# （$compose_pkg 的临时目录与 --commit 的临时 worktree 共用一个 EXIT trap，装在构建那节）
 if [ "$SKIP_IMAGES" = 1 ]; then
   warn "跳过镜像与 compose 包（--skip-images）：本次只发 bee_admin 与前端 dist"
 else
@@ -309,9 +373,10 @@ EOF
 fi
 
 # ══════════════════════════════════════════════════════════════════════════
-#  发布（标题只写 tag；--target 钉住 HEAD，远端 tag 就落在被测过的那个提交上）
+#  发布（标题只写 tag；--target 钉住「源码出自哪个提交」—— 默认 HEAD，--commit 时是 REF，
+#        远端 tag 就落在被测过的那个提交上，而不是发版时远端的 HEAD）
 # ══════════════════════════════════════════════════════════════════════════
-gh_cmd=(gh release create "$TAG" --title "$TAG" --notes-file "$NOTES" --target "$HEAD")
+gh_cmd=(gh release create "$TAG" --title "$TAG" --notes-file "$NOTES" --target "${COMMIT_SHA:-$HEAD}")
 # 带后缀的 tag（v2.9.0-rc1）是预发布：必须标 --prerelease —— 不标就会被当成正式版发布、
 # 还会占掉 Latest，而 install.sh 默认模式取 latest，等于把人往 rc 上引。纯 vX.Y.Z 才不加。
 case $TAG in *-*) gh_cmd+=(--prerelease);; esac

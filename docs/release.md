@@ -9,6 +9,7 @@
 bash scripts/release.sh v2.9.0 --notes-file /tmp/notes-v2.9.0.md
 bash scripts/release.sh v2.9.0 --notes-file /tmp/notes-v2.9.0.md --dry-run   # 真构建真打包，不发
 bash scripts/release.sh v2.9.0 --notes-file /tmp/notes-v2.9.0.md --skip-images  # 本机没 docker，只发二进制
+bash scripts/release.sh v2.9.1 --notes-file /tmp/notes-v2.9.1.md --commit 92536ef  # 补发一个已进主干的历史提交
 ```
 
 前置（脚本自己查，一个不满足就退出、什么都不发）：
@@ -18,9 +19,38 @@ bash scripts/release.sh v2.9.0 --notes-file /tmp/notes-v2.9.0.md --skip-images  
 - tag `vX.Y.Z` 本地与远端都没用过（发过的版本不重发）
 - `gh` 已登录
 
+带 `--commit REF` 时前三条换成一条：**REF 必须在 `origin/main` 的历史里**（见下节）。
+
 `--dry-run` 会真构建、真打包、真自检，然后在打印出将要执行的 `gh release create` 命令后停下 ——
 不推送、不建 release、不动远端。机器上没到发版条件时（比如不在 `main`），干跑把不满足的项列成
 警告继续跑完，好让你先把产物验一遍。
+
+## 补发历史提交（`--commit REF`）
+
+补发一个漏掉的版本、或按老源码重打包时，用它而不是去 checkout 老提交：
+
+```bash
+bash scripts/release.sh v2.13.1 --notes-file /tmp/notes-v2.13.1.md --commit 92536ef
+```
+
+- **源码取自 REF**，不是当前工作树：脚本在 `mktemp -d` 下 `git worktree add --detach` 一份 REF
+  的源码来构建，收尾（正常结束 / 失败 / Ctrl-C）自动把 worktree 删掉。`CARGO_TARGET_DIR` 指回
+  主仓库的 `target/`，第三方依赖的编译缓存复用得上（cargo 的指纹带源码路径，工作区自己的 crate
+  仍会重编一遍）。不会在主仓库里 checkout 来 checkout 去。
+- **前置换成一条更硬的**：REF 必须是 `origin/main` 的祖先（`git merge-base --is-ancestor`）——
+  发一个没进主干的提交等于绕过评审直接发布。本地 `origin/main` 旧的话先 `git fetch origin`；
+  在哪个分支、工作树干不干净、HEAD 推没推都与这次发布无关。
+- **tag 钉在 REF 上**：`gh release create --target <REF 的 SHA>`，远端 tag 落在 REF 那个提交，
+  而不是发版时远端的 HEAD。
+- **版本号仍是新 tag**：`BRA_VERSION=$TAG` 照传，二进制与前端报的是这次要发的版本（补发的是
+  「用老源码打这个版本」，不是沿用老版本号）。
+- 不带 `--commit` 时行为完全不变（三道前置照旧、`--target` 是 HEAD、构建在主工作树里做）。
+
+拿历史 ref 干跑验一遍（`--skip-images` 可省，docker 段与 ref 无关）：
+
+```bash
+bash scripts/release.sh v0.0.1-drycommit --notes-file /tmp/notes.md --commit 92536ef --dry-run --skip-images
+```
 
 改过 `install.sh` 之后，另跑一次 `bash scripts/smoke-install.sh`（在 `/tmp` 装一套 scratch 实例、
 再 `--keep-conf` 升级一次、断言、清理；全程不碰生产的 8080 与 `bee_admin` 库）。
