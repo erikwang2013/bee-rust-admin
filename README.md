@@ -276,7 +276,7 @@ cd admin/web && pnpm build && pnpm preview   # http://localhost:8081
 
 | 账号 | 密码 |
 |---|---|
-| `admin` | `admin/conf/app.conf` 的 `[seed] initial_admin_password`（示例配置为 `admin123`） |
+| `admin` | `admin/conf/app.conf` 的 `[seed] initial_admin_password`（示例配置为 `change-me-please-1`） |
 
 超管仅在首次启动（`admin` 表为空）时写入。**登录后请立即到「个人中心」修改密码**；
 生产环境务必同时改掉 `initial_admin_password` 与 `[jwt] secret`。

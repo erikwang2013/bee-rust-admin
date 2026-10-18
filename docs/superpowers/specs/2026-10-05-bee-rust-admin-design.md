@@ -248,11 +248,19 @@ login_log(id, admin_id BIGINT DEFAULT 0, username VARCHAR(64), ip VARCHAR(45),
 
 ```
 system                   目录
-├─ system:admin          菜单 /system/admin    list add edit remove resetPwd
-├─ system:role           菜单 /system/role     list add edit remove
-├─ system:menu           菜单 /system/menu     list add edit remove
-├─ system:dept           菜单 /system/dept     list add edit remove
-└─ system:loginlog       菜单 /system/loginlog list remove
+├─ system:admin          菜单 /system/admin      list add edit remove resetPwd
+├─ system:role           菜单 /system/role       list add edit remove
+├─ system:menu           菜单 /system/menu       list add edit remove
+├─ system:dept           菜单 /system/dept       list add edit remove
+├─ system:loginlog       菜单 /system/login-log  list remove
+├─ system:auditlog       菜单 /system/audit-log  list remove
+├─ system:dict           菜单 /system/dict       list add edit remove
+├─ system:job            菜单 /system/job        list edit
+├─ system:notice         菜单 /system/notice     list add edit remove
+├─ system:config         菜单 /system/config     list edit
+├─ system:notify         菜单 /system/notify     list edit
+├─ system:export         菜单 /system/export     list remove
+└─ system:attach         菜单 /system/attach     list add edit remove
 ```
 
 ### 5.3 API（/api/v1，统一信封 `{code, msg, err, args, data}`，code 0=成功，非 0 同 HTTP 状态码）
@@ -384,7 +392,7 @@ secret = <启动时若为 changeme 则拒绝启动>
 expire_hours = 24
 
 [seed]
-initial_admin_password = admin123   # 仅首次 seed 超管时使用，README 要求登录后立即改
+initial_admin_password = change-me-please-1   # 仅首次 seed 超管时使用，README 要求登录后立即改
 ```
 
 ### 5.7 测试
