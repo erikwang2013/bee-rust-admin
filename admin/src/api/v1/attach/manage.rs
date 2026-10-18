@@ -368,53 +368,6 @@ pub async fn remove(
     Ok(ok(json!({ "deleted": 1 })))
 }
 
-// ── 表单 ────────────────────────────────────────────────────
-
-/// multipart → 插件 `FormData`，顺带取出**原始文件名**（`name` 字段；插件不认它，
-/// 落库与下载要用）。字段名与头像那套逐字一致（`resource_*`）。
-pub(crate) async fn read_form(multipart: &mut Multipart) -> Result<(FormData, String), ApiError> {
-    let mut form = FormData::new();
-    let mut name = String::new();
-
-    while let Some(field) = multipart.next_field().await.map_err(form_error)? {
-        let Some(key) = field.name().map(str::to_string) else {
-            continue;
-        };
-        if key == "resource_chunk" {
-            let bytes = field.bytes().await.map_err(form_error)?;
-            // 单片不该比整份上限还大：超了说明客户端没按服务端给的 chunk_size 切
-            if bytes.len() as u64 > ATTACH_MAX_BYTES {
-                return Err(too_large_err());
-            }
-            form.push_file(key, ChunkBody::Bytes(bytes.to_vec()));
-            continue;
-        }
-        let text = field.text().await.map_err(form_error)?;
-        if key == "name" {
-            name = text;
-            continue; // 插件不认这个字段，不往里塞
-        }
-        if key == "resource_name" && name.is_empty() {
-            name = text.clone();
-        }
-        if key == "resource_size"
-            && let Ok(n) = text.trim().parse::<u64>()
-            && n > ATTACH_MAX_BYTES
-        {
-            return Err(too_large_err());
-        }
-        form.push_text(key, text);
-    }
-
-    // 分组名服务端钉死：它决定落盘目录，不能让客户端挑（插件按 `group` 查分组配置）
-    form.push_text("group", ATTACH_GROUP);
-    Ok((form, name))
-}
-
-pub(crate) fn form_error(e: axum::extract::multipart::MultipartError) -> ApiError {
-    ApiError::BadRequest(format!("上传表单解析失败: {e}"))
-}
-
 /// 插件成功体原文 → `Value`（字段名原文透传，与头像一致）。
 pub(crate) fn plugin_json(raw: &str) -> Result<Value, ApiError> {
     serde_json::from_str(raw)

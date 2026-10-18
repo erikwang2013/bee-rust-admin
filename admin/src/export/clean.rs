@@ -18,22 +18,30 @@ pub async fn clean(state: AppState) -> Result<String, String> {
         .map_err(|e| format!("查过期导出失败: {e}"))?;
 
     let (mut files, mut rows) = (0u32, 0u32);
+    let export_dir = dir(&state);
     for task in expired {
-        // 行里没有路径也要按约定兜底删一次：改名成功、回写 file_path 之前进程死掉的话，
-        // 文件已经以 `{id}.csv` 落在盘上了，只信行里的 path 会把孤儿永久留在磁盘上
-        let path = if task.file_path.is_empty() {
-            dir(&state).join(format!("{}.csv", task.id)).to_string_lossy().into_owned()
-        } else {
-            task.file_path.clone()
-        };
-        match std::fs::remove_file(&path) {
-            Ok(_) => files += 1,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => {
-                // 文件删不掉就**留着这行**：记录先删了，文件就再没人负责清了
-                tracing::warn!("删导出文件 {} 失败，保留记录下次再试: {e}", path);
-                continue;
+        // 成品按代次命名（N1）：行里的 `file_path` 指向赢家那份，而输家（被接管）与
+        // 升级前留下的旧代次成品都按名字约定扫。行里没有路径也要扫 —— 改名成功、
+        // 回写 file_path 之前进程死掉的话，只信行里的 path 会把孤儿永久留在磁盘上（N5）。
+        let mut paths = final_files(&export_dir, task.id).map_err(|e| format!("读导出目录失败: {e}"))?;
+        if !task.file_path.is_empty() && !paths.iter().any(|p| p == Path::new(&task.file_path)) {
+            paths.push(PathBuf::from(&task.file_path));
+        }
+        let mut failed = false;
+        for path in &paths {
+            match std::fs::remove_file(path) {
+                Ok(_) => files += 1,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => {
+                    // 文件删不掉就**留着这行**：记录先删了，文件就再没人负责清了
+                    tracing::warn!("删导出文件 {} 失败，保留记录下次再试: {e}", path.display());
+                    failed = true;
+                    break;
+                }
             }
+        }
+        if failed {
+            continue;
         }
         state
             .db
@@ -49,7 +57,6 @@ pub async fn clean(state: AppState) -> Result<String, String> {
     // 判据收在 `collectable()` 里（同一套口径也在单测里钉着）。
     let stale = now() - chrono::Duration::seconds(STALE_CLAIM_SECS);
     let mut parts = 0u32;
-    let export_dir = dir(&state);
     for (id, path) in part_files(&export_dir).map_err(|e| format!("读导出目录失败: {e}"))? {
         let row = ExportTask::query()
             .filter_eq("id", id)
@@ -87,6 +94,32 @@ pub(super) fn collectable(row: Option<&ExportTask>, now_: chrono::NaiveDateTime,
             _ => false, // 认不出的状态：宁可不收（交给人工），也不赌它在跑
         },
     }
+}
+
+/// 扫出某个任务的成品：旧命名 `{id}.csv`（升级前的成品）与代次命名
+/// `{id}.{20 位代次}.csv`（N1 起的执行者格式）。名字对不上的一律不看 ——
+/// `{id}.csv.part` 是半份，另有回收路径。
+pub(super) fn final_files(dir: &Path, id: i64) -> std::io::Result<Vec<PathBuf>> {
+    let mut out = Vec::new();
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(out),
+        Err(e) => return Err(e),
+    };
+    let old = format!("{id}.csv");
+    let prefix = format!("{id}.");
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
+        let ok = name == old
+            || name.strip_prefix(&prefix).and_then(|s| s.strip_suffix(".csv")).is_some_and(|g| {
+                g.len() == 20 && g.bytes().all(|b| b.is_ascii_digit())
+            });
+        if ok {
+            out.push(path);
+        }
+    }
+    Ok(out)
 }
 
 /// 扫出目录里所有导出半份：`{id}.csv.part`（旧格式/手工兜底）与

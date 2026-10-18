@@ -45,6 +45,8 @@ pub async fn logout_others(
     admin.token_version += 1;
     admin.updated_at = now();
     admin.update(&state.db).await.map_err(ApiError::from)?;
+    // 全端下线的本进程语义：设备闸门缓存也一起清（别的实例最迟 30 秒）
+    crate::auth::forget_admin_devices(admin.id);
 
     // 换发的 token 仍挂在**当前这台设备**上：不然一杯新 token 就把本机从设备列表里摘掉。
     // 老 token（升级前签的，claims 里没有 dv）解出来是 0 —— 原样签回去这台设备就永远
@@ -263,5 +265,7 @@ pub async fn change_password(
     admin.token_version += 1; // 全端下线，需重新登录
     admin.updated_at = now();
     admin.update(&state.db).await.map_err(ApiError::from)?;
+    // 全端下线的本进程语义：设备闸门缓存也一起清（别的实例最迟 30 秒）
+    crate::auth::forget_admin_devices(admin.id);
     Ok(ok(Value::Null))
 }

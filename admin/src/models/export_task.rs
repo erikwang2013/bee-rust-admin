@@ -3,8 +3,8 @@ use bee_orm::Model;
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
-/// 异步导出任务（项 4）。「导什么」与取数函数是**代码注册**的（`crate::export::KINDS`，
-/// 与定时任务同一套样式：能往库里写导出语句就是任意读库），这张表只放
+/// 异步导出任务（项 4）。「导什么」与取数函数是**代码注册**的（`crate::export` 里的
+/// `KINDS` 注册表，经 `spec()` 查；与定时任务同一套样式：能往库里写导出语句就是任意读库），这张表只放
 /// 「谁要的 / 什么筛选条件 / 跑到哪了 / 文件在哪 / 什么时候过期」。
 #[derive(Model, Serialize, Deserialize, Clone, Debug)]
 #[bee(table = "export_task")]

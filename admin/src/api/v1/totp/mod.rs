@@ -392,5 +392,8 @@ pub async fn kick(
     };
     d.status = 0;
     d.update(&state.db).await.map_err(ApiError::from)?;
+    // 本进程的闸门缓存立即失效：踢出后下一次请求就 401（别的实例最迟 30 秒，
+    // 见 auth::forget_device 的注释）
+    crate::auth::forget_device(d.admin_id, d.id);
     Ok(ok(Value::Null))
 }

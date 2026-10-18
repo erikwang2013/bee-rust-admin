@@ -88,7 +88,7 @@ INI 配置），前端是 Vite + React 18 + Ant Design 5 单页应用，两者�
 
 启动路径：读配置（JWT secret 少于 32 字符或为 `changeme` → **拒绝启动**）→ 连接 MySQL →
 `migrate::sync` 同步表结构（**只建表 / 加列，绝不删列改类型**，模型加字段下次启动自动补列；
-唯一键与索引由 `seed.rs` 的裸 DDL 建 —— 上游的模型属性只表达列、主键与外键，没有 unique/index）→
+唯一键与索引由 `seed/schema.rs` 的裸 DDL 建 —— 上游的模型属性只表达列、主键与外键，没有 unique/index）→
 首次启动（`admin` 表为空）写入超管，并**每次启动都幂等补齐**内置菜单与定时任务（按权限码查缺补漏；
 **不是事务**——中途失败下次启动会接着补，不会留下半套）→ 监听 `127.0.0.1:8080` → 运行 →
 收到 `SIGTERM` 退出（systemd 策略 `on-failure` 自动重启）。
@@ -139,14 +139,14 @@ admin/                  管理后台服务端（crate bee_admin）
   src/auth.rs           JWT 签发校验 + Auth 提取器（权限码加载、token_version 校验）
   src/datascope.rs      数据权限解析与查询注入（部门子树 / 本人 / 自定义）
   src/api/              admin · attach · audit_log · auth · avatar · config · dashboard · dept · dict ·
-                        export · import · job · login_log · menu · notice · notify · role 十七个模块
-                        （csv / totp 是内部工具模块，不出接口）
+                        export · import · job · login_log · menu · notice · notify · role · totp
+                        十八个模块（csv 是内部工具模块，不出接口）
   src/models/           15 个模型（migrate 建表）。列长度用 `sql_type = "VARCHAR(n)"` 声明；
                         **唯一键与索引不走模型**（上游属性没有这两个概念），集中在
-                        `src/seed.rs` 的 CONSTRAINTS 里建。连接表（admin_role/role_menu/
+                        `src/seed/schema.rs` 的 CONSTRAINTS 里建。连接表（admin_role/role_menu/
                         role_dept/notice_read）是复合主键、无模型结构体，走 seed 的裸 DDL，
                         读写见 src/relations.rs
-  src/seed.rs           建表、连接表 DDL、首次种子（超管 + 菜单权限树）
+  src/seed/             建表、连接表 DDL、首次种子（超管 + 菜单权限树）：schema / defaults / menus
   conf/                 app.conf（gitignore）· app.conf.example · app.conf.test
   deploy/               systemd 单元 + nginx 站点配置
   tests/                集成测试：起真实进程 + 连真库（含全链路）

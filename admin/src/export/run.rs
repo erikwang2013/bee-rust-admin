@@ -192,9 +192,9 @@ async fn run_one(state: &AppState, task: &ExportTask, seen: NaiveDateTime) -> Re
 
     let dir = dir(state);
     std::fs::create_dir_all(&dir).map_err(|e| format!("建导出目录 {} 失败: {e}", dir.display()))?;
-    let path = dir.join(format!("{}.csv", task.id));
-    // 半份文件按**代次**隔离（`{id}.{started_at}.csv.part`）：同一行被重新认领后，新旧
-    // 执行者各写各的文件，不会互相截断；输家的 `PartFile` 也只会删自己那份
+    // 成品与半份都按**代次**命名（`{id}.{started_at}.csv[.part]`，N1）：同一行被重新
+    // 认领后，新旧执行者各写各的文件，既不互相截断，输家的改名也不会覆盖赢家的成品
+    let path = final_path(&dir, task.id, seen);
     let part = part_path(&dir, task.id, seen);
     // 半份文件不留：写盘/取名任何一步失败（或 panic）都清掉 .part（口径同 backup.rs）。
     // 成功时文件已改名搬走，这里的 remove 只会拿到 NotFound —— 不用单独解除。
@@ -261,6 +261,12 @@ async fn run_one(state: &AppState, task: &ExportTask, seen: NaiveDateTime) -> Re
     Ok(RunEnd::Done)
 }
 
+/// 成品的代次路径：`{id}.{started_at}.csv`（`%Y%m%d%H%M%S%6f`，20 位数字）。
+/// 老执行者即使跑完改名，也只会写自己那一代的名字，覆盖不了赢家的成品（N1）。
+pub(super) fn final_path(dir: &Path, id: i64, seen: NaiveDateTime) -> PathBuf {
+    dir.join(format!("{id}.{}.csv", seen.format("%Y%m%d%H%M%S%6f")))
+}
+
 /// 半份文件的代次路径：`{id}.{started_at}.csv.part`（`%Y%m%d%H%M%S%6f`，20 位数字）。
 /// 代次就是 fencing token，同一行重新认领后两位执行者各写各的，互不截断。
 pub(super) fn part_path(dir: &Path, id: i64, seen: NaiveDateTime) -> PathBuf {
@@ -269,8 +275,8 @@ pub(super) fn part_path(dir: &Path, id: i64, seen: NaiveDateTime) -> PathBuf {
 
 /// 终态那一写没命中之后，盘上成品撤不撤。**先读行的现状**（M1：写库失败 ≠ 取消赢）：
 /// - 行没了（运行中被管理员删掉）或 status=4（取消赢）：撤 —— 取消的语义是不留成品；
-/// - 其他（写库失败、行还是 1 被新执行者接管、赢家已经写了 2/3）：留着 —— 成品与赢家
-///   可能共用同一个最终路径，撤了就是「status=2 却没有文件」。
+/// - 其他（写库失败、被新执行者接管、赢家已经写了 2/3）：留着 —— 这一份是本代次的
+///   成品名，删不删都不影响赢家；留着的由 `export_clean` 按名字约定收走。
 /// 单独成函数是为了能被**无库单测**钉住（同 `claim_sql`）。
 pub(super) fn should_remove_artifact(row: Option<&ExportTask>) -> bool {
     match row {

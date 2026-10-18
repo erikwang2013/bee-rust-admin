@@ -93,11 +93,24 @@ fn parts_of(id: i64) -> Vec<std::path::PathBuf> {
         .collect()
 }
 
+/// 一个任务在盘上**所有**的成品（旧命名 `{id}.csv` 与代次命名 `{id}.{代次}.csv` 都认）。
+/// 按「{id}. 前缀 + .csv 后缀且不是 .csv.part」扫，不赌具体代次。
+fn finals_of(id: i64) -> Vec<std::path::PathBuf> {
+    let prefix = format!("{id}.");
+    let Ok(rd) = std::fs::read_dir(OUT) else { return Vec::new() };
+    rd.flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            name.starts_with(&prefix) && name.ends_with(".csv")
+        })
+        .collect()
+}
+
 /// 等一条**取消行**的收尾落定：半份与成品都不在盘上、`file_path` 也擦干净了。
 /// 执行者收尾是「改名 → 抢终态 → 抢不到就撤成品」，松开表锁之后这几步还在跑 ——
 /// 所以要**等到**（等到是确定的；等不到才是真漏了）。
 async fn wait_cancel_settled(pool: &sqlx::MySqlPool, id: i64) {
-    let csv = format!("{OUT}/{id}.csv");
     let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
     loop {
         let fp: String = sqlx::query_scalar("SELECT file_path FROM export_task WHERE id = ?")
@@ -106,13 +119,13 @@ async fn wait_cancel_settled(pool: &sqlx::MySqlPool, id: i64) {
             .await
             .unwrap();
         let parts = parts_of(id);
-        if fp.is_empty() && !exists(&csv) && parts.is_empty() {
+        let finals = finals_of(id);
+        if fp.is_empty() && finals.is_empty() && parts.is_empty() {
             return;
         }
         assert!(
             tokio::time::Instant::now() < deadline,
-            "取消的收尾 30 秒内没落定：file_path={fp:?} csv={} parts={parts:?}",
-            exists(&csv)
+            "取消的收尾 30 秒内没落定：file_path={fp:?} finals={finals:?} parts={parts:?}"
         );
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
@@ -300,7 +313,7 @@ async fn export_cancel_progress_and_heartbeat() {
     // → 收手。.part 是看守在 drop 里删的 —— 它消失就是「批间生效」的可见信号
     wait_cancel_settled(&pool, id2).await;
     assert!(parts_of(id2).is_empty(), "取消后不留半份: {:?}", parts_of(id2));
-    assert!(!exists(&format!("{OUT}/{id2}.csv")), "取消的任务不许有成品");
+    assert!(finals_of(id2).is_empty(), "取消的任务不许有成品: {:?}", finals_of(id2));
     let (status, rows2, prog2b, msg2) = snapshot(&pool, id2).await;
     assert_eq!((status, rows2, prog2b), (4, 0, 0), "执行者收手后行仍停在 4，终态没被改写: {msg2}");
     assert_eq!(msg2, "已取消", "{msg2}");
@@ -343,7 +356,7 @@ async fn export_cancel_progress_and_heartbeat() {
     let (status3b, rows3, prog3, msg3b) = wait_status(&pool, id3, &[2, 3]).await;
     assert_eq!(status3b, 2, "心跳断了要能重跑: {msg3b}");
     assert_eq!(rows3, prog3, "跑完时进度补齐到行数（终态那一写带上进度）");
-    assert!(exists(&format!("{OUT}/{id3}.csv")), "重跑产出了完整成品");
+    assert_eq!(finals_of(id3).len(), 1, "重跑产出了完整成品（按代次命名）: {:?}", finals_of(id3));
     // 旧代次的 .part 不会被新执行者挪用/截断（代次隔离），它成了终态行的孤儿，
     // 留给清理收 —— 这正是 I2 修复后「旧执行者留下的垃圾」该走的路。
     assert_eq!(parts_of(id3), vec![std::path::PathBuf::from(&fake3)],
@@ -399,16 +412,20 @@ async fn export_cancel_progress_and_heartbeat() {
     let id6 = common::dec_id(&common::as_id(&t6["data"]["id"]));
     let (st, v) = call(&c, Method::POST, url(&format!("{EXP}/{}/cancel", sid(&t6))), Some(&admin), None).await;
     assert_eq!(st, 200, "{v}");
-    // 现场：取消那一行在盘上留了个按约定的 {id}.csv（file_path 空着 → 兜底路径）
+    // 现场：file_path 空着 → 按名字约定兜底。旧命名 {id}.csv（升级前残留）与代次命名
+    // {id}.{20 位代次}.csv（N1 起的输家/孤儿）都要被收走。
     let fake6 = format!("{OUT}/{id6}.csv");
+    let fake6_gen = format!("{OUT}/{id6}.20261017120000000000.csv");
     std::fs::write(&fake6, b"x").unwrap();
+    std::fs::write(&fake6_gen, b"x").unwrap();
     sqlx::query("UPDATE export_task SET expire_at = ? WHERE id = ?")
         .bind(past).bind(id6).execute(&pool).await.unwrap();
     let before = common::last_log_id(&pool, "export_clean").await;
     common::trigger(&c, &base, &clean_id, &admin).await;
     let (jstatus, jmsg, _) = common::wait_job_log(&pool, "export_clean", before).await;
     assert_eq!(jstatus, 1, "{jmsg}");
-    assert!(!exists(&fake6), "取消行的孤儿成品也要清: {fake6}");
+    assert!(!exists(&fake6), "取消行的孤儿旧命名成品也要清: {fake6}");
+    assert!(!exists(&fake6_gen), "取消行的孤儿代次成品也要清: {fake6_gen}");
     let n6: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM export_task WHERE id = ?")
         .bind(id6).fetch_one(&pool).await.unwrap();
     assert_eq!(n6, 0, "过期的取消记录连记录一起清（老 clean 的名单里没有 4，会永远删不掉）");

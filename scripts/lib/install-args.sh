@@ -25,7 +25,10 @@ APP_NAME=${BRA_APP_NAME:-bee-rust-admin}
 KEEP_CONF=0; FORCE=0; WITH_SYSTEMD=1; WITH_NGINX=1; DRY_RUN=0; ASSUME_YES=0
 NGINX_CONF_DIR=${BRA_NGINX_CONF_DIR:-}
 
-need_val() { [ "$2" -ge 1 ] || die "$EXIT_FAIL" "$1 需要一个值（--help 看用法）"; }
+# $2 是调用方传进来的**剩余参数个数**（`need_val "$1" $#`）：≥2 才拿得到值。
+# 别在这里直接引用调用方的 `$2` —— `set -u` 下会先炸成「未绑定的变量」，前缀还是
+# lib 的文件名，用户看不出是入口脚本在报错。
+need_val() { [ "$2" -ge 2 ] || die "$EXIT_FAIL" "${PROG:-install.sh}: $1 需要一个值（--help 看用法）"; }
 
 parse_args() {
 while [ $# -gt 0 ]; do
@@ -73,7 +76,8 @@ for p in "$HTTP_PORT" "$BACKEND_PORT" "$DB_PORT"; do
   case $p in *[!0-9]*|'') die "$EXIT_FAIL" "端口必须是数字，给的是：$p";; esac
 done
 
-# 仓库根：脚本所在目录（curl | bash 时没有仓库；--repo 可显式给）
+# 仓库根：脚本所在目录（入口已要求同仓库的 `scripts/lib/`，单文件 curl 用法不再支持；
+# --repo 可显式给）
 [ -z "$REPO_DIR" ] && REPO_DIR=$SCRIPT_DIR
 
 PREFIX=${PREFIX%/}

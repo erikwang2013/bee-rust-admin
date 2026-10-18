@@ -390,24 +390,45 @@ async fn export_tasks_run_download_and_expire() {
 
     // ── M1 回归：**失败**路径也要清 .part ──
     // 造一个跑到一半才失败的任务：用同名**目录**占住最终文件名，`rename(part, path)` 必失败。
-    // 失败点在 .part 已经建好、表头 + 数据全写完、只差改名那一步 —— 正是 M1 要管的窗口：
-    // 这里不清，磁盘上就留一份看起来像成果的 .csv.part。
+    // 失败点在 .part 已经建好、表头 + 数据全写完、只差改名那一步 —— 正是 M1 要管的窗口。
+    // 成品名带代次、事先算不出来：锁住 login_log 把执行者冻在取数那一步，等 .part 出现后
+    // 由它的名字推出同代次的成品路径再占位，整个现场是确定的、不赌时序。
     let (st, t_bad) = call(&c, Method::POST, url(EXP), Some(&admin),
         Some(json!({"kind": "login-log"}))).await;
     assert_eq!(st, 200, "建失败任务: {t_bad}");
     let bad_id = common::dec_id(&common::as_id(&t_bad["data"]["id"]));
     // upload_dir 是 cwd 相对的（`target/test-uploads`），与执行器拼路径的口径一致
-    let bad_dst = format!("target/test-uploads/exports/{bad_id}.csv");
-    std::fs::create_dir_all(&bad_dst).expect("占位目录");
+    let exp_dir = std::path::Path::new("target/test-uploads/exports");
+    let mut lock = pool.acquire().await.unwrap();
+    sqlx::raw_sql("LOCK TABLES login_log WRITE").execute(&mut *lock).await.expect("锁表");
     let before = common::last_log_id(&pool, "export_run").await;
     common::trigger(&c, &base, &run_id, &admin).await;
+    let part = {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        loop {
+            let found = std::fs::read_dir(exp_dir).ok().and_then(|rd| {
+                rd.flatten().map(|e| e.path()).find(|p| {
+                    let n = p.file_name().and_then(|x| x.to_str()).unwrap_or("");
+                    n.starts_with(&format!("{bad_id}.")) && n.ends_with(".csv.part")
+                })
+            });
+            if let Some(p) = found {
+                break p;
+            }
+            assert!(tokio::time::Instant::now() < deadline, "10 秒内没等到失败任务的 .part");
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    };
+    let bad_dst = std::path::PathBuf::from(part.to_string_lossy().strip_suffix(".part").unwrap());
+    std::fs::create_dir_all(&bad_dst).expect("占位目录");
+    sqlx::raw_sql("UNLOCK TABLES").execute(&mut *lock).await.unwrap();
+    drop(lock);
     let (jstatus, jmsg, _) = common::wait_job_log(&pool, "export_run", before).await;
     assert_eq!(jstatus, 1, "执行器自身不失败，失败的是那一个任务: {jmsg}");
     let (status, _, msg) = wait_task(&pool, bad_id).await;
     assert_eq!(status, 3, "改名失败要让任务变失败: {msg}");
     assert!(msg.contains("改名失败"), "失败原因要落库给界面看: {msg}");
-    let part = format!("{bad_dst}.part");
-    assert!(!std::path::Path::new(&part).exists(), "失败路径的 .part 必须清掉: {part}");
+    assert!(!part.exists(), "失败路径的 .part 必须清掉: {}", part.display());
     std::fs::remove_dir_all(&bad_dst).expect("收掉占位目录");
 
     // ── M2 回归：**待处理**的任务过期也不能被清掉 ──
@@ -436,9 +457,10 @@ async fn export_tasks_run_download_and_expire() {
         .unwrap();
     assert_eq!(n, 1, "待处理的任务过期也不能清（文件还没生成，删了等于任务消失）");
 
-    // ── N5 回归：行里 file_path 为空也要删掉按约定落下的文件 ──
-    // 现场：改名成功、回写 file_path 之前进程死掉 —— 行里路径空着，文件已经叫 {id}.csv 了。
-    // 只信行里的 path 的话，这行被清掉时文件会永久留在磁盘上（再没人知道它叫什么）。
+    // ── N5 回归（代次命名版）：行里 file_path 为空也要删掉按约定落下的文件 ──
+    // 现场：改名成功、回写 file_path 之前进程死掉 —— 行里路径空着，成品已在盘上
+    // （N1 起叫 `{id}.{代次}.csv`）。只信行里的 path 的话，这行被清掉时文件会永久
+    // 留在磁盘上。同时放一份旧命名 `{id}.csv`：升级前留下的成品也必须能收（兼容旧名）。
     let (st, t5) = call(&c, Method::POST, url(EXP), Some(&admin),
         Some(json!({"kind": "login-log"}))).await;
     assert_eq!(st, 200, "建用于 N5 的任务: {t5}");
@@ -446,8 +468,11 @@ async fn export_tasks_run_download_and_expire() {
     common::trigger(&c, &base, &run_id, &admin).await;
     let (status, _, msg) = wait_task(&pool, id5).await;
     assert_eq!(status, 2, "先正常跑完一份: {msg}");
-    let path5 = format!("target/test-uploads/exports/{id5}.csv");
+    let path5: String = sqlx::query_scalar("SELECT file_path FROM export_task WHERE id = ?")
+        .bind(id5).fetch_one(&pool).await.unwrap();
     assert!(std::path::Path::new(&path5).exists(), "文件按约定落下: {path5}");
+    let old5 = exp_dir.join(format!("{id5}.csv"));
+    std::fs::write(&old5, b"x").expect("旧命名成品");
     sqlx::query("UPDATE export_task SET file_path = '', expire_at = ? WHERE id = ?")
         .bind(past)
         .bind(id5)
@@ -458,7 +483,8 @@ async fn export_tasks_run_download_and_expire() {
     common::trigger(&c, &base, &clean_id, &admin).await;
     let (status, msg, _ms) = common::wait_job_log(&pool, "export_clean", before).await;
     assert_eq!(status, 1, "{msg}");
-    assert!(!std::path::Path::new(&path5).exists(), "路径空也要按 {{id}}.csv 兜底删掉: {path5}");
+    assert!(!std::path::Path::new(&path5).exists(), "路径空也要按名字约定兜底删掉: {path5}");
+    assert!(!old5.exists(), "旧命名成品也要被收走: {}", old5.display());
     let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM export_task WHERE id = ?")
         .bind(id5)
         .fetch_one(&pool)

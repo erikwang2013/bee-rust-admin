@@ -1,9 +1,9 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 
-use super::clean::{collectable, part_files};
+use super::clean::{collectable, final_files, part_files};
 use super::kinds::KINDS;
 use super::run::{
-    beat_sql, claim_sql, dispatch, finish_sql, gate, part_path, should_remove_artifact,
+    beat_sql, claim_sql, dispatch, final_path, finish_sql, gate, part_path, should_remove_artifact,
 };
 use super::*;
 use chrono::NaiveDateTime;
@@ -62,6 +62,59 @@ fn part_path_is_generation_scoped() {
     std::fs::write(tmp.join(name), b"x").unwrap();
     assert_eq!(part_files(&tmp).unwrap(), vec![(42, tmp.join(name))], "回收器认新名字");
     let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// 成品也按代次隔离（N1）：同一行两次认领必须落到两个不同的 `.csv` 路径，
+/// 否则输家的改名会盖掉赢家的成品。
+#[test]
+fn final_path_is_generation_scoped() {
+    let dir = Path::new("/tmp/exports");
+    let a = final_path(dir, 42, now());
+    let b = final_path(dir, 42, now() + chrono::Duration::microseconds(1));
+    assert_ne!(a, b, "不同代次不能共用同一个成品路径");
+    let name = a.file_name().unwrap().to_str().unwrap();
+    assert!(name.starts_with("42.") && name.ends_with(".csv"), "命名约定: {name}");
+    assert!(!name.ends_with(".part"), "成品名不能带 .part");
+    // 造出来的名字必须能被清理器认回来
+    let tmp = std::env::temp_dir().join(format!("bee-final-gen-{}", std::process::id()));
+    std::fs::create_dir_all(&tmp).unwrap();
+    std::fs::write(tmp.join(name), b"x").unwrap();
+    assert_eq!(final_files(&tmp, 42).unwrap(), vec![tmp.join(name)], "清理器认新名字");
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// 成品回收的名字约定：旧命名 `{id}.csv`（升级前）与新命名 `{id}.{20 位代次}.csv`
+/// 都要认；半份、别人的 id、代次位数/字符不对的一律不看；目录不存在 = 空手而归。
+#[test]
+fn final_files_matches_old_and_generation_names() {
+    let dir = std::env::temp_dir().join(format!("bee-finals-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    for name in [
+        "42.csv",                            // 旧命名（升级前的成品）
+        "42.20261017123456123456.csv",       // 新命名
+        "42.20261017123456123457.csv",       // 同一行的另一个代次（输家）
+        "42.20261017123456123456.csv.part",  // 半份：另有回收路径
+        "42.2026101712345612345x.csv",       // 代次里有非数字
+        "42.123.csv",                        // 代次不是 20 位
+        "142.csv",                           // 别的 id
+        "43.csv",                            // 别的 id
+        "42.csv.bak",                        // 运维手放的
+    ] {
+        std::fs::write(dir.join(name), b"x").unwrap();
+    }
+    let mut got: Vec<String> = final_files(&dir, 42)
+        .unwrap()
+        .into_iter()
+        .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
+    got.sort_unstable();
+    assert_eq!(
+        got,
+        vec!["42.20261017123456123456.csv", "42.20261017123456123457.csv", "42.csv"],
+        "只认旧命名与代次命名的成品"
+    );
+    assert!(final_files(&dir.join("nope"), 42).unwrap().is_empty(), "目录不存在 = 空手而归");
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// 进程级闸只该有一个：两次 `gate()` 拿到同一个 Arc（旧实现每次 dispatch 新建 →

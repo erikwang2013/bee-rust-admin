@@ -106,10 +106,17 @@ async fn stale_executor_is_fenced_and_new_claim_produces_full_file() {
     assert_eq!(status, 2, "重新认领后应完成");
     assert_eq!(rotated, 1, "认领必须刷新 started_at —— 旧执行者的 token 从此写不进");
     assert!(rows >= 1, "登录成功至少有一条登录日志可导: row_count={rows}");
+    // N1：成品名按代次命名；DB 的 DATETIME 不带小数秒，重建不出代次串，按名字约定验
+    let name = std::path::Path::new(&file_path).file_name().unwrap().to_str().unwrap();
+    let serial = name.strip_prefix(&format!("{ID}.")).and_then(|s| s.strip_suffix(".csv"));
+    assert!(
+        serial.is_some_and(|g| g.len() == 20 && g.bytes().all(|b| b.is_ascii_digit())),
+        "终态行里的路径要指向按代次命名的成品: {file_path}"
+    );
     assert_eq!(
-        file_path,
-        dir.join(format!("{ID}.csv")).to_string_lossy(),
-        "终态行里的路径要指向成品"
+        std::path::Path::new(&file_path).parent(),
+        Some(dir.as_path()),
+        "成品落在导出目录里"
     );
     let bytes = std::fs::read(&file_path).expect("成品文件应存在");
     assert!(bytes.starts_with(b"\xEF\xBB\xBF"), "CSV 要带 UTF-8 BOM");

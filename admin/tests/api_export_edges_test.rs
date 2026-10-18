@@ -147,11 +147,23 @@ async fn export_run_fails_closed_and_indexes_exist() {
     let (status, msg) = task_state(&pool, ID_GHOST_KIND).await;
     assert_eq!(status, 3, "未知 kind → 3 失败: {msg}");
     assert!(msg.contains("未知导出类型"), "失败原因要点名 kind: {msg}");
-    // 失败的任务不留半份文件：`.part` 由 run_one 的看守清掉，`.csv` 根本不该产生
+    // 失败的任务不留半份文件：`.part` 由 run_one 的看守清掉，`.csv` 根本不该产生。
+    // 成品/半份都按代次命名，按「{id}.* + .csv[.part]」扫，不赌具体代次。
     let dir = std::path::Path::new("target/test-uploads/exports");
+    let files_of = |id: i64| -> Vec<String> {
+        let prefix = format!("{id}.");
+        std::fs::read_dir(dir)
+            .map(|rd| {
+                rd.flatten()
+                    .filter_map(|e| e.file_name().to_str().map(str::to_string))
+                    .filter(|n| n.starts_with(&prefix))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
     for id in [ID_OWNER_GONE, ID_GHOST_KIND] {
-        assert!(!dir.join(format!("{id}.csv")).exists(), "失败不留成品 {id}");
-        assert!(!dir.join(format!("{id}.csv.part")).exists(), "失败不留半份 {id}");
+        let left = files_of(id);
+        assert!(left.is_empty(), "失败的任务不留成品/半份 {id}: {left:?}");
     }
 
     // ── T4：两条索引（SHOW INDEX 实测）──

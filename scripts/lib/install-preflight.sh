@@ -162,7 +162,7 @@ ADMIN_PASS_GENERATED=0
 [ -n "$ADMIN_PASSWORD" ]|| { ADMIN_PASSWORD=$(gen_pass_h 16); ADMIN_PASS_GENERATED=1; }
 
 # 交互式补 DB 口令：只在「没给口令（刚才是随机的）」且「没 --yes」时问。
-# 从 /dev/tty 读，所以 `curl | bash` 也问得出来（那时 stdin 是脚本本身）。
+# 从 /dev/tty 读，stdin 被重定向（管道 / heredoc / `bash install.sh < /dev/null`）时也问得出来。
 ask_db_pass=0
 if [ "$KEEP_CONF" = 0 ] && [ "$DB_PASS_GENERATED" = 1 ] && [ "$ASSUME_YES" = 0 ] && [ -r /dev/tty ]; then
   ask_db_pass=1

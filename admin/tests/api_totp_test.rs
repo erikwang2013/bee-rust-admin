@@ -360,13 +360,21 @@ async fn totp_bind_login_and_kick_devices() {
     assert_eq!(active, 2, "库里启用中的设备行与列表一致");
 
     // ── 10. 最后活跃时间会被刷新（隔久了才写一次）──
-    let new_dev_id = common::dec_id(
-        list.iter()
-            .find(|d| d["user_agent"].as_str().unwrap_or("").contains("totp-dev-A"))
-            .expect("新设备 A")["id"]
-            .as_str()
-            .unwrap(),
-    );
+    // 设备有效性有 30s 进程内缓存，命中会跳过查库：要验的是「查库发现久未活跃就回写」，
+    // 所以用一台**本进程还没请求过**的设备（新 UA 登录）走缓存未命中的路径 ——
+    // 确定性来自「这个设备 id 从没进过缓存」，不靠睡过 TTL。
+    let d = client("totp-dev-D");
+    forget_step(&pool).await; // 同一 30 秒窗的码会被当重放，先清登录账本（S1）
+    let (st, v) = login(&d, &base, "admin", "admin123", Some(&code(&secret))).await;
+    assert_eq!(st, 200, "再登一台设备: {v}");
+    let token_d = v["data"]["token"].as_str().unwrap().to_string();
+    let new_dev_id: i64 = sqlx::query_scalar(
+        "SELECT id FROM admin_login_device WHERE user_agent = 'totp-dev-D' AND status = 1 \
+         ORDER BY id DESC LIMIT 1",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     let stale = chrono::Local::now().naive_local() - chrono::Duration::hours(1);
     sqlx::query("UPDATE admin_login_device SET last_active_at = ? WHERE id = ?")
         .bind(stale)
@@ -374,7 +382,7 @@ async fn totp_bind_login_and_kick_devices() {
         .execute(&pool)
         .await
         .unwrap();
-    let (st, _) = profile(&a, &base, &token_a2).await;
+    let (st, _) = profile(&d, &base, &token_d).await;
     assert_eq!(st, 200, "触发一次请求");
     let touched: chrono::NaiveDateTime =
         sqlx::query_scalar("SELECT last_active_at FROM admin_login_device WHERE id = ?")

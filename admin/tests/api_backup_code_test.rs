@@ -302,11 +302,18 @@ async fn totp_backup_codes_generate_login_regenerate_and_lock() {
     assert_eq!(profile(&a, &base, &token).await["backup_codes_left"], 9, "新码用掉一枚");
 
     // ── 5b. 并发用同一枚备用码：CAS 只有一个赢家 ──
+    // Barrier 把两边对齐到同一个起跑线再发请求：不是「谁先跑完谁后跑」的接力，
+    // 而是两个会话同时提交（断言不变，确定性来自起跑线而不是调度运气）。
     let ca = client_with_ip("backup-race-A", "10.9.9.1");
     let cb = client_with_ip("backup-race-B", "10.9.9.2");
+    let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(2));
+    let race = |c: reqwest::Client, gate: std::sync::Arc<tokio::sync::Barrier>, base: String, code: String| async move {
+        gate.wait().await;
+        login(&c, &base, "admin", "admin123", Some(&code)).await
+    };
     let (ra, rb) = tokio::join!(
-        login(&ca, &base, "admin", "admin123", Some(&new_codes[1])),
-        login(&cb, &base, "admin", "admin123", Some(&new_codes[1])),
+        race(ca, barrier.clone(), base.clone(), new_codes[1].clone()),
+        race(cb, barrier, base.clone(), new_codes[1].clone()),
     );
     let wins = [ra.0, rb.0].iter().filter(|s| **s == 200).count();
     assert_eq!(wins, 1, "同一枚备用码并发登录只能有一个成功: {ra:?} | {rb:?}");

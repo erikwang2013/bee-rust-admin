@@ -4,15 +4,16 @@ use crate::error::ApiError;
 use crate::models::{Admin, AdminLoginDevice, Menu, Role};
 use crate::state::AppState;
 use axum::extract::FromRequestParts;
-use bee_orm::Model;
 use axum::http::header;
 use axum::http::request::Parts;
+use bee_orm::Value as DbValue;
 use jwt_rust::config::JwtConfig;
 use jwt_rust::storage::TokenStorage;
 use jwt_rust::{Jwt, JwtError};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
-use std::sync::Arc;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 use crate::relations::RelationsExt;
 use crate::api::ids_to_values;
 
@@ -139,19 +140,8 @@ impl FromRequestParts<AppState> for Auth {
         // 被踢的设备（status=0）在这里断掉，下一次请求 401 —— 与 token_version 的
         // 全局失效互不影响，所以能精确踢一台。
         let device_id = claims.dv;
-        if device_id > 0 {
-            let dev = AdminLoginDevice::query()
-                .filter_eq("id", device_id)
-                .map_err(ApiError::from)?
-                // 主键查询本来就唯一；显式排序让「取哪一行」不依赖引擎的执行计划
-                .order_by("id ASC")
-                .one(&state.db)
-                .await
-                .map_err(ApiError::from)?;
-            match dev {
-                Some(d) if d.admin_id == admin.id && d.status == 1 => touch_device(state, d).await,
-                _ => return Err(ApiError::Unauthorized),
-            }
+        if device_id > 0 && !device_ok(state, admin.id, device_id).await? {
+            return Err(ApiError::Unauthorized);
         }
 
         let is_super = admin.is_super == 1;
@@ -213,15 +203,98 @@ impl FromRequestParts<AppState> for Auth {
 /// 代价是这一列最多滞后这么久 —— 它是给人看的时间，不是审计时间（审计看 audit_log）。
 const ACTIVE_INTERVAL_MINUTES: i64 = 10;
 
+/// 设备有效性查询的进程内缓存 TTL（秒）：每个带设备的请求都要过闸门，缓存后省一次
+/// `admin_login_device` SELECT。代价写在 [`forget_device`] 的注释里。
+const DEVICE_CACHE_SECS: u64 = 30;
+/// 缓存条数上限：超了整表清空。正常设备数是登录次数级的，这只是防无界增长。
+const DEVICE_CACHE_MAX: usize = 4096;
+
+struct CachedDevice {
+    /// 缓存有效到什么时候（单调时钟，不受系统时间调整影响）
+    until: Instant,
+    /// 最近一次**落库**的活跃时刻：命中缓存也按 10 分钟节流刷新
+    last_active_at: chrono::NaiveDateTime,
+}
+
+fn device_cache() -> &'static Mutex<HashMap<(i64, i64), CachedDevice>> {
+    static CACHE: OnceLock<Mutex<HashMap<(i64, i64), CachedDevice>>> = OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
+/// 本进程内让一台设备的缓存立即失效（踢设备时调）。
+/// **跨实例**没有广播：别的实例最迟 `DEVICE_CACHE_SECS` 秒后才看到踢出（Ruling 记了这个代价）。
+pub(crate) fn forget_device(admin_id: i64, device_id: i64) {
+    if let Ok(mut m) = device_cache().lock() {
+        m.remove(&(admin_id, device_id));
+    }
+}
+
+/// 本进程内让某个管理员的**所有**设备缓存立即失效（logout-others / 改密码时调）。
+pub(crate) fn forget_admin_devices(admin_id: i64) {
+    if let Ok(mut m) = device_cache().lock() {
+        m.retain(|(a, _), _| *a != admin_id);
+    }
+}
+
+/// 设备闸门：token 的 `dv` 必须是本人**启用中**的设备。
+/// 只缓存「有效」的结果 —— 无效的每次重查（不把刚复用的设备行缓存成不可用）。
+/// 查询失败仍按 500 处理（与缓存前一致，不悄悄放行）。
+async fn device_ok(state: &AppState, admin_id: i64, device_id: i64) -> Result<bool, ApiError> {
+    let key = (admin_id, device_id);
+    let seen = Instant::now();
+    let hit = device_cache()
+        .lock()
+        .ok()
+        .and_then(|m| m.get(&key).filter(|c| c.until > seen).map(|c| c.last_active_at));
+    let last_active_at = match hit {
+        Some(t) => t,
+        None => {
+            let dev = AdminLoginDevice::query()
+                .filter_eq("id", device_id)
+                .map_err(ApiError::from)?
+                // 主键查询本来就唯一；显式排序让「取哪一行」不依赖引擎的执行计划
+                .order_by("id ASC")
+                .one(&state.db)
+                .await
+                .map_err(ApiError::from)?;
+            let Some(d) = dev.filter(|d| d.admin_id == admin_id && d.status == 1) else {
+                return Ok(false);
+            };
+            if let Ok(mut m) = device_cache().lock() {
+                if m.len() >= DEVICE_CACHE_MAX {
+                    m.clear();
+                }
+                m.insert(
+                    key,
+                    CachedDevice {
+                        until: seen + Duration::from_secs(DEVICE_CACHE_SECS),
+                        last_active_at: d.last_active_at,
+                    },
+                );
+            }
+            d.last_active_at
+        }
+    };
+    touch_device(state, key, last_active_at).await;
+    Ok(true)
+}
+
 /// 刷新设备最后活跃时间。写失败只打警告：这是展示信息，不该让这次请求 500。
-async fn touch_device(state: &AppState, mut d: AdminLoginDevice) {
+/// 命中缓存时手里只有上次落库的时刻，所以按 id 直接 UPDATE，并把缓存时刻一起推新。
+async fn touch_device(state: &AppState, key: (i64, i64), last: chrono::NaiveDateTime) {
     let now = crate::util::now();
-    if now.signed_duration_since(d.last_active_at) < chrono::Duration::minutes(ACTIVE_INTERVAL_MINUTES) {
+    if now.signed_duration_since(last) < chrono::Duration::minutes(ACTIVE_INTERVAL_MINUTES) {
         return;
     }
-    d.last_active_at = now;
-    if let Err(e) = d.update(&state.db).await {
-        tracing::warn!("刷新设备活跃时间失败 (id={}): {e}", d.id);
+    let sql = "UPDATE admin_login_device SET last_active_at = ? WHERE id = ?";
+    if let Err(e) = state.db.execute(sql, &[DbValue::from(now), DbValue::from(key.1)]).await {
+        tracing::warn!("刷新设备活跃时间失败 (id={}): {e}", key.1);
+        return;
+    }
+    if let Ok(mut m) = device_cache().lock()
+        && let Some(c) = m.get_mut(&key)
+    {
+        c.last_active_at = now;
     }
 }
 
@@ -277,6 +350,33 @@ mod tests {
     fn legacy_token_without_device_field_decodes_as_zero() {
         let c: Claims = serde_json::from_value(serde_json::json!({ "sub": 7, "ver": 3 })).unwrap();
         assert_eq!(c.dv, 0, "缺 dv 字段 = 0 = 不按设备校验");
+    }
+
+    /// 缓存失效的粒度：踢一台只清那一台；全端下线清该管理员的所有设备，不碰别人。
+    #[test]
+    fn device_cache_forget_helpers_only_touch_the_target() {
+        let entry = || CachedDevice {
+            until: Instant::now() + Duration::from_secs(60),
+            last_active_at: crate::util::now(),
+        };
+        let mut m = device_cache().lock().unwrap();
+        m.clear();
+        for k in [(1, 10), (1, 11), (2, 20)] {
+            m.insert(k, entry());
+        }
+        drop(m);
+
+        forget_device(1, 10);
+        let m = device_cache().lock().unwrap();
+        assert!(!m.contains_key(&(1, 10)), "踢出的设备要立即失效");
+        assert!(m.contains_key(&(1, 11)) && m.contains_key(&(2, 20)), "别的设备不受影响");
+        drop(m);
+
+        forget_admin_devices(1);
+        let mut m = device_cache().lock().unwrap();
+        assert!(!m.contains_key(&(1, 11)), "全端下线清掉该管理员的其余设备");
+        assert!(m.contains_key(&(2, 20)), "别的管理员不受影响");
+        m.clear();
     }
 
     #[test]

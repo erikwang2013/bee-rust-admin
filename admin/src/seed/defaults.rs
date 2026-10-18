@@ -51,7 +51,7 @@ const DEFAULT_CONFIGS: [(&str, &str, &str, &str, &str, i8); 15] = [
     ),
     ("site.footer_enabled", "true", "bool", "site", "页脚是否显示（false 时登录页与侧边栏都不渲染）", 1),
     ("site.login_subtitle", "", "string", "site", "登录页副标题（空 = 不显示）", 1),
-    // ── 通知渠道（项 6）：键名与 `src/notify.rs` 的常量同源，改名只改常量 ──
+    // ── 通知渠道（项 6）：键名与 `src/notify/` 的常量同源，改名只改常量 ──
     (crate::notify::KEY_WEBHOOK_ENABLED, "false", "bool", "notify", "Webhook 总开关（事件：公告发布 / 账号锁定）", 0),
     (crate::notify::KEY_WEBHOOK_URL, "", "string", "notify", "Webhook 地址（http/https，超时 5s；失败落库由 notify_retry 重投）", 0),
     (
