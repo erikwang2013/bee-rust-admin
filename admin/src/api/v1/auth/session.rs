@@ -86,6 +86,7 @@ pub async fn logout_others(
             {name = "is_super", ty = "bool", desc = "是否超级管理员"},
             {name = "dept_id", ty = "string", desc = "部门短串（0 = 无部门）"},
             {name = "totp_enabled", ty = "bool", desc = "是否已绑定动态验证码（项 7）"},
+            {name = "backup_codes_left", ty = "int", desc = "剩余未使用的 TOTP 备用码数（F4）"},
         ]},
             {name = "roles", ty = "array", required, desc = "角色标识数组，如 [\"super\"]"},
             {name = "perms", ty = "array", required, desc = "权限码数组，如 [\"system:admin:list\"]"},
@@ -97,6 +98,7 @@ pub async fn profile(State(state): State<AppState>, auth: Auth) -> Result<Json<V
     // 库里是密文，回给前端的是明文（个人中心要回显/编辑这几项，B7）
     let email = crypto::plain(&state.crypto, &auth.admin.email).map_err(ApiError::internal)?;
     let phone = crypto::plain(&state.crypto, &auth.admin.phone).map_err(ApiError::internal)?;
+    let backup_codes_left = crate::api::totp::backup_codes_left(&state, auth.admin.id).await?;
     Ok(ok(json!({
         "user": {
             "id": hid::enc(auth.admin.id),
@@ -109,8 +111,9 @@ pub async fn profile(State(state): State<AppState>, auth: Auth) -> Result<Json<V
             "sex": auth.admin.sex,
             "is_super": auth.is_super,
             "dept_id": hid::enc(auth.admin.dept_id),
-            // 个人中心要据此显示「绑定 / 解绑动态验证码」（项 7）
+            // 个人中心要据此显示「绑定 / 解绑动态验证码」（项 7）与备用码剩余数（F4）
             "totp_enabled": auth.admin.totp_enabled == 1,
+            "backup_codes_left": backup_codes_left,
         },
         "roles": roles,
         "perms": perms,

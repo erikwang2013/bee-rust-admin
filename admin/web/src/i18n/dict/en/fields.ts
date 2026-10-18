@@ -67,7 +67,7 @@ export const fields = {
   'field.entity': 'Linked to',
   'field.ip': 'IP',
   'field.device': 'Device',
-  'field.totp_code': 'Authenticator code',
+  'field.totp_code': 'Authenticator / backup code',
   'field.last_active_at': 'Last active',
   'field.user_agent': 'User-Agent',
   'field.time': 'Time',

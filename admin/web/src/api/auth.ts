@@ -23,6 +23,8 @@ export const totpApi = {
   setup: () => http.post<TotpSetup>('/auth/totp/setup'),
   enable: (code: string) => http.post<null>('/auth/totp/enable', { code }),
   disable: (code: string) => http.post<null>('/auth/totp/disable', { code }),
+  /** 生成 10 枚备用码（旧码全部作废）；明文只在这次响应里出现一次 */
+  backupCodes: (code: string) => http.post<{ codes: string[] }>('/auth/totp/backup-codes', { code }),
   devices: () => http.get<LoginDevice[]>('/auth/devices'),
   /** 踢一台设备下线：它手里的 token 下一次请求就 401 */
   kick: (id: string) => http.del<null>(`/auth/devices/${id}`),

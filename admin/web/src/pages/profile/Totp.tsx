@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { App, Button, Input, Popconfirm, Space, Table, Tag, Typography } from 'antd';
+import { Alert, App, Button, Input, Modal, Popconfirm, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { totpApi } from '../../api/auth';
 import type { LoginDevice, TotpSetup } from '../../api/types';
@@ -19,7 +19,12 @@ export default function Totp() {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [devices, setDevices] = useState<LoginDevice[]>([]);
+  const [backupOpen, setBackupOpen] = useState(false);
+  const [backupCode, setBackupCode] = useState('');
+  const [backupCodes, setBackupCodes] = useState<string[]>([]);
+  const [backupBusy, setBackupBusy] = useState(false);
   const bound = user?.totp_enabled === true;
+  const backupLeft = user?.backup_codes_left ?? 0;
 
   const loadDevices = useCallback(async () => {
     setDevices(await totpApi.devices());
@@ -62,6 +67,30 @@ export default function Totp() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const openBackup = () => {
+    setBackupCode('');
+    setBackupCodes([]);
+    setBackupOpen(true);
+  };
+
+  const onGenerateBackup = async () => {
+    setBackupBusy(true);
+    try {
+      setBackupCodes((await totpApi.backupCodes(backupCode)).codes);
+      setBackupCode('');
+      message.success(t('totp.backup_generated'));
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  /** 关掉弹窗 = 用户确认「已保存」：明文只在这里出现过，关掉就没有第二次机会 */
+  const onBackupSaved = async () => {
+    setBackupOpen(false);
+    setBackupCodes([]);
+    await reload();
   };
 
   const onKick = async (id: string) => {
@@ -153,6 +182,64 @@ export default function Totp() {
         )}
       </Space>
       <div style={{ marginTop: 6, color: 'rgba(128,128,128,1)', fontSize: 12 }}>{t('totp.no_backup_hint')}</div>
+
+      {bound && (
+        <Space style={{ marginTop: 12 }} wrap>
+          <span>{t('totp.backup_left', { n: backupLeft })}</span>
+          <Button size="small" onClick={openBackup}>
+            {backupLeft > 0 ? t('totp.backup_regenerate') : t('totp.backup_generate')}
+          </Button>
+        </Space>
+      )}
+
+      <Modal
+        open={backupOpen}
+        title={t('totp.backup_title')}
+        maskClosable={false}
+        keyboard={false}
+        closable={backupCodes.length === 0}
+        onCancel={() => setBackupOpen(false)}
+        footer={
+          backupCodes.length > 0
+            ? [
+                <Button key="saved" type="primary" onClick={() => void onBackupSaved()}>
+                  {t('totp.backup_done')}
+                </Button>,
+              ]
+            : [
+                <Button key="cancel" onClick={() => setBackupOpen(false)}>{t('common.cancel')}</Button>,
+                <Button
+                  key="generate"
+                  type="primary"
+                  loading={backupBusy}
+                  disabled={backupCode.length !== 6}
+                  onClick={() => void onGenerateBackup()}
+                >
+                  {t('totp.backup_generate')}
+                </Button>,
+              ]
+        }
+      >
+        {backupCodes.length === 0 ? (
+          <>
+            <Typography.Paragraph type="secondary">{t('totp.backup_prompt')}</Typography.Paragraph>
+            <Input
+              value={backupCode}
+              onChange={(e) => setBackupCode(e.target.value)}
+              placeholder={t('totp.code_placeholder')}
+              maxLength={6}
+              autoComplete="one-time-code"
+            />
+          </>
+        ) : (
+          <>
+            <Alert type="warning" showIcon message={t('totp.backup_once')} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 12, fontFamily: 'monospace' }}>
+              {backupCodes.map((c) => <span key={c}>{c}</span>)}
+            </div>
+          </>
+        )}
+      </Modal>
 
       <Typography.Title level={5} style={{ marginTop: 24 }}>{t('devices.title')}</Typography.Title>
       <Table<LoginDevice>

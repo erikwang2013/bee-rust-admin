@@ -11,5 +11,5 @@ export const login = {
   'login.captcha_undo': 'Undo',
   'login.captcha_required': 'Please complete the captcha first',
   'login.code_required': 'Please enter the verification code',
-  'login.code_hint': 'This account has two-factor enabled: enter the 6-digit code from your authenticator app',
+  'login.code_hint': 'This account has two-factor enabled: enter the 6-digit code from your authenticator app, or sign in with a backup code',
 } as const;

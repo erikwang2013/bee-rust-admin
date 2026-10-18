@@ -6,209 +6,12 @@
 //! 这个请求 / 这封信」，不是自己跟自己比。假 SMTP 只走明文（`smtp_encryption = none`）
 //! —— 起一台带证书的 TLS 服务器不现实，加密传输本身是 lettre 自己的测试范围。
 mod common;
+#[path = "api_notify_test/helpers.rs"]
+mod helpers;
 
-use axum::Router;
-use axum::extract::State;
-use axum::http::StatusCode;
-use axum::routing::post;
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as B64;
+use helpers::*;
 use reqwest::Method;
 use serde_json::{Value, json};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::TcpListener;
-
-/// 假 SMTP 里配的口令：故意长得不像任何别的东西，方便在库/日志/响应里全文搜它。
-const SMTP_PW: &str = "Pw0rd-notify-9137-x";
-
-// ── 假 webhook（本机 HTTP） ──────────────────────────────────
-
-#[derive(Clone, Default)]
-struct Hook {
-    /// 收到的请求体。**失败的也记**：重试次数就是靠它数出来的
-    hits: Arc<Mutex<Vec<Value>>>,
-    /// 前 N 次回 500（用来钉「失败要重试」与重试次数上限）
-    fail_first: Arc<AtomicUsize>,
-}
-
-impl Hook {
-    fn count(&self) -> usize {
-        self.hits.lock().unwrap().len()
-    }
-    fn bodies(&self) -> Vec<Value> {
-        self.hits.lock().unwrap().clone()
-    }
-    fn fail_first(&self, n: usize) {
-        self.fail_first.store(n, Ordering::SeqCst);
-    }
-}
-
-async fn hook_handler(State(h): State<Hook>, body: Option<axum::Json<Value>>) -> (StatusCode, &'static str) {
-    h.hits.lock().unwrap().push(body.map(|axum::Json(v)| v).unwrap_or(Value::Null));
-    let failed = h
-        .fail_first
-        .try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
-        .is_ok();
-    if failed {
-        return (StatusCode::INTERNAL_SERVER_ERROR, "boom");
-    }
-    (StatusCode::OK, "ok")
-}
-
-/// 起一个只认 `POST /hook` 的假 webhook，返回 (状态, 端口)。
-async fn fake_webhook() -> (Hook, u16) {
-    let h = Hook::default();
-    let app = Router::new().route("/hook", post(hook_handler)).with_state(h.clone());
-    let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let port = l.local_addr().unwrap().port();
-    tokio::spawn(async move {
-        let _ = axum::serve(l, app).await;
-    });
-    (h, port)
-}
-
-// ── 假 SMTP（本机 TCP + 最小 SMTP 对话） ─────────────────────
-
-#[derive(Clone, Default)]
-struct Smtp {
-    /// 服务器收到的每一行（含 RCPT TO 与 AUTH PLAIN 的凭据）
-    lines: Arc<Mutex<Vec<String>>>,
-}
-
-impl Smtp {
-    fn lines(&self) -> Vec<String> {
-        self.lines.lock().unwrap().clone()
-    }
-}
-
-async fn fake_smtp() -> (Smtp, u16) {
-    let st = Smtp::default();
-    let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let port = l.local_addr().unwrap().port();
-    let srv = st.clone();
-    tokio::spawn(async move {
-        while let Ok((sock, _)) = l.accept().await {
-            let st = srv.clone();
-            tokio::spawn(async move { serve_smtp(sock, st).await });
-        }
-    });
-    (st, port)
-}
-
-/// 只说 lettre 需要的那几句：EHLO →（有凭据时）AUTH PLAIN → MAIL/RCPT/DATA/QUIT。
-/// 只广告 PLAIN 一种认证机制，免得 lettre 走 LOGIN 那套多轮 base64 对话。
-async fn serve_smtp(sock: tokio::net::TcpStream, st: Smtp) {
-    let (r, mut w) = sock.into_split();
-    let mut lines = BufReader::new(r).lines();
-    let _ = w.write_all(b"220 fake ESMTP\r\n").await;
-    let _ = w.flush().await;
-    while let Ok(Some(line)) = lines.next_line().await {
-        st.lines.lock().unwrap().push(line.clone());
-        let up = line.to_uppercase();
-        let reply: &[u8] = if up.starts_with("EHLO") || up.starts_with("HELO") {
-            b"250-fake\r\n250-AUTH PLAIN\r\n250 OK\r\n"
-        } else if up.starts_with("DATA") {
-            b"354 End data with <CR><LF>.<CR><LF>\r\n"
-        } else if up.starts_with("QUIT") {
-            b"221 Bye\r\n"
-        } else if up.starts_with("AUTH") {
-            b"235 2.7.0 Authentication successful\r\n"
-        } else {
-            // MAIL FROM / RCPT TO / RSET / NOOP 一律 250
-            b"250 OK\r\n"
-        };
-        let _ = w.write_all(reply).await;
-        let _ = w.flush().await;
-        if up.starts_with("DATA") {
-            // 收正文直到单独一行的点号（SMTP 的结束标记）
-            let mut body = String::new();
-            while let Ok(Some(l)) = lines.next_line().await {
-                if l == "." {
-                    break;
-                }
-                body.push_str(&l);
-                body.push('\n');
-            }
-            st.lines.lock().unwrap().push(format!("[BODY] {body}"));
-            let _ = w.write_all(b"250 OK\r\n").await;
-            let _ = w.flush().await;
-        }
-        if up.starts_with("QUIT") {
-            return;
-        }
-    }
-}
-
-// ── HTTP 辅助 ───────────────────────────────────────────────
-
-async fn call_raw(
-    c: &reqwest::Client,
-    method: Method,
-    url: String,
-    token: Option<&str>,
-    body: Option<Value>,
-) -> (u16, String) {
-    let mut rb = c.request(method, url);
-    if let Some(t) = token {
-        rb = rb.bearer_auth(t);
-    }
-    if let Some(b) = body {
-        rb = rb.json(&b);
-    }
-    let r = rb.send().await.expect("请求发送失败");
-    let status = r.status().as_u16();
-    let text = r.text().await.unwrap_or_default();
-    (status, text)
-}
-
-async fn call(
-    c: &reqwest::Client,
-    method: Method,
-    url: String,
-    token: Option<&str>,
-    body: Option<Value>,
-) -> (u16, Value) {
-    let (st, text) = call_raw(c, method, url, token, body).await;
-    (st, serde_json::from_str(&text).unwrap_or(Value::Null))
-}
-
-/// 等条件成立：事件是**异步**发的（响应返回不代表请求已经出去）。
-async fn wait_until(what: &str, mut ok: impl FnMut() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(15);
-    while !ok() {
-        assert!(Instant::now() < deadline, "等 {what} 超时");
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-}
-
-/// 让还在飞的重试都跑完再断言「恰好 N 次」——重试间隔 500ms，给足一倍余量。
-async fn settle() {
-    tokio::time::sleep(Duration::from_millis(1200)).await;
-}
-
-/// 发一条公告（`status = 1` 才是发布）。
-async fn publish(c: &reqwest::Client, base: &str, token: &str, title: &str, status: i8) -> (u16, Value) {
-    call(
-        c,
-        Method::POST,
-        format!("{base}/api/v1/notices"),
-        Some(token),
-        Some(json!({ "title": title, "content": "正文", "status": status })),
-    )
-    .await
-}
-
-/// 明文口令在假 SMTP 的哪一行里出现过（AUTH PLAIN 的 base64 载荷）。
-fn auth_has_password(lines: &[String]) -> bool {
-    lines.iter().filter(|l| l.to_uppercase().starts_with("AUTH")).any(|l| {
-        l.split_whitespace()
-            .skip(2)
-            .any(|tok| String::from_utf8_lossy(&B64.decode(tok).unwrap_or_default()).contains(SMTP_PW))
-    })
-}
 
 #[tokio::test]
 async fn notify_webhook_events_and_smtp_test_mail() {
@@ -362,23 +165,57 @@ async fn notify_webhook_events_and_smtp_test_mail() {
     settle().await;
     assert_eq!(hook.count(), 1, "渠道关着就不该发: {:?}", hook.bodies());
 
-    // ── 6. 失败要重试：前两次 500 → 第三次成功 ─────────────────
+    // ── 6. 首发失败落库待重投：请求里只试一次（重投归 notify_retry，另一个用例覆盖）──
     let (st, v) = call(&c, Method::PUT, api("/notify/config"), Some(&token), Some(cfg.clone())).await;
     assert_eq!(st, 200, "{v}");
-    hook.fail_first(2);
-    let (st, _) = publish(&c, &base, &token, "重试后成功", 1).await;
+    hook.fail_first(1);
+    let before = hook.count();
+    let (st, _) = publish(&c, &base, &token, "失败落库待重投", 1).await;
     assert_eq!(st, 200);
-    wait_until("重试后成功", || hook.count() >= 4).await;
+    wait_until("首发失败", || hook.count() >= before + 1).await;
     settle().await;
-    assert_eq!(hook.count(), 4, "两次失败 + 一次成功 = 3 次尝试: {:?}", hook.bodies());
+    assert_eq!(hook.count(), before + 1, "首发只尝试一次，不在请求内重试: {:?}", hook.bodies());
+    let (status, attempts, msg, created_at, next_at, payload): (
+        String,
+        i32,
+        String,
+        chrono::NaiveDateTime,
+        Option<chrono::NaiveDateTime>,
+        String,
+    ) = sqlx::query_as(
+        "SELECT status, attempts, msg, created_at, next_at, payload \
+         FROM notify_delivery ORDER BY id DESC LIMIT 1",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("失败首发必须落 notify_delivery");
+    assert_eq!(status, "pending", "普通失败进 pending");
+    assert_eq!(attempts, 1, "首发算一次尝试");
+    assert!(msg.contains("HTTP 500"), "原因要留 500: {msg}");
+    assert!(payload.contains("失败落库待重投"), "payload 是实际发出的原文: {payload}");
+    assert_eq!(
+        next_at.expect("pending 必须有 next_at").signed_duration_since(created_at).num_seconds(),
+        60,
+        "首发失败 1 分钟后重投"
+    );
 
-    // ── 7. 重试上限：「重试 3 次」= 首发 + 3 = 最多 4 次 ─────────
-    hook.fail_first(1_000_000);
-    let (st, _) = publish(&c, &base, &token, "一直失败", 1).await;
+    // ── 7. 成功不落行：账本行数不变 ─────────────────────────────
+    hook.fail_first(0);
+    let rows_before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM notify_delivery")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let before = hook.count();
+    let (st, _) = publish(&c, &base, &token, "成功后不落账本", 1).await;
     assert_eq!(st, 200);
-    wait_until("四次尝试", || hook.count() >= 8).await;
+    wait_until("成功后投递", || hook.count() >= before + 1).await;
     settle().await;
-    assert_eq!(hook.count(), 8, "失败也不许无限重试（首发 + 重试 3 次）: {}", hook.count());
+    assert_eq!(hook.count(), before + 1, "成功只发一次: {:?}", hook.bodies());
+    let rows_after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM notify_delivery")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(rows_after, rows_before, "成功不写 notify_delivery");
 
     // ── 8. 账号锁定 → account.locked 事件 ─────────────────────
     hook.fail_first(0);
@@ -491,13 +328,4 @@ async fn notify_webhook_events_and_smtp_test_mail() {
     collect_perms(&v["data"], &mut perms);
     assert!(perms.contains(&"system:notify:list".to_string()), "菜单树要有通知设置: {perms:?}");
     assert!(perms.contains(&"system:notify:edit".to_string()), "{perms:?}");
-}
-
-fn collect_perms(nodes: &Value, out: &mut Vec<String>) {
-    for n in nodes.as_array().into_iter().flatten() {
-        if let Some(p) = n["perm"].as_str().filter(|p| !p.is_empty()) {
-            out.push(p.to_string());
-        }
-        collect_perms(&n["children"], out);
-    }
 }

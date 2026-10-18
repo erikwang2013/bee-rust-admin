@@ -11,5 +11,5 @@ export const login = {
   'login.captcha_undo': '撤销',
   'login.captcha_required': '请先完成验证码',
   'login.code_required': '请填写动态验证码',
-  'login.code_hint': '该账号已开启动态验证码（项 7）：请填验证器 App 上的 6 位码',
+  'login.code_hint': '该账号已开启动态验证码：请填验证器 App 上的 6 位码，或用一枚备用码登录',
 } as const;

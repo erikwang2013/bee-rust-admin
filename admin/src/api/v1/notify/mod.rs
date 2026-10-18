@@ -20,6 +20,8 @@ fn to_json(cfg: &NotifyConfig) -> Value {
     json!({
         "webhook_enabled": cfg.webhook_enabled,
         "webhook_url": cfg.webhook_url,
+        // 签名密钥本身永不出口（同口令口径），只回是否已设置
+        "webhook_secret_set": cfg.secret_set(),
         "smtp_enabled": cfg.smtp_enabled,
         "smtp_host": cfg.smtp_host,
         "smtp_port": cfg.smtp_port,
@@ -57,6 +59,9 @@ pub struct NotifyBody {
     pub webhook_enabled: bool,
     #[serde(default)]
     pub webhook_url: String,
+    /// 缺省 = 不改；空串 = 清空；非空 = 换新（与 `smtp_password` 同一语义）。
+    #[serde(default)]
+    pub webhook_secret: Option<String>,
     #[serde(default)]
     pub smtp_enabled: bool,
     #[serde(default)]
@@ -93,6 +98,7 @@ fn default_encryption() -> String {
 #[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
 #[apidoc::param(name = "webhook_enabled", ty = "bool", desc = "是否启用 Webhook")]
 #[apidoc::param(name = "webhook_url", ty = "string", desc = "Webhook 地址（http/https）")]
+#[apidoc::param(name = "webhook_secret", ty = "string", desc = "HMAC 签名密钥（缺省 = 不改；空串 = 清空；非空 = 换新）")]
 #[apidoc::param(name = "smtp_enabled", ty = "bool", desc = "是否启用 SMTP")]
 #[apidoc::param(name = "smtp_host", ty = "string", desc = "SMTP 服务器")]
 #[apidoc::param(name = "smtp_port", ty = "int", desc = "端口，默认 587")]
@@ -124,9 +130,20 @@ pub async fn save_config(
             (cipher, masked_changed(&state.crypto, &old.smtp_password, v))
         }
     };
+    // 签名密钥三态与口令完全一致（F4-2）
+    let (webhook_secret, secret_changed) = match body.webhook_secret.as_deref() {
+        None => (old.webhook_secret.clone(), false),
+        Some("") => (String::new(), !old.webhook_secret.is_empty()),
+        Some(v) => {
+            let cipher =
+                crate::crypto::write(&state.crypto, v).map_err(ApiError::BadRequest)?;
+            (cipher, masked_changed(&state.crypto, &old.webhook_secret, v))
+        }
+    };
     let new = NotifyConfig {
         webhook_enabled: body.webhook_enabled,
         webhook_url: body.webhook_url.trim().to_string(),
+        webhook_secret,
         smtp_enabled: body.smtp_enabled,
         smtp_host: body.smtp_host.trim().to_string(),
         smtp_port: body.smtp_port,
@@ -144,6 +161,7 @@ pub async fn save_config(
     let changes = Diff::default()
         .field("webhook_enabled", old.webhook_enabled, new.webhook_enabled)
         .field("webhook_url", old.webhook_url.clone(), new.webhook_url.clone())
+        .masked("webhook_secret", secret_changed)
         .field("smtp_enabled", old.smtp_enabled, new.smtp_enabled)
         .field("smtp_host", old.smtp_host.clone(), new.smtp_host.clone())
         .field("smtp_port", old.smtp_port, new.smtp_port)

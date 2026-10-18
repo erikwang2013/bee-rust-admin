@@ -114,7 +114,8 @@ export default function LoginPage() {
               extra={t('login.code_hint')}
               rules={[{ required: true, message: t('validate.required', { field: t('field.totp_code') }) }]}
             >
-              <Input prefix={<SafetyOutlined />} placeholder={t('field.totp_code')} autoComplete="one-time-code" maxLength={6} />
+              {/* 10 位是备用码的长度：6 位 TOTP 与备用码共用这个框，后端按「6 位纯数字」分流 */}
+              <Input prefix={<SafetyOutlined />} placeholder={t('field.totp_code')} autoComplete="one-time-code" maxLength={10} />
             </Form.Item>
           )}
           {captcha && (

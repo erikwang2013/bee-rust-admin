@@ -93,6 +93,9 @@ pub async fn migrate(db: &Pool) -> Result<(), OrmError> {
     migrate::sync::<crate::models::ExportTask, _>(db).await?;
     migrate::sync::<crate::models::AdminLoginDevice, _>(db).await?;
     migrate::sync::<crate::models::Attachment, _>(db).await?;
+    // F4：TOTP 备用码 + Webhook 失败账本
+    migrate::sync::<crate::models::AdminBackupCode, _>(db).await?;
+    migrate::sync::<crate::models::NotifyDelivery, _>(db).await?;
 
     // 3) 单列唯一键与索引：原先写在模型属性上（`#[bee(unique)]` / `#[bee(index)]`），
     //    上游属性里没有这两个概念，移到这儿。
@@ -281,6 +284,11 @@ const CONSTRAINTS: &[(&str, &str, &str)] = &[
     // `export_clean` 每天按 expire_at 扫过期的行 —— 两条各有索引，量大了才不会是全表扫
     ("export_task", "idx_export_task_status", "CREATE INDEX idx_export_task_status ON export_task (status)"),
     ("export_task", "idx_export_task_expire_at", "CREATE INDEX idx_export_task_expire_at ON export_task (expire_at)"),
+    // F4-1：备用码登录按 (admin_id, used_at IS NULL) 取未用行；表很小，但登录是热路径
+    ("admin_backup_code", "idx_admin_backup_code_admin", "CREATE INDEX idx_admin_backup_code_admin ON admin_backup_code (admin_id)"),
+    // F4-3：重投任务按 (status, next_at) 找 due 行；30 天清理按 created_at 扫
+    ("notify_delivery", "idx_notify_delivery_due", "CREATE INDEX idx_notify_delivery_due ON notify_delivery (status, next_at)"),
+    ("notify_delivery", "idx_notify_delivery_created_at", "CREATE INDEX idx_notify_delivery_created_at ON notify_delivery (created_at)"),
 ];
 
 /// 幂等建索引：MySQL 没有 `CREATE INDEX IF NOT EXISTS`，先查 information_schema。

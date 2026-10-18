@@ -23,8 +23,20 @@ pub fn emit(state: &AppState, event: &'static str, data: Value, actor: Option<i6
         if cfg.webhook_enabled && !cfg.webhook_url.is_empty() {
             let body =
                 json!({ "event": event, "at": chrono::Utc::now().timestamp(), "data": data });
-            if let Err(e) = post_webhook(&cfg.webhook_url, &body).await {
-                tracing::warn!("Webhook 投递失败（{event} → {}）: {e}", cfg.webhook_url);
+            // 配了密钥才签；解不开就跳过这次 Webhook（不能静默发未签名的请求）
+            match cfg.secret(&state) {
+                Ok(secret) => {
+                    if let Err(e) = post_webhook(&cfg.webhook_url, &body, &secret).await {
+                        tracing::warn!(
+                            "Webhook 投递失败（{event} → {}）: {}（{}）",
+                            cfg.webhook_url,
+                            e.msg,
+                            if e.terminal { "终态，不重投" } else { "已落库待重投" }
+                        );
+                        super::delivery::record_failure(&state, event, &body, e).await;
+                    }
+                }
+                Err(e) => tracing::warn!("Webhook 签名密钥解密失败，事件 {event} 不投递: {e:?}"),
             }
         }
         // 公告邮件（E2-6）：只认「发布」这一个事件；开关关着就什么都不做（默认就是关的）

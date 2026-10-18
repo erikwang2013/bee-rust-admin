@@ -39,7 +39,8 @@ const TYPES: [&str; 3] = ["string", "text", "bool"];
 /// 敏感键（值以密文形态存在、由专用页面维护）：本页**不列、不改、不删**。
 /// 列出来等于把口令键暴露给每个有 `system:config:list` 的人，改一下就能把
 /// 「落库加密」换成明文 —— `加密存` 就成了摆设。名单是显式的：加新键时记得往这儿补。
-const SECRET_KEYS: [&str; 1] = [crate::notify::KEY_SMTP_PASSWORD];
+const SECRET_KEYS: [&str; 2] =
+    [crate::notify::KEY_SMTP_PASSWORD, crate::notify::KEY_WEBHOOK_SECRET];
 
 fn is_secret_key(key: &str) -> bool {
     SECRET_KEYS.contains(&key)

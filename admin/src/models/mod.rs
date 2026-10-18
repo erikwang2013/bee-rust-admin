@@ -2,6 +2,7 @@
 pub mod admin;
 pub mod attachment;
 pub mod audit_log;
+pub mod backup_code;
 pub mod config;
 pub mod dept;
 pub mod dict;
@@ -11,11 +12,13 @@ pub mod login_device;
 pub mod login_log;
 pub mod menu;
 pub mod notice;
+pub mod notify_delivery;
 pub mod role;
 
 pub use admin::Admin;
 pub use attachment::Attachment;
 pub use audit_log::AuditLog;
+pub use backup_code::AdminBackupCode;
 pub use config::SysConfig;
 pub use dept::Dept;
 pub use dict::{DictItem, DictType};
@@ -25,4 +28,5 @@ pub use login_device::AdminLoginDevice;
 pub use login_log::LoginLog;
 pub use menu::Menu;
 pub use notice::Notice;
+pub use notify_delivery::NotifyDelivery;
 pub use role::Role;

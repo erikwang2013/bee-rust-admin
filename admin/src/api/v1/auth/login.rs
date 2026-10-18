@@ -10,7 +10,7 @@ use super::*;
 #[apidoc::param(name = "password", ty = "string", required, desc = "密码（明文提交，务必走 HTTPS）", mock = "admin123")]
 #[apidoc::param(name = "captcha_key", ty = "string", desc = "[auth] captcha = true 时必填：/api/v1/captcha/new 返回的 key")]
 #[apidoc::param(name = "captcha_answer", ty = "object", desc = "验证码答案，形状同 poster-rust Answer（Slider 滑动 / Rotate 旋转 / Click 点选）")]
-#[apidoc::param(name = "code", ty = "string", desc = "动态验证码（该账号绑定 TOTP 后必填；缺了回 err = auth.totp_required，前端据此显示输入框后带码重试）", mock = "123456")]
+#[apidoc::param(name = "code", ty = "string", desc = "动态验证码或备用码（该账号绑定 TOTP 后必填；6 位纯数字按 TOTP 校验，其余按备用码校验；缺了回 err = auth.totp_required）", mock = "123456")]
 #[apidoc::response_status("200")]
 #[apidoc::response_status("400")]
 #[apidoc::response_status("429")]
@@ -117,22 +117,37 @@ pub async fn login(
             write_login_log(&state, admin.id, &admin.username, &headers, 0, "需要动态验证码").await;
             return Err(ApiError::BadRequest(crate::error::TOTP_REQUIRED.into()));
         }
-        match crate::api::totp::verify_code_step(&state, &admin, code)? {
-            None => {
-                write_login_log(&state, admin.id, &admin.username, &headers, 0, "动态验证码错误").await;
-                record_login_failure(&state, username, &ip);
-                return Err(ApiError::BadRequest(crate::error::BAD_TOTP.into()));
-            }
-            Some(step) => {
-                // 记账与放行是同一条 UPDATE（`步号 > last_step` 才成立），并发登录只有一个
-                // 赢家。放在这里而不是整行 update 之后：被拒的重放不许碰 last_login_at，
-                // 也不许落设备行/发 token —— 输了就直接在这条路径上返回。
-                if !crate::api::totp::consume_step(&state, admin.id, step).await? {
-                    write_login_log(&state, admin.id, &admin.username, &headers, 0, "动态验证码已使用").await;
+        // 分流（F4-1）：6 位纯数字 = TOTP；其余一律按备用码（10 位）验。
+        if crate::totp::is_totp_code(code) {
+            match crate::api::totp::verify_code_step(&state, &admin, code)? {
+                None => {
+                    write_login_log(&state, admin.id, &admin.username, &headers, 0, "动态验证码错误").await;
                     record_login_failure(&state, username, &ip);
-                    return Err(ApiError::BadRequest(crate::error::TOTP_REPLAYED.into()));
+                    return Err(ApiError::BadRequest(crate::error::BAD_TOTP.into()));
                 }
-                used_step = Some(step);
+                Some(step) => {
+                    // 记账与放行是同一条 UPDATE（`步号 > last_step` 才成立），并发登录只有一个
+                    // 赢家。放在这里而不是整行 update 之后：被拒的重放不许碰 last_login_at，
+                    // 也不许落设备行/发 token —— 输了就直接在这条路径上返回。
+                    if !crate::api::totp::consume_step(&state, admin.id, step).await? {
+                        write_login_log(&state, admin.id, &admin.username, &headers, 0, "动态验证码已使用").await;
+                        record_login_failure(&state, username, &ip);
+                        return Err(ApiError::BadRequest(crate::error::TOTP_REPLAYED.into()));
+                    }
+                    used_step = Some(step);
+                }
+            }
+        } else {
+            // 备用码：未命中与「并发里被别人先销掉」都按错码处理（同一套计数/错误码）
+            let hit = crate::api::totp::verify_backup_code(&state, admin.id, code).await?;
+            match hit {
+                Some(id) if crate::api::totp::consume_backup_code(&state, id).await? => {}
+                _ => {
+                    let msg = if hit.is_some() { "备用码已使用" } else { "备用码错误" };
+                    write_login_log(&state, admin.id, &admin.username, &headers, 0, msg).await;
+                    record_login_failure(&state, username, &ip);
+                    return Err(ApiError::BadRequest(crate::error::BAD_TOTP.into()));
+                }
             }
         }
     }

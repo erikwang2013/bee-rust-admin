@@ -25,6 +25,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 mod config;
+mod delivery;
 mod emit;
 mod mail;
 mod webhook;
@@ -33,6 +34,7 @@ mod webhook;
 mod tests;
 
 pub use config::{NotifyConfig, load, save, validate};
+pub use delivery::notify_retry;
 pub use emit::emit;
 pub use mail::send_test_mail;
 
@@ -42,6 +44,8 @@ use webhook::post_webhook;
 // ── 配置键（种子与读写共用一份常量，改名只改这里）─────────────
 pub const KEY_WEBHOOK_ENABLED: &str = "notify.webhook_enabled";
 pub const KEY_WEBHOOK_URL: &str = "notify.webhook_url";
+/// Webhook HMAC 签名密钥（F4-2）：AES-256-GCM 密文落库，GET 只回是否已设置。
+pub const KEY_WEBHOOK_SECRET: &str = "notify.webhook_secret";
 pub const KEY_SMTP_ENABLED: &str = "notify.smtp_enabled";
 pub const KEY_SMTP_HOST: &str = "notify.smtp_host";
 pub const KEY_SMTP_PORT: &str = "notify.smtp_port";

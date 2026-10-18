@@ -65,7 +65,7 @@ async fn v16_job_notice_features() {
     // ── 任务列表：来自代码注册表的幂等补齐 ─────────────────────
     let (st, v) = call(&c, Method::GET, api("/jobs"), Some(&admin), None).await;
     assert_eq!(st, 200, "任务列表: {v}");
-    assert_eq!(v["data"]["total"], 7, "内置任务（代码注册表补齐）: {v}");
+    assert_eq!(v["data"]["total"], 8, "内置任务（代码注册表补齐）: {v}");
     let jobs = v["data"]["list"].as_array().unwrap();
     let job_by_code = |code: &str| {
         jobs.iter()

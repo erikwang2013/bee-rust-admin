@@ -30,13 +30,15 @@ export default function NotifyPage() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [clearingSecret, setClearingSecret] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const c = await notifyApi.get();
       setCfg(c);
-      form.setFieldsValue({ ...c, smtp_password: undefined }); // 口令永不回显
+      // 两个密钥都永不回显
+      form.setFieldsValue({ ...c, smtp_password: undefined, webhook_secret: undefined });
     } finally {
       setLoading(false);
     }
@@ -49,6 +51,7 @@ export default function NotifyPage() {
     try {
       const body: NotifyForm = { ...v };
       if (!v.smtp_password) delete body.smtp_password; // 留空 = 不改
+      if (!v.webhook_secret) delete body.webhook_secret;
       await notifyApi.save(body);
       message.success(t('common.saved'));
       await load();
@@ -69,6 +72,20 @@ export default function NotifyPage() {
       await load();
     } finally {
       setClearing(false);
+    }
+  };
+
+  /** 清空签名密钥：与清口令同理，用已保存的配置显式提交空串 */
+  const clearSecret = async () => {
+    if (!cfg) return;
+    setClearingSecret(true);
+    try {
+      const body: NotifyForm = { ...cfg, webhook_secret: '' };
+      await notifyApi.save(body);
+      message.success(t('common.saved'));
+      await load();
+    } finally {
+      setClearingSecret(false);
     }
   };
 
@@ -121,6 +138,28 @@ export default function NotifyPage() {
         >
           <Input placeholder="https://example.com/hook" allowClear />
         </Form.Item>
+        <Form.Item
+          name="webhook_secret"
+          label={t('notify.webhook_secret')}
+          extra={cfg?.webhook_secret_set
+            ? t('notify.webhook_secret_set_hint')
+            : t('notify.webhook_secret_unset_hint')}
+        >
+          <Input.Password autoComplete="new-password" />
+        </Form.Item>
+        <Auth code="system:notify:edit">
+          {cfg?.webhook_secret_set ? (
+            <Form.Item>
+              <Popconfirm
+                title={t('notify.clear_secret_confirm')}
+                okButtonProps={{ danger: true }}
+                onConfirm={() => void clearSecret()}
+              >
+                <Button danger size="small" loading={clearingSecret}>{t('notify.clear_secret')}</Button>
+              </Popconfirm>
+            </Form.Item>
+          ) : null}
+        </Auth>
 
         <Divider />
 

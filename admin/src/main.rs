@@ -258,6 +258,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .post("/totp/setup", api::totp::setup)
                 .post("/totp/enable", api::totp::enable)
                 .post("/totp/disable", api::totp::disable)
+                // 备用码（F4-1）：生成/重新生成 10 枚一次性码，要求当前 TOTP 码
+                .post("/totp/backup-codes", api::totp::backup_codes)
                 .get("/devices", api::totp::devices)
                 .delete("/devices/{id}", api::totp::kick)
         })

@@ -15,6 +15,8 @@ pub(super) const DEFAULT_SMTP_PORT: u16 = 587;
 pub struct NotifyConfig {
     pub webhook_enabled: bool,
     pub webhook_url: String,
+    /// **库里的形态**（密文）。要用明文过 [`NotifyConfig::secret`]，别直接读它。
+    pub webhook_secret: String,
     pub smtp_enabled: bool,
     pub smtp_host: String,
     pub smtp_port: u16,
@@ -38,6 +40,16 @@ impl NotifyConfig {
     pub fn password_set(&self) -> bool {
         !self.smtp_password.is_empty()
     }
+
+    /// 库里的签名密钥 → 明文；空串 = 未配置（发送时不签名）。
+    pub fn secret(&self, state: &AppState) -> Result<String, ApiError> {
+        crypto::plain(&state.crypto, &self.webhook_secret).map_err(ApiError::BadRequest)
+    }
+
+    /// 有没有配过签名密钥（接口只回这个布尔）。
+    pub fn secret_set(&self) -> bool {
+        !self.webhook_secret.is_empty()
+    }
 }
 
 /// `"true"` / `"1"` 都算真（与 `api::config::public_value` 的布尔口径一致：
@@ -59,6 +71,7 @@ pub async fn load(db: &Pool) -> Result<NotifyConfig, OrmError> {
     Ok(NotifyConfig {
         webhook_enabled: truthy(&get(KEY_WEBHOOK_ENABLED)),
         webhook_url: get(KEY_WEBHOOK_URL).trim().to_string(),
+        webhook_secret: get(KEY_WEBHOOK_SECRET),
         smtp_enabled: truthy(&get(KEY_SMTP_ENABLED)),
         smtp_host: get(KEY_SMTP_HOST).trim().to_string(),
         smtp_port: get(KEY_SMTP_PORT).trim().parse().unwrap_or(DEFAULT_SMTP_PORT),
@@ -76,9 +89,10 @@ pub async fn load(db: &Pool) -> Result<NotifyConfig, OrmError> {
 /// 落库（幂等 upsert，缺行就补）。`smtp_password` 传**要存进库的形态**（密文；空 = 置空）
 /// ——「留空不改」是接口层的语义，在调用它之前就决掉。
 pub async fn save(state: &AppState, cfg: &NotifyConfig) -> Result<(), ApiError> {
-    let pairs: [(&str, String); 10] = [
+    let pairs: [(&str, String); 11] = [
         (KEY_WEBHOOK_ENABLED, bool_str(cfg.webhook_enabled)),
         (KEY_WEBHOOK_URL, cfg.webhook_url.clone()),
+        (KEY_WEBHOOK_SECRET, cfg.webhook_secret.clone()),
         (KEY_SMTP_ENABLED, bool_str(cfg.smtp_enabled)),
         (KEY_SMTP_HOST, cfg.smtp_host.clone()),
         (KEY_SMTP_PORT, cfg.smtp_port.to_string()),
@@ -123,15 +137,31 @@ pub async fn save(state: &AppState, cfg: &NotifyConfig) -> Result<(), ApiError> 
     Ok(())
 }
 
-/// Webhook 出站的**最小** SSRF 防线：IP 字面量不许是链路本地（169.254/16、fe80::/10）
-/// 或未指定（0.0.0.0、::）—— 典型目标是云厂商元数据服务（169.254.169.254）。
+/// 单个解析结果是不是「不许投递」的地址：链路本地（169.254/16、fe80::/10）或
+/// 未指定（0.0.0.0、::）—— 典型目标是云厂商元数据服务（169.254.169.254）。
 /// 回环放行：本机联调与既有验收依赖 127.0.0.1。
+/// 保存校验与**发送时 DNS 解析**（F4-4）共用这一份判定。
+pub(super) fn is_blocked_ip(ip: std::net::IpAddr) -> bool {
+    use std::net::IpAddr;
+    match ip {
+        IpAddr::V4(v4) => v4.is_link_local() || v4.is_unspecified(),
+        IpAddr::V6(v6) => {
+            let link_local = (v6.segments()[0] & 0xffc0) == 0xfe80;
+            // ::ffff:169.254.169.254 这类映射地址按内层 v4 判
+            let mapped_bad = v6
+                .to_ipv4_mapped()
+                .is_some_and(|v4| v4.is_link_local() || v4.is_unspecified());
+            link_local || v6.is_unspecified() || mapped_bad
+        }
+    }
+}
+
+/// Webhook 出站的**最小** SSRF 防线（保存时）：IP 字面量不许是链路本地/未指定。
 ///
 /// 必须用 reqwest 自己的解析器（`Url::parse`）取 host：反斜杠按 `/`、十进制/十六进制/
 /// 八进制 IPv4、尾点、内嵌 tab 的归一化都与真正发请求时一致，手写切分会被解析差异绕过。
 ///
-/// shortcut: 不做 DNS 解析 —— 域名解析到 link-local 仍可绕过这一层；真正的出站白名单
-/// 应由部署侧网络策略承担，这里只挡「最省事的误配/探测」。
+/// 域名在这一层放行；发送前还有一次 tokio DNS 解析（F4-4，见 `notify::webhook`）。
 fn reject_unsafe_webhook_host(url: &str) -> Result<(), ApiError> {
     // 解析不了的地址一定发不出去（reqwest 用的是同一个解析器），且 zone id 这类
     // 写法会在这里失败；直接拦，别留「校验放行、发送才炸」的口子。
@@ -149,19 +179,7 @@ fn reject_unsafe_webhook_host(url: &str) -> Result<(), ApiError> {
     let Ok(ip) = host.parse::<std::net::IpAddr>() else {
         return Ok(()); // 不是 IP 字面量（域名）：本层不处理
     };
-    use std::net::IpAddr;
-    let bad = match ip {
-        IpAddr::V4(v4) => v4.is_link_local() || v4.is_unspecified(),
-        IpAddr::V6(v6) => {
-            let link_local = (v6.segments()[0] & 0xffc0) == 0xfe80;
-            // ::ffff:169.254.169.254 这类映射地址按内层 v4 判
-            let mapped_bad = v6
-                .to_ipv4_mapped()
-                .is_some_and(|v4| v4.is_link_local() || v4.is_unspecified());
-            link_local || v6.is_unspecified() || mapped_bad
-        }
-    };
-    if bad {
+    if is_blocked_ip(ip) {
         return Err(ApiError::BadRequest(
             "Webhook 地址不能指向链路本地或未指定地址（169.254.0.0/16、fe80::/10、0.0.0.0、::）".into(),
         ));

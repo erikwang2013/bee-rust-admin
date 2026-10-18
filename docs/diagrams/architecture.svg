@@ -77,7 +77,7 @@
   <rect class="box-inner" x="304" y="318" width="150" height="34" rx="5"/>
   <text class="t-inner" x="379" y="339" text-anchor="middle">Auth 提取器（JWT）</text>
   <rect class="box-inner" x="466" y="318" width="288" height="34" rx="5"/>
-  <text class="t-inner" x="610" y="339" text-anchor="middle">API handlers · 92 个接口 · require(权限码)</text>
+  <text class="t-inner" x="610" y="339" text-anchor="middle">API handlers · 93 个接口 · require(权限码)</text>
   <rect class="box-inner" x="146" y="360" width="300" height="30" rx="5"/>
   <text class="t-inner" x="296" y="379" text-anchor="middle">datascope 数据权限（五档，查询条件注入）</text>
   <rect class="box-inner" x="466" y="360" width="288" height="30" rx="5"/>
@@ -100,7 +100,7 @@
   <text class="band-label" x="24" y="590">数据层</text>
   <rect class="band" x="110" y="566" width="820" height="96" rx="8"/>
   <rect class="box-db" x="146" y="576" width="560" height="76" rx="6"/>
-  <text class="t-name" x="426" y="596" text-anchor="middle">MySQL 8.4（utf8mb4）· 20 张表</text>
+  <text class="t-name" x="426" y="596" text-anchor="middle">MySQL 8.4（utf8mb4）· 22 张表</text>
   <text class="t-sub"  x="426" y="615" text-anchor="middle">admin · role · menu · dept · dict_type · dict_item · job · job_log · notice</text>
   <text class="t-sub"  x="426" y="631" text-anchor="middle">login_log · audit_log · sys_config · export_task · attachment · admin_login_device</text>
   <text class="t-sub"  x="426" y="647" text-anchor="middle">关系表：admin_role · role_menu · role_dept · notice_read · 备份表：admin_email_phone_backup</text>

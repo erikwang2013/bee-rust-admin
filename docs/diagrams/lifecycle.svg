@@ -78,7 +78,7 @@
   <!-- ⑥ 监听 -->
   <rect class="box-backend" x="120" y="440" width="420" height="50" rx="7"/>
   <text class="t-name" x="136" y="462">⑥ 监听 127.0.0.1:8080</text>
-  <text class="t-sub"  x="136" y="479">bee_router（axum）注册 92 个接口；/api/v1/health 供探活</text>
+  <text class="t-sub"  x="136" y="479">bee_router（axum）注册 93 个接口；/api/v1/health 供探活</text>
 
   <!-- ⑦ 运行 -->
   <rect class="box-backend" x="120" y="508" width="420" height="50" rx="7"/>

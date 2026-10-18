@@ -8,6 +8,7 @@
 use hmac::{Hmac, Mac};
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 use sha1::Sha1;
+use sha2::{Digest, Sha256};
 
 type HmacSha1 = Hmac<Sha1>;
 
@@ -19,6 +20,16 @@ pub const DIGITS: u32 = 6;
 const SECRET_BYTES: usize = 20;
 /// 校验窗口：当前步前后各 1 步（客户端时钟差 ±30 秒以内都能通过）
 pub const WINDOW: i64 = 1;
+
+/// 备用码枚数与长度（F4-1）：10 枚、每枚 10 个字符。
+pub const BACKUP_COUNT: usize = 10;
+pub const BACKUP_LEN: usize = 10;
+/// 备用码字母表（32 个）：大写字母去掉 I/O、数字去掉 0/1 —— 只剩肉眼不易混淆的字符。
+/// 32 是 2 的幂，按字节取模没有偏差。
+const BACKUP_ALPHABET: &[u8; 32] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+/// 备用码哈希的域分隔串：把 `encrypt_key` 派生成专用 pepper，避免同一把密钥在
+/// 两处用途之间的输出可互相代入（Ruling F-2：pepper 由现有 `encrypt_key` 派生）。
+const BACKUP_PEPPER_LABEL: &[u8] = b"bee-admin/totp-backup-code/v1:";
 
 /// HOTP（RFC 4226 §5.3）：计数器 8 字节大端 → HMAC-SHA1 → 动态截断 → 末 `digits` 位。
 /// 截断后是 31 位，用 u32 装得下，不用大整数。
@@ -57,6 +68,50 @@ pub fn random_secret() -> Vec<u8> {
     let mut buf = [0u8; SECRET_BYTES];
     rand_core::RngCore::fill_bytes(&mut rand_core::OsRng, &mut buf);
     buf.to_vec()
+}
+
+/// 一枚备用码（10 个字符）。`random_bytes % 32` 无偏（256 是 32 的整数倍）。
+pub fn backup_code() -> String {
+    let mut buf = [0u8; BACKUP_LEN];
+    rand_core::RngCore::fill_bytes(&mut rand_core::OsRng, &mut buf);
+    buf.iter().map(|b| BACKUP_ALPHABET[(b & 31) as usize] as char).collect()
+}
+
+/// 一批备用码（10 枚，批内去重）。50 位随机空间下撞车概率可忽略，去重只是防御。
+pub fn backup_codes() -> Vec<String> {
+    let mut out = Vec::with_capacity(BACKUP_COUNT);
+    while out.len() < BACKUP_COUNT {
+        let code = backup_code();
+        if !out.contains(&code) {
+            out.push(code);
+        }
+    }
+    out
+}
+
+/// 用户输入的备用码归一化：去空白与连字符、转大写（展示与复制都容错）。
+pub fn normalize_backup_code(raw: &str) -> String {
+    raw.chars()
+        .filter(|c| !c.is_whitespace() && *c != '-')
+        .collect::<String>()
+        .to_ascii_uppercase()
+}
+
+/// 备用码哈希：SHA-256(域分隔 ‖ encrypt_key ‖ 归一化后的码)，小写 hex。
+/// `pepper` 传 `[app] encrypt_key` 原串 —— 派生是确定性的，重启后仍能验旧码。
+pub fn backup_code_hash(pepper: &str, code: &str) -> String {
+    let mut h = Sha256::new();
+    h.update(BACKUP_PEPPER_LABEL);
+    h.update(pepper.as_bytes());
+    h.update(b":");
+    h.update(normalize_backup_code(code).as_bytes());
+    crate::util::hex_lower(&h.finalize())
+}
+
+/// 登录分流用：6 位纯数字 = TOTP，其余（含空串）走备用码分支。
+pub fn is_totp_code(code: &str) -> bool {
+    let code = code.trim();
+    code.len() == DIGITS as usize && code.bytes().all(|b| b.is_ascii_digit())
 }
 
 /// base32 字母表（RFC 4648 §6）
@@ -239,5 +294,53 @@ mod tests {
         // 渲染器会先写一行 XML 声明，所以看开头是 `<svg` 会误判（实测过）
         assert!(svg.contains("<svg xmlns"), "{svg:.60}");
         assert!(svg.ends_with("</svg>"), "{svg:.60}");
+    }
+
+    #[test]
+    fn backup_codes_are_10_unique_ten_char_codes_without_confusables() {
+        let codes = backup_codes();
+        assert_eq!(codes.len(), BACKUP_COUNT);
+        for c in &codes {
+            assert_eq!(c.chars().count(), BACKUP_LEN, "{c}");
+            assert!(
+                c.bytes().all(|b| BACKUP_ALPHABET.contains(&b)),
+                "只用去掉 0/O/1/I 的字母表: {c}"
+            );
+        }
+        let mut uniq = codes.clone();
+        uniq.sort();
+        uniq.dedup();
+        assert_eq!(uniq.len(), BACKUP_COUNT, "批内不能有重复: {codes:?}");
+        assert_ne!(backup_codes(), codes, "随机源要真的随机");
+    }
+
+    #[test]
+    fn backup_code_normalization_and_hash_vector() {
+        // 展示大写；用户小写、带连字符或空格也能验
+        assert_eq!(normalize_backup_code(" abcde-23456 "), "ABCDE23456");
+        // 已知向量（独立用 python hashlib 算的固定值）：域分隔 + pepper + 码
+        assert_eq!(
+            backup_code_hash("pepper-test-key", "ABCDE23456"),
+            "bb3aef85de4d6d7f50ba57debcd83d0ba82d4dc055b72e2517002ef40bf6f5fa"
+        );
+        assert_eq!(
+            backup_code_hash("pepper-test-key", "abcde 23456"),
+            backup_code_hash("pepper-test-key", "ABCDE23456"),
+            "归一化后同一枚码必须是同一个哈希"
+        );
+        assert_ne!(
+            backup_code_hash("other-pepper", "ABCDE23456"),
+            backup_code_hash("pepper-test-key", "ABCDE23456"),
+            "换 pepper 必须换哈希"
+        );
+    }
+
+    #[test]
+    fn only_six_ascii_digits_are_totp_codes() {
+        assert!(is_totp_code("123456"));
+        assert!(is_totp_code(" 123456 "));
+        for bad in ["", "12345", "1234567", "12345a", "ABCDE23456", "１２３４５６"] {
+            assert!(!is_totp_code(bad), "{bad:?}");
+        }
     }
 }

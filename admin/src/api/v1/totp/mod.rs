@@ -144,7 +144,133 @@ pub async fn disable(
     admin.totp_last_step = None;
     admin.updated_at = now();
     admin.update(&state.db).await.map_err(ApiError::from)?;
+    // 备用码也一起作废（F4-1）：解绑后登录不要码，留着的备用码等于第二套口令
+    state
+        .db
+        .execute(
+            "DELETE FROM admin_backup_code WHERE admin_id = ?",
+            &[bee_orm::Value::from(admin.id)],
+        )
+        .await
+        .map_err(ApiError::from)?;
     Ok(ok(Value::Null))
+}
+
+/// 在未使用的备用码里找一枚匹配的（F4-1）。全部行比对完再返回，不提前跳出；
+/// 命中返回行 id（调用方拿它做一次性消费）。归一化后为空直接 None。
+pub async fn verify_backup_code(
+    state: &AppState,
+    admin_id: i64,
+    code: &str,
+) -> Result<Option<i64>, ApiError> {
+    let normalized = totp::normalize_backup_code(code);
+    if normalized.is_empty() {
+        return Ok(None);
+    }
+    let want = totp::backup_code_hash(&state.cfg.encrypt_key, &normalized);
+    let rows = state
+        .db
+        .query(
+            "SELECT id, code_hash FROM admin_backup_code WHERE admin_id = ? AND used_at IS NULL",
+            &[bee_orm::Value::from(admin_id)],
+        )
+        .await
+        .map_err(ApiError::from)?;
+    let mut hit = None;
+    for row in &rows {
+        if row.get("code_hash").and_then(|v| v.as_str()) == Some(want.as_str()) {
+            hit = row.get("id").and_then(|v| v.as_i64());
+        }
+    }
+    Ok(hit)
+}
+
+/// 一次性消费一枚备用码：`used_at IS NULL` 才成立，并发登录只有一个赢家。
+pub async fn consume_backup_code(state: &AppState, id: i64) -> Result<bool, ApiError> {
+    let n = state
+        .db
+        .execute(
+            "UPDATE admin_backup_code SET used_at = ? WHERE id = ? AND used_at IS NULL",
+            &[bee_orm::Value::from(now()), bee_orm::Value::from(id)],
+        )
+        .await
+        .map_err(ApiError::from)?;
+    Ok(n > 0)
+}
+
+/// 当前账号还剩多少枚未使用的备用码（个人中心展示用）。
+pub async fn backup_codes_left(state: &AppState, admin_id: i64) -> Result<i64, ApiError> {
+    let rows = state
+        .db
+        .query(
+            "SELECT COUNT(*) AS n FROM admin_backup_code WHERE admin_id = ? AND used_at IS NULL",
+            &[bee_orm::Value::from(admin_id)],
+        )
+        .await
+        .map_err(ApiError::from)?;
+    Ok(rows.first().and_then(|r| r.get("n")).and_then(|v| v.as_i64()).unwrap_or(0))
+}
+
+#[apidoc::title("生成 TOTP 备用码")]
+#[apidoc::desc("要求提交当前 6 位动态验证码；一次性生成 10 枚备用码并把旧码全部作废。**明文只在这次响应里出现一次**，库里只存加盐哈希。未绑定动态验证码时 400。需要登录")]
+#[apidoc::url("/api/v1/auth/totp/backup-codes")]
+#[apidoc::method("POST")]
+#[apidoc::tag("认证")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::param(name = "code", ty = "string", required, desc = "当前 6 位动态验证码（确认是本人操作）", mock = "123456")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("400")]
+#[apidoc::returned(name = "data", ty = "object", desc = "一次性明文备用码", children = [
+            {name = "codes", ty = "array", required, desc = "10 枚备用码（每枚 10 位，已剔除 0/O/1/I）"},
+        ])]
+pub async fn backup_codes(
+    State(state): State<AppState>,
+    auth: Auth,
+    AppJson(body): AppJson<CodeBody>,
+) -> Result<Json<Value>, ApiError> {
+    if auth.admin.totp_enabled != 1 {
+        return Err(ApiError::BadRequest(TOTP_NOT_BOUND.into()));
+    }
+    if !verify_code(&state, &auth.admin, &body.code)? {
+        return Err(ApiError::BadRequest(BAD_TOTP.into()));
+    }
+    let codes = totp::backup_codes();
+    let ids: Vec<i64> = (0..codes.len()).map(|_| state.next_id()).collect::<Result<_, _>>()?;
+    let created = now();
+
+    // 删旧 + 插新在同一事务里：生成到一半失败不能把用户仅剩的备用码清空
+    let mut conn = state.db.get().await.map_err(ApiError::from)?;
+    conn.begin().await.map_err(ApiError::from)?;
+    let result = async {
+        conn.execute(
+            "DELETE FROM admin_backup_code WHERE admin_id = ?",
+            &[bee_orm::Value::from(auth.admin.id)],
+        )
+        .await?;
+        for (id, code) in ids.iter().zip(&codes) {
+            conn.execute(
+                "INSERT INTO admin_backup_code (id, admin_id, code_hash, used_at, created_at) \
+                 VALUES (?, ?, ?, NULL, ?)",
+                &[
+                    bee_orm::Value::from(*id),
+                    bee_orm::Value::from(auth.admin.id),
+                    bee_orm::Value::from(totp::backup_code_hash(&state.cfg.encrypt_key, code)),
+                    bee_orm::Value::from(created),
+                ],
+            )
+            .await?;
+        }
+        Ok::<(), bee_orm::OrmError>(())
+    }
+    .await;
+    match result {
+        Ok(()) => conn.commit().await.map_err(ApiError::from)?,
+        Err(e) => {
+            let _ = conn.rollback().await;
+            return Err(e.into());
+        }
+    }
+    Ok(ok(json!({ "codes": codes })))
 }
 
 #[apidoc::title("登录设备列表")]

@@ -48,10 +48,15 @@ export const ops = {
 
   // ---- 通知设置（项 6）----
   'notify.title': '通知设置',
-  'notify.hint': 'Webhook 把事件 POST 成 JSON（5 秒超时、失败重试 3 次）；SMTP 用于「发测试邮件到我邮箱」与「公告邮件推送」。口令 AES-256-GCM 加密落库：接口不回显，审计只记「已变更」。',
+  'notify.hint': 'Webhook 把事件 POST 成 JSON（5 秒超时；失败落库，notify_retry 每 5 分钟按 1/5/15 分钟退避重投，最多 3 次）。配置签名密钥后带 X-BRA-Timestamp / X-BRA-Signature；发送时解析域名，解析到链路本地/未指定地址直接终态失败。SMTP 用于「发测试邮件到我邮箱」与「公告邮件推送」。密钥与口令 AES-256-GCM 加密落库：接口不回显，审计只记「已变更」。',
   'notify.webhook_enabled': '启用 Webhook',
   'notify.webhook_url': 'Webhook 地址',
   'notify.webhook_hint': '事件：公告发布（notice.published）/ 账号锁定（account.locked）',
+  'notify.webhook_secret': '签名密钥',
+  'notify.webhook_secret_set_hint': '已设置；留空 = 不改，填了就是换新',
+  'notify.webhook_secret_unset_hint': '未配置 = 不签名（请求不带签名头）',
+  'notify.clear_secret': '清空签名密钥',
+  'notify.clear_secret_confirm': '清空已保存的签名密钥？清空后 Webhook 请求不再带签名。',
   'notify.smtp_enabled': '启用 SMTP',
   'notify.smtp_host': 'SMTP 服务器',
   'notify.smtp_port': '端口',

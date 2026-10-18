@@ -17,6 +17,8 @@ export interface UserInfo {
   email?: string; phone?: string;
   /** 是否已绑定动态验证码（项 7）；登录/资料接口都带 */
   totp_enabled?: boolean;
+  /** 未使用的备用码数量（F4-1）；资料接口带，个人中心展示 */
+  backup_codes_left?: number;
 }
 
 /** 登录设备（项 7，`/auth/devices` 的每一行）。 */
@@ -122,6 +124,8 @@ export type PublicConfig = Record<string, string | boolean>;
 /** 通知渠道配置（项 6）：**没有 `smtp_password` 字段** —— 口令只进不出，只回是否已设置 */
 export interface NotifyConfig {
   webhook_enabled: boolean; webhook_url: string;
+  /** 是否已配置签名密钥（F4-2）：密钥本身只进不出 */
+  webhook_secret_set: boolean;
   smtp_enabled: boolean; smtp_host: string; smtp_port: number;
   smtp_user: string; smtp_from: string;
   smtp_encryption: 'starttls' | 'ssl' | 'none';

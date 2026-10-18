@@ -48,10 +48,15 @@ export const ops = {
 
   // ---- Notification settings (item 6) ----
   'notify.title': 'Notification settings',
-  'notify.hint': 'The webhook POSTs events as JSON (5s timeout, 3 retries); SMTP powers "send a test email to me" and notice email delivery. The password is stored AES-256-GCM encrypted: never echoed by the API, and the audit log only records "changed".',
+  'notify.hint': 'The webhook POSTs events as JSON (5s timeout; failures are recorded and notify_retry retries after 1/5/15 minutes, at most 3 times). With a signing secret it sends X-BRA-Timestamp / X-BRA-Signature; hostnames are resolved at send time and link-local/unspecified results fail terminally. SMTP powers "send a test email to me" and notice email delivery. Secrets and the password are stored AES-256-GCM encrypted: never echoed by the API, and the audit log only records "changed".',
   'notify.webhook_enabled': 'Enable webhook',
   'notify.webhook_url': 'Webhook URL',
   'notify.webhook_hint': 'Events: notice published (notice.published) / account locked (account.locked)',
+  'notify.webhook_secret': 'Signing secret',
+  'notify.webhook_secret_set_hint': 'Already set; leave empty to keep it, type to replace',
+  'notify.webhook_secret_unset_hint': 'Empty = unsigned (no signature headers)',
+  'notify.clear_secret': 'Clear signing secret',
+  'notify.clear_secret_confirm': 'Clear the saved signing secret? Webhook requests will no longer be signed.',
   'notify.smtp_enabled': 'Enable SMTP',
   'notify.smtp_host': 'SMTP server',
   'notify.smtp_port': 'Port',

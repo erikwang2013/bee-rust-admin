@@ -88,6 +88,14 @@ pub const JOBS: &[JobSpec] = &[
         interval_secs: 86400,
         run: |s| Box::pin(crate::retention::device_clean(s)),
     },
+    // Webhook 重投（F4-3）：每 5 分钟取 due 的失败记录重发（1/5/15 分钟退避，
+    // 最多 3 次），顺带清理 30 天前的账本行。执行体在 crate::notify
+    JobSpec {
+        code: "notify_retry",
+        name: "Webhook 失败重投",
+        interval_secs: 300,
+        run: |s| Box::pin(crate::notify::notify_retry(s)),
+    },
 ];
 
 /// 按 code 找注册项；库里残留的旧 code 找不到 = 不可手动触发（409）、调度跳过。

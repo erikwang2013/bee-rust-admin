@@ -17,6 +17,16 @@ pub fn ser_opt_dt<S: Serializer>(v: &Option<NaiveDateTime>, s: S) -> Result<S::O
     }
 }
 
+/// 小写十六进制摘要（SHA-256 / HMAC 的展示形态）。不引 hex 依赖：只在这里写一次。
+pub fn hex_lower(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        let _ = write!(out, "{b:02x}");
+    }
+    out
+}
+
 /// 当前本地时间（naive）。
 pub fn now() -> NaiveDateTime {
     chrono::Local::now().naive_local()
