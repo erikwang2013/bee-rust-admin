@@ -35,6 +35,9 @@ pub struct AppState {
     /// 插件默认存储不会自动清扫过期 key，不设闸门就是一个公开的内存增长口，
     /// 见 `api::auth::captcha_create_throttle`。
     pub captcha_throttle: Arc<Throttle<MemoryThrottleStore>>,
+    /// 「生成备用码 / 解绑 TOTP」两条已登录确认端点的当前码失败限流（per-admin，
+    /// 5 次 / 5 分钟 → 429）。进程内实现：多实例不共享，单实例语义一致。
+    pub totp_throttle: Arc<Throttle<MemoryThrottleStore>>,
     /// 请求安全扫描器（security-rust 4.0.0，32 个检测器）。
     ///
     /// 无状态、纯同步，但构造要编译 32 组正则 —— 进程内建一次共享，别按请求建。

@@ -6,230 +6,14 @@
 //! 「头存在」。重投通过 `POST /api/v1/jobs/{id}/run` 手动触发（接口是异步的，
 //! 用 `job_log` 判定这一趟跑完）。
 mod common;
+#[path = "api_webhook_retry_test/helpers.rs"]
+mod helpers;
 
-use axum::Router;
-use axum::body::Bytes;
-use axum::extract::State;
-use axum::http::{HeaderMap, StatusCode};
-use axum::routing::post;
-use hmac::{Hmac, Mac};
+use axum::http::StatusCode;
+use helpers::*;
 use reqwest::Method;
-use serde_json::{Value, json};
-use sha2::Sha256;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
-use tokio::net::TcpListener;
-
-/// 签名密钥：故意长得不像任何别的东西，方便全文搜它。
-const SECRET: &str = "whsec-f4-retry-9137-x";
-
-// ── 假 webhook：记录原始体与两个签名头 ──────────────────────
-
-#[derive(Clone, Default)]
-struct Hit {
-    body: Vec<u8>,
-    ts: Option<String>,
-    sig: Option<String>,
-}
-
-#[derive(Clone, Default)]
-struct Hook {
-    hits: Arc<Mutex<Vec<Hit>>>,
-    fail_first: Arc<AtomicUsize>,
-}
-
-impl Hook {
-    fn count(&self) -> usize {
-        self.hits.lock().unwrap().len()
-    }
-    fn hit(&self, i: usize) -> Hit {
-        self.hits.lock().unwrap()[i].clone()
-    }
-    fn fail_first(&self, n: usize) {
-        self.fail_first.store(n, Ordering::SeqCst);
-    }
-}
-
-async fn hook_handler(State(h): State<Hook>, headers: HeaderMap, body: Bytes) -> (StatusCode, &'static str) {
-    h.hits.lock().unwrap().push(Hit {
-        body: body.to_vec(),
-        ts: headers.get("x-bra-timestamp").and_then(|v| v.to_str().ok()).map(str::to_string),
-        sig: headers.get("x-bra-signature").and_then(|v| v.to_str().ok()).map(str::to_string),
-    });
-    let failed = h
-        .fail_first
-        .try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
-        .is_ok();
-    if failed {
-        return (StatusCode::INTERNAL_SERVER_ERROR, "boom");
-    }
-    (StatusCode::OK, "ok")
-}
-
-async fn fake_webhook() -> (Hook, u16) {
-    let h = Hook::default();
-    let app = Router::new().route("/hook", post(hook_handler)).with_state(h.clone());
-    let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let port = l.local_addr().unwrap().port();
-    tokio::spawn(async move {
-        let _ = axum::serve(l, app).await;
-    });
-    (h, port)
-}
-
-// ── 独立 HMAC（不复用服务端代码） ────────────────────────────
-
-fn hex_lower(bytes: &[u8]) -> String {
-    use std::fmt::Write;
-    let mut out = String::new();
-    for b in bytes {
-        let _ = write!(out, "{b:02x}");
-    }
-    out
-}
-
-fn sign(secret: &str, ts: u64, body: &[u8]) -> String {
-    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
-    mac.update(ts.to_string().as_bytes());
-    mac.update(b".");
-    mac.update(body);
-    format!("sha256={}", hex_lower(&mac.finalize().into_bytes()))
-}
-
-/// 收到的那一条必须带合法的 time/签名（签发时间 ±5 分钟内）。
-fn verify_signed(hit: &Hit, secret: &str) {
-    let ts: u64 = hit
-        .ts
-        .as_deref()
-        .expect("配置了密钥就必须有 X-BRA-Timestamp")
-        .parse()
-        .expect("时间戳是 unix 秒");
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    assert!(now.abs_diff(ts) < 300, "时间戳偏得太远: {ts} vs {now}");
-    let got = hit.sig.as_deref().expect("配置了密钥就必须有 X-BRA-Signature");
-    assert_eq!(got, sign(secret, ts, &hit.body), "签名必须是 HMAC-SHA256(ts.body)");
-}
-
-// ── HTTP 辅助 ───────────────────────────────────────────────
-
-async fn call(
-    c: &reqwest::Client,
-    method: Method,
-    url: String,
-    token: Option<&str>,
-    body: Option<Value>,
-) -> (u16, String) {
-    let mut rb = c.request(method, url);
-    if let Some(t) = token {
-        rb = rb.bearer_auth(t);
-    }
-    if let Some(b) = body {
-        rb = rb.json(&b);
-    }
-    let r = rb.send().await.expect("请求发送失败");
-    let status = r.status().as_u16();
-    (status, r.text().await.unwrap_or_default())
-}
-
-fn cfg_json(port: u16, secret: Option<&str>) -> Value {
-    let mut v = json!({
-        "webhook_enabled": true,
-        "webhook_url": format!("http://127.0.0.1:{port}/hook"),
-        "smtp_enabled": false,
-        "smtp_host": "",
-        "smtp_port": 587,
-        "smtp_user": "",
-        "smtp_from": "",
-        "smtp_encryption": "none",
-        "email_notice_enabled": false,
-    });
-    if let Some(s) = secret {
-        v["webhook_secret"] = json!(s);
-    }
-    v
-}
-
-async fn save_cfg(c: &reqwest::Client, base: &str, token: &str, body: Value) -> (u16, String) {
-    call(c, Method::PUT, format!("{base}/api/v1/notify/config"), Some(token), Some(body)).await
-}
-
-async fn publish(c: &reqwest::Client, base: &str, token: &str, title: &str) {
-    let (st, raw) = call(
-        c,
-        Method::POST,
-        format!("{base}/api/v1/notices"),
-        Some(token),
-        Some(json!({ "title": title, "content": "正文", "status": 1 })),
-    )
-    .await;
-    assert_eq!(st, 200, "发公告失败: {raw}");
-}
-
-/// 事件是异步发的：等条件成立。
-async fn wait_until(what: &str, mut ok: impl FnMut() -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(15);
-    while !ok() {
-        assert!(Instant::now() < deadline, "等 {what} 超时");
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-}
-
-async fn wait_row(pool: &sqlx::MySqlPool, title: &str) {
-    let deadline = Instant::now() + Duration::from_secs(15);
-    loop {
-        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM notify_delivery WHERE payload LIKE ?")
-            .bind(format!("%{title}%"))
-            .fetch_one(pool)
-            .await
-            .unwrap();
-        if n > 0 {
-            return;
-        }
-        assert!(Instant::now() < deadline, "等 {title} 的失败记录超时");
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-}
-
-type Row = (i64, String, i32, Option<chrono::NaiveDateTime>, String);
-
-async fn delivery(pool: &sqlx::MySqlPool, title: &str) -> Row {
-    sqlx::query_as(
-        "SELECT id, status, attempts, next_at, msg FROM notify_delivery \
-         WHERE payload LIKE ? ORDER BY id DESC LIMIT 1",
-    )
-    .bind(format!("%{title}%"))
-    .fetch_one(pool)
-    .await
-    .unwrap()
-}
-
-async fn make_due(pool: &sqlx::MySqlPool, id: i64) {
-    // 测试侧算时间：sqlx 会话时区是 UTC（MySQL NOW() 会差 8 小时）
-    let past = chrono::Utc::now().naive_utc() - chrono::Duration::seconds(5);
-    sqlx::query("UPDATE notify_delivery SET next_at = ? WHERE id = ?")
-        .bind(past)
-        .bind(id)
-        .execute(pool)
-        .await
-        .unwrap();
-}
-
-/// 手动跑一趟 `notify_retry`（接口异步），返回这一趟的 job_log 摘要。
-async fn run_retry(c: &reqwest::Client, base: &str, pool: &sqlx::MySqlPool, token: &str) -> String {
-    let id: i64 = sqlx::query_scalar("SELECT id FROM job WHERE code = 'notify_retry'")
-        .fetch_one(pool)
-        .await
-        .expect("notify_retry 必须被种子注册");
-    let last = common::last_log_id(pool, "notify_retry").await;
-    common::trigger(c, base, &common::enc_id(id as u64), token).await;
-    let (status, msg, _) = common::wait_job_log(pool, "notify_retry", last).await;
-    assert_eq!(status, 1, "notify_retry 应成功: {msg}");
-    msg
-}
+use serde_json::Value;
+use std::time::Duration;
 
 #[tokio::test]
 async fn webhook_signs_failures_persist_and_retry() {
@@ -336,7 +120,7 @@ async fn webhook_signs_failures_persist_and_retry() {
     assert!(hit.ts.is_none(), "未配置密钥就不该有 X-BRA-Timestamp");
     assert!(hit.sig.is_none(), "未配置密钥就不该有 X-BRA-Signature");
 
-    // 恢复密钥，供后面的重投用例用（重投要「复用签名」）
+    // 恢复密钥，供后面的重投用例用（重投也是「每投现签」，同一个密钥、新的时间戳）
     let (st, _) = save_cfg(&c, &base, &token, cfg_json(hook_port, Some(SECRET))).await;
     assert_eq!(st, 200);
 
@@ -445,6 +229,89 @@ async fn webhook_signs_failures_persist_and_retry() {
     .unwrap();
     assert_eq!(rows, 1, "只落一条终态记录");
     let _ = id;
+
+    // ── 8. 领取竞争（M1）：同一行被两个领取者抢，只有一个发出 ──
+    // 先恢复 webhook 地址（第 7 节改成了 169.254 字面量，不恢复就一个请求都收不到）。
+    let (st, _) = save_cfg(&c, &base, &token, cfg_json(hook_port, Some(SECRET))).await;
+    assert_eq!(st, 200);
+    // 造两行 due 记录，A 在前。假 webhook 慢 2 秒：等 A 的请求到达后，测试侧把 B 的
+    // next_at 推到未来（模拟另一个领取者已经抢走 B）。本趟 CAS 用的是 SELECT 时的
+    // 旧 next_at，对 B 必然影响 0 行 → 跳过、不发出、不覆盖 B 的排期。
+    let ra = common::new_row_id();
+    let rb = common::new_row_id();
+    let past_a = chrono::Utc::now().naive_utc() - chrono::Duration::seconds(20);
+    let past_b = chrono::Utc::now().naive_utc() - chrono::Duration::seconds(10);
+    for (id, title, at) in [(ra, "领取竞争A", past_a), (rb, "领取竞争B", past_b)] {
+        sqlx::query(
+            "INSERT INTO notify_delivery (id, event, payload, status, attempts, next_at, msg, created_at) \
+             VALUES (?, 'notice.published', ?, 'pending', 1, ?, '手工造', ?)",
+        )
+        .bind(id)
+        .bind(format!(
+            "{{\"event\":\"notice.published\",\"at\":1700000000,\"data\":{{\"title\":\"{title}\"}}}}"
+        ))
+        .bind(at)
+        .bind(at)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    hook.delay_ms(2000);
+    let before = hook.count();
+    let job_id: i64 = sqlx::query_scalar("SELECT id FROM job WHERE code = 'notify_retry'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let last = common::last_log_id(&pool, "notify_retry").await;
+    common::trigger(&c, &base, &common::enc_id(job_id as u64), &token).await;
+    wait_until("A 先到达", || hook.count() >= before + 1).await;
+    let other_claim = (chrono::Local::now() + chrono::Duration::minutes(10)).naive_local();
+    sqlx::query("UPDATE notify_delivery SET next_at = ? WHERE id = ?")
+        .bind(other_claim)
+        .bind(rb)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (status, msg, _) = common::wait_job_log(&pool, "notify_retry", last).await;
+    assert_eq!(status, 1, "notify_retry 应成功: {msg}");
+    assert!(
+        msg.contains("重投 1 条") && msg.contains("跳过 1 条"),
+        "这一趟只能发 A、跳过 B: {msg}"
+    );
+    assert_eq!(hook.count(), before + 1, "B 不能再发一次: {}", hook.count());
+    let (_, st_a, at_a, _, _) = delivery(&pool, "领取竞争A").await;
+    assert_eq!((st_a.as_str(), at_a), ("delivered", 2), "A 应正常投递");
+    let (_, st_b, at_b, next_b, _) = delivery(&pool, "领取竞争B").await;
+    assert_eq!((st_b.as_str(), at_b), ("pending", 1), "B 被跳过，尝试次数不动");
+    assert_eq!(
+        next_b.map(|t| t.and_utc().timestamp()),
+        Some(other_claim.and_utc().timestamp()),
+        "B 的 next_at 不能被本趟覆盖"
+    );
+    hook.delay_ms(0);
+
+    // ── 9. 不跟随重定向（I1）：302/307 按普通失败入账，绝不跟到链路本地目标 ──
+    for (code, label) in [
+        (StatusCode::FOUND, "重定向302验收"),
+        (StatusCode::TEMPORARY_REDIRECT, "重定向307验收"),
+    ] {
+        hook.redirect(code, "http://169.254.169.254/latest/meta-data");
+        let before = hook.count();
+        publish(&c, &base, &token, label).await;
+        wait_until(label, || hook.count() >= before + 1).await;
+        wait_row(&pool, label).await;
+        let (_, status, attempts, next_at, err) = delivery(&pool, label).await;
+        assert_eq!(status, "pending", "3xx 是普通失败，进重试: {err}");
+        assert_eq!(attempts, 1, "首发算一次");
+        assert!(next_at.is_some(), "普通失败要有重投排期");
+        assert_eq!(err, format!("HTTP {}", code.as_u16()), "要如实记 3xx 状态码");
+        assert_eq!(
+            hook.count(),
+            before + 1,
+            "只能有 1 个请求（跟随重定向会多打一次目标地址）"
+        );
+        hook.clear_redirect();
+    }
 
     // 密钥不出现在任何落库文本里（审计 / 登录日志 / 任务日志 / 投递账本）
     let leaked: i64 = sqlx::query_scalar(

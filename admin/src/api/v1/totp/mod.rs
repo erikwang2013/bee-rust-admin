@@ -15,13 +15,48 @@ use crate::util::{now, now_unix};
 use axum::Json;
 use axum::extract::{Path, State};
 use bee_orm::Model;
+use security_rust::throttle::{MemoryThrottleStore, Throttle, ThrottleConfig, ThrottleDecision};
 use serde::Deserialize;
 use serde_json::{Value, json};
+use std::sync::Arc;
 
 #[derive(Deserialize)]
 pub struct CodeBody {
     /// 验证器 App 上的 6 位码
     pub code: String,
+}
+
+/// 「生成备用码 / 解绑」两条已登录确认端点的当前码失败限流：5 次失败 / 5 分钟 → 429。
+/// 成功不清零（窗口自然过期）。进程内 per-admin；多实例不共享，单实例语义一致。
+pub fn confirm_throttle() -> Arc<Throttle<MemoryThrottleStore>> {
+    Arc::new(Throttle::new(
+        MemoryThrottleStore::new(),
+        ThrottleConfig {
+            threshold: 5,
+            window_secs: 300,
+            ban_secs: 300,
+        },
+    ))
+}
+
+fn confirm_key(admin_id: i64) -> String {
+    format!("totp-confirm:{admin_id}")
+}
+
+/// 在验码**之前**检查：额度耗尽后连正确码也要等窗口滑过去。
+fn check_confirm(state: &AppState, admin_id: i64) -> Result<(), ApiError> {
+    match state.totp_throttle.check(&confirm_key(admin_id), now_unix()) {
+        ThrottleDecision::Banned { .. } | ThrottleDecision::Allow { remaining: 0 } => {
+            Err(ApiError::throttled(5))
+        }
+        _ => Ok(()),
+    }
+}
+
+fn record_confirm_failure(state: &AppState, admin_id: i64) {
+    if let Err(e) = state.totp_throttle.record_failure(&confirm_key(admin_id), now_unix()) {
+        tracing::error!("TOTP 确认限流计数失败: {e}");
+    }
 }
 
 /// 解出密钥明文（base32）。空串 = 没生成过；解不开报内部错误（存量脏数据）。
@@ -116,7 +151,7 @@ pub async fn enable(
 }
 
 #[apidoc::title("解绑动态验证码")]
-#[apidoc::desc("校验当前 6 位码后解绑，并把密钥一起清掉（留着等于没解绑）。解绑后登录不再要求动态验证码。需要登录")]
+#[apidoc::desc("校验当前 6 位码后解绑，并把密钥与备用码一起清掉（留着等于没解绑）。连续输错 5 次当前码后 5 分钟内一律 429。解绑后登录不再要求动态验证码。需要登录")]
 #[apidoc::url("/api/v1/auth/totp/disable")]
 #[apidoc::method("POST")]
 #[apidoc::tag("认证")]
@@ -124,6 +159,7 @@ pub async fn enable(
 #[apidoc::param(name = "code", ty = "string", required, desc = "当前 6 位动态验证码", mock = "123456")]
 #[apidoc::response_status("200")]
 #[apidoc::response_status("400")]
+#[apidoc::response_status("429")]
 #[apidoc::returned(name = "data", ty = "null", desc = "无数据（成功时固定为 null）")]
 pub async fn disable(
     State(state): State<AppState>,
@@ -133,26 +169,39 @@ pub async fn disable(
     if auth.admin.totp_enabled != 1 {
         return Err(ApiError::BadRequest(TOTP_NOT_BOUND.into()));
     }
+    check_confirm(&state, auth.admin.id)?;
     if !verify_code(&state, &auth.admin, &body.code)? {
+        record_confirm_failure(&state, auth.admin.id);
         return Err(ApiError::BadRequest(BAD_TOTP.into()));
     }
-    let mut admin = auth.admin.clone();
-    admin.totp_enabled = 0;
-    admin.totp_secret = String::new();
-    // 一次性账本跟着密钥一起清（S1）：留着的话，重新绑定后旧步号的高水位还在，
-    // 会把新密钥早期的码误判成重放
-    admin.totp_last_step = None;
-    admin.updated_at = now();
-    admin.update(&state.db).await.map_err(ApiError::from)?;
-    // 备用码也一起作废（F4-1）：解绑后登录不要码，留着的备用码等于第二套口令
-    state
-        .db
-        .execute(
-            "DELETE FROM admin_backup_code WHERE admin_id = ?",
-            &[bee_orm::Value::from(admin.id)],
+    // 解绑与删备用码必须同事务（M2）：分开写时删码失败会留下「已解绑但旧备用码还在」，
+    // 重试又因未绑定而早退，旧码就永远删不掉了。
+    let mut conn = state.db.get().await.map_err(ApiError::from)?;
+    conn.begin().await.map_err(ApiError::from)?;
+    let result = async {
+        // 一次性账本跟着密钥一起清（S1）：留着的话，重新绑定后旧步号的高水位还在，
+        // 会把新密钥早期的码误判成重放
+        conn.execute(
+            "UPDATE admin SET totp_enabled = 0, totp_secret = '', totp_last_step = NULL, \
+             updated_at = ? WHERE id = ?",
+            &[bee_orm::Value::from(now()), bee_orm::Value::from(auth.admin.id)],
         )
-        .await
-        .map_err(ApiError::from)?;
+        .await?;
+        conn.execute(
+            "DELETE FROM admin_backup_code WHERE admin_id = ?",
+            &[bee_orm::Value::from(auth.admin.id)],
+        )
+        .await?;
+        Ok::<(), bee_orm::OrmError>(())
+    }
+    .await;
+    match result {
+        Ok(()) => conn.commit().await.map_err(ApiError::from)?,
+        Err(e) => {
+            let _ = conn.rollback().await;
+            return Err(e.into());
+        }
+    }
     Ok(ok(Value::Null))
 }
 
@@ -212,7 +261,7 @@ pub async fn backup_codes_left(state: &AppState, admin_id: i64) -> Result<i64, A
 }
 
 #[apidoc::title("生成 TOTP 备用码")]
-#[apidoc::desc("要求提交当前 6 位动态验证码；一次性生成 10 枚备用码并把旧码全部作废。**明文只在这次响应里出现一次**，库里只存加盐哈希。未绑定动态验证码时 400。需要登录")]
+#[apidoc::desc("要求提交当前 6 位动态验证码；一次性生成 10 枚备用码并把旧码全部作废。**明文只在这次响应里出现一次**，库里只存加盐哈希。连续输错 5 次当前码后 5 分钟内一律 429。未绑定动态验证码时 400。需要登录")]
 #[apidoc::url("/api/v1/auth/totp/backup-codes")]
 #[apidoc::method("POST")]
 #[apidoc::tag("认证")]
@@ -220,6 +269,7 @@ pub async fn backup_codes_left(state: &AppState, admin_id: i64) -> Result<i64, A
 #[apidoc::param(name = "code", ty = "string", required, desc = "当前 6 位动态验证码（确认是本人操作）", mock = "123456")]
 #[apidoc::response_status("200")]
 #[apidoc::response_status("400")]
+#[apidoc::response_status("429")]
 #[apidoc::returned(name = "data", ty = "object", desc = "一次性明文备用码", children = [
             {name = "codes", ty = "array", required, desc = "10 枚备用码（每枚 10 位，已剔除 0/O/1/I）"},
         ])]
@@ -231,7 +281,9 @@ pub async fn backup_codes(
     if auth.admin.totp_enabled != 1 {
         return Err(ApiError::BadRequest(TOTP_NOT_BOUND.into()));
     }
+    check_confirm(&state, auth.admin.id)?;
     if !verify_code(&state, &auth.admin, &body.code)? {
+        record_confirm_failure(&state, auth.admin.id);
         return Err(ApiError::BadRequest(BAD_TOTP.into()));
     }
     let codes = totp::backup_codes();

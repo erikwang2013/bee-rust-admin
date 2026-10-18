@@ -109,8 +109,11 @@ pub(super) async fn post_webhook(url: &str, body: &Value, secret: &str) -> Resul
 
     let bytes = serde_json::to_vec(body)
         .map_err(|e| DeliveryError::retryable(format!("序列化事件体失败: {e}")))?;
+    // 不跟随重定向（I1）：check_target 只校验初始 URL，跟随 302/307 会绕过发送时
+    // 对链路本地地址的封禁。3xx 一律按普通投递失败处理（进重试）。
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(TIMEOUT_SECS))
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|e| DeliveryError::retryable(format!("建 HTTP 客户端失败: {e}")))?;
     let mut req = client

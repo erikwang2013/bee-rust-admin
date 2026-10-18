@@ -172,6 +172,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .map_err(|e| format!("初始化验证码存储失败: {e}"))?;
 
     let captcha_throttle = api::auth::captcha_create_throttle();
+    let totp_throttle = api::totp::confirm_throttle();
 
     // 头像分片上传的运行时（上传根 = `[app] upload_dir`，秒传用进程内内存表）。
     // 构造失败在这里就炸：与 encrypt_key 一个态度，不让进程带着半吊子状态跑。
@@ -181,7 +182,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 进程内建一次共享；拦截阈值在 `[security] scan`（默认 off = 只报告不拦截）。
     let scanner = std::sync::Arc::new(security_rust::Scanner::default());
 
-    let state = AppState { db, cfg: std::sync::Arc::new(cfg), throttle, snowflake, jwt, crypto, captcha, captcha_throttle, scanner, aether };
+    let state = AppState { db, cfg: std::sync::Arc::new(cfg), throttle, snowflake, jwt, crypto, captcha, captcha_throttle, totp_throttle, scanner, aether };
     let addr = state.cfg.http_addr.clone();
 
     // 内存限流的条目只在写路径顺手清窗口内的失败，桶本身（每个用户名/IP 一个）不会
@@ -190,6 +191,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let throttle = state.throttle.clone();
         let captcha_throttle = state.captcha_throttle.clone();
+        let totp_throttle = state.totp_throttle.clone();
         let period = std::time::Duration::from_secs(((state.cfg.lock_minutes * 60) as u64).max(60));
         tokio::spawn(async move {
             let mut tick = tokio::time::interval(period);
@@ -206,6 +208,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match captcha_throttle.purge_expired(now) {
                     Ok(n) => purged += n,
                     Err(e) => tracing::warn!("清理验证码限流条目失败: {e}"),
+                }
+                match totp_throttle.purge_expired(now) {
+                    Ok(n) => purged += n,
+                    Err(e) => tracing::warn!("清理 TOTP 确认限流条目失败: {e}"),
                 }
                 if purged > 0 {
                     tracing::debug!("清理过期限流条目 {purged} 条");

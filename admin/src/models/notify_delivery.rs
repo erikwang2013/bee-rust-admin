@@ -4,7 +4,7 @@ use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
 /// Webhook 投递失败账本（F4-3）：**成功不落行**，只记失败与终态。
-/// `payload` 是实际发出的 JSON 体原文（重投时原样再发，签名对同一份字节成立）。
+/// `payload` 是实际发出的 JSON 体原文（重投原样再发；签名每投按当前时间戳现算）。
 #[derive(Model, Serialize, Deserialize, Clone, Debug)]
 #[bee(table = "notify_delivery")]
 pub struct NotifyDelivery {

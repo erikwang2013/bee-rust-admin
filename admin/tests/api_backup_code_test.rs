@@ -301,6 +301,24 @@ async fn totp_backup_codes_generate_login_regenerate_and_lock() {
     assert_eq!(st, 200, "新码可登录: {v}");
     assert_eq!(profile(&a, &base, &token).await["backup_codes_left"], 9, "新码用掉一枚");
 
+    // ── 5b. 并发用同一枚备用码：CAS 只有一个赢家 ──
+    let ca = client_with_ip("backup-race-A", "10.9.9.1");
+    let cb = client_with_ip("backup-race-B", "10.9.9.2");
+    let (ra, rb) = tokio::join!(
+        login(&ca, &base, "admin", "admin123", Some(&new_codes[1])),
+        login(&cb, &base, "admin", "admin123", Some(&new_codes[1])),
+    );
+    let wins = [ra.0, rb.0].iter().filter(|s| **s == 200).count();
+    assert_eq!(wins, 1, "同一枚备用码并发登录只能有一个成功: {ra:?} | {rb:?}");
+    let loser = if ra.0 == 200 { &rb } else { &ra };
+    assert_eq!(loser.0, 400, "输家按错码/已使用处理: {loser:?}");
+    assert_eq!(loser.1["err"], "auth.bad_totp", "{loser:?}");
+    assert_eq!(
+        profile(&a, &base, &token).await["backup_codes_left"],
+        8,
+        "并发只销掉一枚"
+    );
+
     // ── 6. 未绑定 TOTP 的账号：端点 400 ──
     let (st, v) = call(
         &a,
@@ -365,5 +383,67 @@ async fn totp_backup_codes_generate_login_regenerate_and_lock() {
     }
     let (st, v) = login(&attacker, &base, "nobackup", "nobackup123", Some(&throttle_codes[0])).await;
     assert_eq!(st, 429, "错码计数生效，正确码也先被限流: {v}");
+    assert_eq!(v["err"], "auth.throttled", "{v}");
+
+    // ── 8. 「生成备用码 / 解绑」当前码确认限流（M4）：5 次失败 / 5 分钟 → 429 ──
+    let (st, v) = call(
+        &a,
+        Method::POST,
+        api("/admins"),
+        Some(&token),
+        Some(json!({ "username": "confirm5", "password": "confirm12345", "nickname": "限流确认" })),
+    )
+    .await;
+    assert_eq!(st, 200, "造限流账号: {v}");
+    let c8 = client("backup-dev-F");
+    let (st, v) = login(&c8, &base, "confirm5", "confirm12345", None).await;
+    assert_eq!(st, 200, "{v}");
+    let token8 = v["data"]["token"].as_str().unwrap().to_string();
+    let (st, v) = call(&c8, Method::POST, api("/auth/totp/setup"), Some(&token8), None).await;
+    assert_eq!(st, 200, "{v}");
+    let secret8 = v["data"]["secret"].as_str().unwrap().to_string();
+    let (st, v) = call(
+        &c8,
+        Method::POST,
+        api("/auth/totp/enable"),
+        Some(&token8),
+        Some(json!({ "code": code(&secret8) })),
+    )
+    .await;
+    assert_eq!(st, 200, "绑定 TOTP: {v}");
+
+    let wrong = if code(&secret8) == "000000" { "000001" } else { "000000" };
+    for i in 0..5 {
+        let (st, v) = call(
+            &c8,
+            Method::POST,
+            api("/auth/totp/backup-codes"),
+            Some(&token8),
+            Some(json!({ "code": wrong })),
+        )
+        .await;
+        assert_eq!(st, 400, "第 {} 次错码应 400: {v}", i + 1);
+        assert_eq!(v["err"], "auth.bad_totp", "{v}");
+    }
+    let (st, v) = call(
+        &c8,
+        Method::POST,
+        api("/auth/totp/backup-codes"),
+        Some(&token8),
+        Some(json!({ "code": code(&secret8) })),
+    )
+    .await;
+    assert_eq!(st, 429, "5 次失败后连正确码也要限流: {v}");
+    assert_eq!(v["err"], "auth.throttled", "{v}");
+    // 同一条确认路径的另一个端点共享同一个 per-admin 桶（解绑也必须是 429，不能放行）
+    let (st, v) = call(
+        &c8,
+        Method::POST,
+        api("/auth/totp/disable"),
+        Some(&token8),
+        Some(json!({ "code": code(&secret8) })),
+    )
+    .await;
+    assert_eq!(st, 429, "解绑端点也受同一个桶限制: {v}");
     assert_eq!(v["err"], "auth.throttled", "{v}");
 }
