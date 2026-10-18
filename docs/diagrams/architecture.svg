@@ -97,13 +97,14 @@
   <text class="t-sub"  x="658" y="518" text-anchor="middle">tracing 日志</text>
 
   <!-- 5. 数据层 -->
-  <text class="band-label" x="24" y="590">数据层</text>
-  <rect class="band" x="110" y="566" width="820" height="96" rx="8"/>
-  <rect class="box-db" x="146" y="576" width="560" height="76" rx="6"/>
-  <text class="t-name" x="426" y="596" text-anchor="middle">MySQL 8.4（utf8mb4）· 22 张表</text>
-  <text class="t-sub"  x="426" y="615" text-anchor="middle">admin · role · menu · dept · dict_type · dict_item · job · job_log · notice</text>
-  <text class="t-sub"  x="426" y="631" text-anchor="middle">login_log · audit_log · sys_config · export_task · attachment · admin_login_device</text>
-  <text class="t-sub"  x="426" y="647" text-anchor="middle">关系表：admin_role · role_menu · role_dept · notice_read · 备份表：admin_email_phone_backup</text>
+  <text class="band-label" x="24" y="580">数据层</text>
+  <rect class="band" x="110" y="556" width="820" height="118" rx="8"/>
+  <rect class="box-db" x="146" y="566" width="560" height="98" rx="6"/>
+  <text class="t-name" x="426" y="586" text-anchor="middle">MySQL 8.4（utf8mb4）· 22 张表</text>
+  <text class="t-sub"  x="426" y="605" text-anchor="middle">admin · role · menu · dept · dict_type · dict_item · job · job_log · notice</text>
+  <text class="t-sub"  x="426" y="621" text-anchor="middle">login_log · audit_log · sys_config · export_task · attachment · admin_login_device</text>
+  <text class="t-sub"  x="426" y="637" text-anchor="middle">关系表：admin_role · role_menu · role_dept · notice_read · 备份表：admin_email_phone_backup</text>
+  <text class="t-sub"  x="426" y="653" text-anchor="middle">F4：admin_backup_code（备用码）· notify_delivery（通知失败账本）</text>
 
   <!-- 安全侧栏 -->
   <rect class="box-security" x="800" y="276" width="128" height="136" rx="6"/>

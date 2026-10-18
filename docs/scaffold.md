@@ -142,5 +142,6 @@ bash scripts/scaffold-module.sh dict system:dict \
 - **不生成业务逻辑**：级联删、状态机、导出、数据权限收窄……都是「长在骨架上」的东西，
   骨架只保证 CRUD 通、校验在、鉴权在、测试在。
 - **不动 i18n 词表**：页面只引**已经存在**的 `field.*` 键（引新键 tsc 立刻报错），
-  字段名不在词表里时先用字段名当标签。想要模块专属文案，自己往
-  `admin/web/src/i18n/zh-CN.ts` 与 `en-US.ts` 各加一份（**两边键集合必须一致**）。
+  字段名不在词表里时先用字段名当标签。想要模块专属文案，往 `admin/web/src/i18n/dict/zh/`
+  与 `dict/en/` 下对应分组的词表文件里各加一份（**两边键集合必须一致**）；新增分组文件
+  还要在聚合器 `admin/web/src/i18n/zh-CN.ts` / `en-US.ts` 里 import 进去。

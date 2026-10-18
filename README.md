@@ -109,8 +109,8 @@ INI 配置），前端是 Vite + React 18 + Ant Design 5 单页应用，两者�
 | **操作日志** | 有副作用的操作（POST / PUT / DELETE）自动留痕（时间 / 操作人 / 模块 / 动作 / 请求 / IP）、按用户名 / 模块 / 时间段筛选、导出与按条件清空（清空本身也留痕），记录受数据权限约束。管理员 / 角色 / 部门 / 字典四类编辑额外记 **变更摘要**（哪些字段 旧→新）；账号的邮箱 / 手机号是加密列，摘要只记「已变更」不落值 |
 | **字典管理** | 字典类型 + 字典项两级维护、同类型内 value 唯一、删除类型级联删项、CSV 导出；`GET /dicts/{code}/items` 是登录即可用的下拉数据源（只回启用项） |
 | **数据导入** | 管理员 / 部门 / 字典项三个页面：下载模板（表头即契约）→ 上传 CSV → 逐行报告（行号 + 原因）。**单事务全有或全无**（有一行不合规整批不写库），每行都过发起人自己的权限与数据范围；只认 UTF-8、单次 5000 行 |
-| **导出中心** | 异步导出：发起（操作日志 / 登录记录，与同步导出**共用同一套渲染**、产物逐字节一致）→ 定时任务执行（进程内并发上限 2，跨多次触发不叠加）→ 列表自动轮询（有进度列）→ 下载 / 取消 / 删除。两条权限闸（`system:export:list` + 该类型的查看码），**个人工作台**（只看得到自己的任务），过期连记录带文件自动清理 |
-| **定时任务** | 内置任务由**代码注册**（code 是注册键，库里只放调度与执行记录，界面不能新增/改名）、固定间隔（秒）调度 + 启停、手动触发一次、执行记录分页；`[job] enabled` 总开关关掉后仍可手动补跑 |
+| **导出中心** | 异步导出：发起（操作日志 / 登录记录，与同步导出**共用同一套渲染**、产物逐字节一致）→ 定时任务执行（进程内并发上限 2，跨多次触发不叠加）→ 列表自动轮询（有进度列）→ 下载 / 取消 / 删除。两条权限闸（`system:export:list` + 该类型的查看码），**个人工作台**（只看得到自己的任务）；成品按代次命名，过期连记录带文件自动清理，手动删除任务也会清掉该任务的全部代次文件 |
+| **定时任务** | **8 个内置任务**由**代码注册**（code 是注册键，库里只放调度与执行记录，界面不能新增/改名）、固定间隔（秒）调度 + 启停、手动触发一次、执行记录分页；`[job] enabled` 总开关关掉后仍可手动补跑 |
 | **数据库备份** | 内置任务 `db_backup` 用 `mysqldump` 把整库导到磁盘（文件 0600、可配目录与保留份数，默认留 7 份），执行记录进 `job_log`；恢复是**手工动作**（停服 → `mysql < dump`，见 faq.md §5.10） |
 | **通知公告** | 草稿 / 已发布两态（发布写 `published_at`，回退草稿不清空——留痕）、增删改、删公告同事务级联删已读记录与配图附件行（磁盘文件交附件孤儿清理）；顶栏铃铛显示未读数 |
 | **附件中心** | 通用附件库：分片上传（白名单内 13 种扩展名、单文件 10MB、每人总量受 `[attach] quota_mb` 约束）、列表筛选、下载、删除，并可把附件**关联**到业务对象（v1 是公告配图，绑定带排序）；**下载要过鉴权**——绑到已发布公告的附件对所有登录用户可下，其余按上传人的数据权限；同一份内容在同一月内只落一份文件（文件名取内容 MD5、子目录按月），**删除只删行不删盘**（文件交内置任务 `attach_orphan_clean` 回收：5 分钟保护期、默认每小时一轮，间隔取库里那一行、升级不覆盖已有行）；公告编辑页有「配图」栏（上传即绑定） |
@@ -138,9 +138,9 @@ admin/                  管理后台服务端（crate bee_admin）
   src/error.rs          ApiError + 统一信封（code/msg/err/args）+ 错误码表 + 请求体提取器
   src/auth.rs           JWT 签发校验 + Auth 提取器（权限码加载、token_version 校验）
   src/datascope.rs      数据权限解析与查询注入（部门子树 / 本人 / 自定义）
-  src/api/              admin · attach · audit_log · auth · avatar · config · dashboard · dept · dict ·
+  src/api/v1/           admin · attach · audit_log · auth · avatar · config · dashboard · dept · dict ·
                         export · import · job · login_log · menu · notice · notify · role · totp
-                        十八个模块（csv 是内部工具模块，不出接口）
+                        十八个模块目录（v1 入口为 api/v1/mod.rs；csv 是内部工具模块，不出接口）
   src/models/           15 个模型（migrate 建表）。列长度用 `sql_type = "VARCHAR(n)"` 声明；
                         **唯一键与索引不走模型**（上游属性没有这两个概念），集中在
                         `src/seed/schema.rs` 的 CONSTRAINTS 里建。连接表（admin_role/role_menu/
@@ -172,7 +172,8 @@ docs/
   superpowers/plans/    实施计划（ORM 执行层、后端、前端）
 install.sh              ★ 一键安装脚本（拉发布产物 / 源码构建 → 生成配置 → 装 systemd + nginx → 自检）
 scripts/
-  scaffold-module.sh    ★ 模块脚手架：一条命令生成 CRUD 模块骨架（模型/接口/单测/集成测试/前端页）
+  lib/                  install.sh 的分步实现（install-*.sh 与共用函数；缺了 install.sh 直接报错）
+  scaffold-module.sh    ★ 模块脚手架入口：一条命令生成 CRUD 模块骨架（实现拆在 scaffold-*.sh）
   release.sh            发版：构建 → strip → 打包 → 产物自检 → gh release create
   publish.sh            逐个发布工作区内未上传到 crates.io 的 crate
   smoke-install.sh      install.sh 冒烟验证（/tmp 里装一套 scratch 实例 + 升级一次 + 清理）
@@ -193,6 +194,9 @@ docker-compose.yml      MySQL + 后端 + 前端一键起栈
 > cd bee-rust-admin
 > less install.sh && bash install.sh      # 交互式；--help 看全部参数
 > ```
+>
+> `install.sh` 只是入口，具体步骤在同仓库的 `scripts/lib/install-*.sh` —— **旧版「只下载一个
+> install.sh」的用法已退役**，必须先克隆完整仓库再跑（缺 `scripts/lib/` 会直接报错退出）。
 >
 > **用起来**之后的手册在 [`docs/usage.md`](docs/usage.md)（权限体系怎么落地、各模块怎么操作）；
 > 排障与运维（忘记密码、任务没跑、备份恢复）在 [`docs/faq.md`](docs/faq.md)。
