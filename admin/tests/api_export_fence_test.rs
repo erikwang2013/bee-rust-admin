@@ -7,7 +7,7 @@
 //! 旧代次的半份不能被新执行者碰。
 //!
 //! 判据分层：`beat`/`finish` 的 SQL 谓词（`AND status = 1 AND started_at = ?`）与
-//! 「输家只撤取消/删除行的成品」由 `src/export.rs` 的单测钉住 —— bin crate 的私有 SQL
+//! 「输家只撤取消/删除行的成品」由 `export/tests.rs` 的单测钉住 —— bin crate 的私有 SQL
 //! 在集成测试里只能抄一份，抄件对 src 不可证伪。这里验真库上的行为：token 旋转变了、
 //! 行是 2、文件内容完整、旧代次 `.part` 活着，随后被 `export_clean` 按名字约定收走。
 //!

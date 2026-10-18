@@ -334,9 +334,9 @@ async fn export_tasks_run_download_and_expire() {
     // 上面那半钉的是「选中」语义（执行中的行不该被再选中）；这半钉库级语义：
     // 同一行连续认领两次，第二次必须 0 行。老实现 `WHERE id=? AND status IN (0, 1)`
     // 在第一次把行推成 1 之后照样命中（1 ∈ (0,1)），第二个执行者拿着「还是 0」的旧
-    // 快照再认领就会真的跑第二遍。这里的两条语句是 crate::export::claim_sql 的**副本**
+    // 快照再认领就会真的跑第二遍。这里的两条语句是 `export/run.rs` 里 `claim_sql` 的**副本**
     //（bin crate 集成测试不能 use 它的代码，与 common 里重写 hashids 同一个理由）——
-    // 副本钉不住 src（谓词回退时它照样绿），所以谓词本身的排他性由 export.rs 里
+    // 副本钉不住 src（谓词回退时它照样绿），所以谓词本身的排他性由 export/tests.rs 里
     // `claim_predicates_are_exclusive` 那条无库单测钉；这段负责证明「按这谓词跑，第二次真是 0 行」。
     let (st, t_claim) = call(&c, Method::POST, url(EXP), Some(&admin),
         Some(json!({"kind": "login-log", "params": {"username": "ex4_ghost"}}))).await;
