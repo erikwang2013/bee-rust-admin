@@ -196,4 +196,127 @@ async fn export_run_fails_closed_and_indexes_exist() {
         vec![("expire_at".to_string(), 1)],
         "export_clean 每天按 expire_at 扫，必须有条 expire_at 索引（且是单列）"
     );
+
+    // ── T5（I1）：删任务连文件 —— 名字约定与 file_path 取并集 ──
+    // 直插「已完成」行 + 三种落盘形态：file_path 指向的成品、另一个代次（输家）、
+    // 升级前旧名。只删 file_path 那一份的话，后两种会在行删除后永久残留（clean
+    // 的扫描只覆盖还活着的过期行）。
+    const ID_DELETE: i64 = 9_000_000_000_000_003;
+    const ID_DELETE_EMPTY: i64 = 9_000_000_000_000_004;
+    let me = common::dec_id(&common::my_id(&base, &admin).await);
+    let exp_dir = std::path::Path::new("target/test-uploads/exports");
+    std::fs::create_dir_all(exp_dir).unwrap();
+    let keep = [
+        exp_dir.join(format!("{ID_DELETE}.manual.csv")),               // 行里 file_path 指这份（不合命名约定）
+        exp_dir.join(format!("{ID_DELETE}.20261017120000000000.csv")), // 赢家代次（按名字扫）
+        exp_dir.join(format!("{ID_DELETE}.20261017120000000001.csv")), // 输家代次
+        exp_dir.join(format!("{ID_DELETE}.csv")),                      // 升级前旧名
+    ];
+    for p in &keep {
+        std::fs::write(p, b"x").unwrap();
+    }
+    insert_task(&pool, ID_DELETE, me, "admin", "login-log").await;
+    sqlx::query("UPDATE export_task SET status = 2, file_path = ? WHERE id = ?")
+        .bind(keep[0].to_string_lossy().to_string())
+        .bind(ID_DELETE)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (st, v) = call(
+        &c,
+        Method::DELETE,
+        format!("{base}/api/v1/exports/{}", common::enc_id(ID_DELETE as u64)),
+        Some(&admin),
+        None,
+    )
+    .await;
+    assert_eq!(st, 200, "删任务: {v}");
+    for p in &keep {
+        assert!(!p.exists(), "删任务要把成品全收走（file_path + 各代次 + 旧名）: {}", p.display());
+    }
+    let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM export_task WHERE id = ?")
+        .bind(ID_DELETE)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(n, 0, "文件全删掉才删行");
+
+    // 空 file_path（N5 现场）：清单只剩名字约定，仍要全收走。
+    let keep_empty = [
+        exp_dir.join(format!("{ID_DELETE_EMPTY}.20261017120000000000.csv")),
+        exp_dir.join(format!("{ID_DELETE_EMPTY}.csv")),
+    ];
+    for p in &keep_empty {
+        std::fs::write(p, b"x").unwrap();
+    }
+    insert_task(&pool, ID_DELETE_EMPTY, me, "admin", "login-log").await;
+    sqlx::query("UPDATE export_task SET status = 2, file_path = '' WHERE id = ?")
+        .bind(ID_DELETE_EMPTY)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (st, v) = call(
+        &c,
+        Method::DELETE,
+        format!("{base}/api/v1/exports/{}", common::enc_id(ID_DELETE_EMPTY as u64)),
+        Some(&admin),
+        None,
+    )
+    .await;
+    assert_eq!(st, 200, "删空路径任务: {v}");
+    for p in &keep_empty {
+        assert!(!p.exists(), "file_path 为空也要按名字约定收走: {}", p.display());
+    }
+    let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM export_task WHERE id = ?")
+        .bind(ID_DELETE_EMPTY)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(n, 0, "空路径的行同样要删");
+
+    // ── T6（M2）：文件删不掉 → 保留行，下一轮重试 ──
+    // 用同名目录让 remove_file 拿到非 NotFound 错误（EISDIR）。
+    const ID_BLOCKED: i64 = 9_000_000_000_000_005;
+    let blocker = exp_dir.join(format!("{ID_BLOCKED}.manual"));
+    std::fs::create_dir_all(&blocker).unwrap();
+    insert_task(&pool, ID_BLOCKED, me, "admin", "login-log").await;
+    sqlx::query("UPDATE export_task SET status = 2, file_path = ?, expire_at = ? WHERE id = ?")
+        .bind(blocker.to_string_lossy().to_string())
+        .bind(dt(-60))
+        .bind(ID_BLOCKED)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (st, v) = call(&c, Method::GET, format!("{base}/api/v1/jobs"), Some(&admin), None).await;
+    assert_eq!(st, 200, "任务列表: {v}");
+    let clean = v["data"]["list"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|j| j["code"] == "export_clean")
+        .expect("export_clean 在注册表里");
+    let clean_id = common::as_id(&clean["id"]);
+    let mark = common::last_log_id(&pool, "export_clean").await;
+    common::trigger(&c, &base, &clean_id, &admin).await;
+    let (status, msg, _) = common::wait_job_log(&pool, "export_clean", mark).await;
+    assert_eq!(status, 1, "单行删不掉不影响整轮任务: {msg}");
+    let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM export_task WHERE id = ?")
+        .bind(ID_BLOCKED)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(n, 1, "文件删不掉要保留行（记录先没就没人清了）: {msg}");
+    assert!(blocker.exists(), "失败时目录原样留着");
+
+    std::fs::remove_dir_all(&blocker).unwrap();
+    let mark = common::last_log_id(&pool, "export_clean").await;
+    common::trigger(&c, &base, &clean_id, &admin).await;
+    let (status, msg, _) = common::wait_job_log(&pool, "export_clean", mark).await;
+    assert_eq!(status, 1, "重试这一轮: {msg}");
+    let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM export_task WHERE id = ?")
+        .bind(ID_BLOCKED)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(n, 0, "障碍消失后下一轮能删掉: {msg}");
 }

@@ -52,6 +52,18 @@ pub use clean::clean;
 pub use kinds::{dir, spec};
 pub use run::run;
 
+/// 一个任务在盘上**应清的全部成品**：名字约定扫（旧命名 `{id}.csv` + 各代次
+/// `{id}.{20 位}.csv`）∪ 行内 `file_path`（去重）。`export_clean` 与接口的
+/// 「删任务连文件」共用这一份口径 —— 两处各写一遍迟早漂开（只删 `file_path`
+/// 那一份，输家代次与升级前旧命名的文件会在记录删除后永久残留）。
+pub(crate) fn artifact_paths(dir: &Path, task: &ExportTask) -> std::io::Result<Vec<PathBuf>> {
+    let mut paths = clean::final_files(dir, task.id)?;
+    if !task.file_path.is_empty() && !paths.iter().any(|p| p == Path::new(&task.file_path)) {
+        paths.push(PathBuf::from(&task.file_path));
+    }
+    Ok(paths)
+}
+
 /// 认领超时 / 心跳超时：执行中的行超过这么久**没有心跳**（从没心跳过就看认领时刻），
 /// 当成「进程崩过」重跑一次。心跳由每个 5000 行批回写（`beat`），只要还在跑就一直有 ——
 /// 长任务不会再被误判成死任务重跑一遍（M1）。

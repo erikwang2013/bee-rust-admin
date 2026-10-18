@@ -242,8 +242,13 @@ pub async fn remove(
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:export:remove")?;
     let task = own(&state, &auth, &id).await?;
-    if !task.file_path.is_empty() {
-        match std::fs::remove_file(&task.file_path) {
+    // 与 export_clean 同一套成品清单：名字约定（旧名 + 各代次）∪ 行内 file_path。
+    // 只删 file_path 那一份的话，输家代次 / 升级前旧命名 / N5 空路径的成品会在
+    // 记录删除后永久残留 —— clean 的扫描只覆盖还活着的过期行，行没了就再也扫不到。
+    let paths = crate::export::artifact_paths(&crate::export::dir(&state), &task)
+        .map_err(|e| ApiError::internal(format!("读导出目录失败: {e}")))?;
+    for path in &paths {
+        match std::fs::remove_file(path) {
             Ok(_) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             // 文件删不掉就不删记录：记录先没了，这个文件就再没人清了

@@ -23,10 +23,8 @@ pub async fn clean(state: AppState) -> Result<String, String> {
         // 成品按代次命名（N1）：行里的 `file_path` 指向赢家那份，而输家（被接管）与
         // 升级前留下的旧代次成品都按名字约定扫。行里没有路径也要扫 —— 改名成功、
         // 回写 file_path 之前进程死掉的话，只信行里的 path 会把孤儿永久留在磁盘上（N5）。
-        let mut paths = final_files(&export_dir, task.id).map_err(|e| format!("读导出目录失败: {e}"))?;
-        if !task.file_path.is_empty() && !paths.iter().any(|p| p == Path::new(&task.file_path)) {
-            paths.push(PathBuf::from(&task.file_path));
-        }
+        // 清单与接口「删任务连文件」共用 [`artifact_paths`]，两处不各写一遍。
+        let paths = artifact_paths(&export_dir, &task).map_err(|e| format!("读导出目录失败: {e}"))?;
         let mut failed = false;
         for path in &paths {
             match std::fs::remove_file(path) {
@@ -108,8 +106,10 @@ pub(super) fn final_files(dir: &Path, id: i64) -> std::io::Result<Vec<PathBuf>> 
     };
     let old = format!("{id}.csv");
     let prefix = format!("{id}.");
-    for entry in entries.flatten() {
-        let path = entry.path();
+    for entry in entries {
+        // 目录项读取失败要向上报：把「读不到」当成「没有文件」会让调用方删掉行，
+        // 而那份没扫到的文件从此再没人负责清。
+        let path = entry?.path();
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
         let ok = name == old
             || name.strip_prefix(&prefix).and_then(|s| s.strip_suffix(".csv")).is_some_and(|g| {
@@ -133,8 +133,9 @@ pub(super) fn part_files(dir: &Path) -> std::io::Result<Vec<(i64, PathBuf)>> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(out),
         Err(e) => return Err(e),
     };
-    for entry in entries.flatten() {
-        let path = entry.path();
+    for entry in entries {
+        // 同 `final_files`：读不到的目录项不能悄悄跳过
+        let path = entry?.path();
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
         let Some(stem) = name.strip_suffix(".csv.part") else { continue };
         let mut segs = stem.split('.');
