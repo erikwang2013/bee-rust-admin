@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Installation · BRA</title>
+<meta name="description" content="Install BRA: one-command script, Docker Compose, manual deployment, configuration and common pitfalls.">
+<meta name="keywords" content="BRA, Bee Rust Admin, Rust admin, RBAC, permissions, data scope, audit logs">
+<meta name="theme-color" content="#fff9ec">
+<link rel="canonical" href="https://package.erik.xyz/bra/en/install.html">
+<link rel="alternate" hreflang="en" href="https://package.erik.xyz/bra/en/install.html">
+<link rel="alternate" hreflang="zh-CN" href="https://package.erik.xyz/bra/install.html">
+<link rel="alternate" hreflang="x-default" href="https://package.erik.xyz/bra/install.html">
+<meta name="author" content="erik">
+<meta name="robots" content="index,follow">
+<meta property="og:site_name" content="BRA · Bee Rust Admin">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:url" content="https://package.erik.xyz/bra/en/install.html">
+<meta property="og:image" content="https://package.erik.xyz/bra/en/assets/img/en/og.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="BRA · Bee Rust Admin preview">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Installation · BRA">
+<meta name="twitter:description" content="Install BRA: one-command script, Docker Compose, manual deployment, configuration and common pitfalls.">
+<meta name="twitter:image" content="https://package.erik.xyz/bra/en/assets/img/en/og.png">
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/base.css">
+<link rel="stylesheet" href="../assets/css/components.css">
+<link rel="stylesheet" href="../assets/css/search.css">
+</head>
+<body data-base="../">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="index.html" aria-label="BRA home">
+      <img src="../assets/img/en/pet/keeper-head.svg" alt="" width="38" height="38">
+      <span>BRA<small>BEE RUST ADMIN</small></span>
+    </a>
+    <button class="nav-toggle" type="button" aria-controls="site-nav" aria-expanded="false" aria-label="Open navigation"><span></span></button>
+    <nav class="nav" id="site-nav" aria-label="Main navigation">
+      <a href="index.html">Home</a>
+      <a href="index.html#intro">Intro</a>
+      <a href="index.html#features">Features</a>
+      <a href="index.html#architecture">Architecture</a>
+      <a href="index.html#timeline">Timeline</a>
+      <a href="releases.html">Releases</a>
+      <a href="install.html">Install</a>
+      <a href="usage.html">Usage</a>
+      <button class="nav-search" type="button" data-search-open aria-haspopup="dialog">Search</button>
+      <a class="nav-lang" href="../install.html" hreflang="zh-CN" lang="zh-CN">中文</a>
+      <a class="nav-ext" href="https://github.com/erikwang2013/bee-rust-admin" target="_blank" rel="noopener">GitHub ↗</a>
+      <a class="nav-ext" href="https://erik.xyz" target="_blank" rel="noopener">Erik (艾瑞可) ↗</a>
+    </nav>
+  </div>
+</header>
+<main id="main">
+<section class="doc-hero">
+  <div class="container">
+    <p class="eyebrow">Installation</p>
+    <h1>From empty database to running</h1>
+    <p class="lead">Three install paths, configuration and common pitfalls. Prebuilt binaries need glibc ≥ 2.38; older machines use a source build or Docker.</p>
+    <div class="doc-actions">
+      <a class="btn" href="../index.html#quickstart">Back to quick start</a>
+      <a class="btn btn--ghost" href="https://github.com/erikwang2013/bee-rust-admin/blob/main/site/i18n/en/install.md" target="_blank" rel="noopener">View source on GitHub ↗</a>
+    </div>
+  </div>
+</section>
+<div class="container"><article class="doc">
+<p>Bee Rust Admin — Rust backend <code>bee_admin</code> + React frontend dist + MySQL 8 + nginx.
+This guide is for operators: how to install it. For day-to-day use see the <a href="usage.html">User Guide</a>; for troubleshooting and operations see the <a href="faq.html">FAQ</a>.</p>
+<hr />
+<h2 id="0-prerequisites">0. Prerequisites</h2>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Requirement</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>OS</td>
+<td><strong>Linux x86_64</strong></td>
+<td>ARM requires a source build or Docker (no arm64 prebuilt binary)</td>
+</tr>
+<tr>
+<td>Database</td>
+<td><strong>MySQL 8.0+</strong>, charset <code>utf8mb4</code></td>
+<td>Tables and the superadmin account are created automatically on first start; no manual SQL import</td>
+</tr>
+<tr>
+<td>glibc</td>
+<td><strong>≥ 2.38</strong></td>
+<td>Only required for prebuilt binaries, see below</td>
+</tr>
+<tr>
+<td>Privileges</td>
+<td>root or sudo</td>
+<td>Needed only for the systemd unit / nginx site step; everything else can run as a normal user</td>
+</tr>
+</tbody>
+</table>
+<h3 id="the-most-important-one-glibc">⚠️ The most important one: glibc</h3>
+<p>The prebuilt binary requires <strong>glibc ≥ 2.38</strong> (Debian 13 / Ubuntu 24.04 or newer).
+On Ubuntu 22.04 (2.35), Debian 12 (2.36) or CentOS it fails with
+<code>version 'GLIBC_2.38' not found</code>; the binary simply cannot start.</p>
+<pre><code class="language-bash">ldd --version | head -1     # the last number is your glibc version
+</code></pre>
+<p><strong>If it is below 2.38, take a different path</strong>: use a source build (<code>--mode build</code>) or Docker.</p>
+<blockquote>
+<p><code>install.sh</code> checks this itself — it makes the downloaded binary <strong>actually load once</strong>.
+If it cannot run, the script exits <strong>before writing anything</strong> and prints the two alternatives,
+so you never get a half-installed service that cannot start.</p>
+</blockquote>
+<hr />
+<h2 id="1-generate-configuration">1. Generate configuration</h2>
+<p>Three secrets in <code>app.conf</code> must be generated by you (<strong>do not use the example placeholders; the service refuses to start</strong>):</p>
+<pre><code class="language-bash"># Database password (plain text is fine; the script/examples handle it)
+# Encryption key for encrypted columns (AES-256-GCM) — must be 32 bytes
+echo &quot;encrypt_key = base64:$(openssl rand -base64 32)&quot;
+# Salt for public short ids
+echo &quot;hashids_salt = $(openssl rand -hex 16)&quot;
+# JWT signing secret (≥32 characters)
+echo &quot;secret = $(openssl rand -hex 32)&quot;
+</code></pre>
+<p>Then fill this into <code>&lt;prefix&gt;/conf/app.conf</code> (mode <code>600</code>):</p>
+<pre><code class="language-ini">[app]
+name = bee-rust-admin
+http_addr = 127.0.0.1:8080
+log_level = info
+upload_dir = uploads
+hashids_salt = &lt;hex generated above&gt;
+hashids_min_len = 8
+snowflake_worker = 0
+snowflake_dc = 0
+encrypt_key = base64:&lt;value generated above&gt;
+
+[db]
+dsn = mysql://&lt;user&gt;:&lt;password&gt;@127.0.0.1:3306/bee_admin
+
+[jwt]
+secret = &lt;hex generated above&gt;
+expire_hours = 24
+
+[auth]
+max_fail = 5
+lock_minutes = 10
+captcha = true
+captcha_trajectory = false
+
+[log]
+retain_days = 90
+
+[job]
+enabled = true
+
+[security]
+scan = off
+
+[apidoc]
+enabled = false
+password =
+
+[seed]
+initial_admin_password = &lt;choose one&gt;
+</code></pre>
+<blockquote>
+<p>⚠️ <strong><code>encrypt_key</code> and <code>hashids_salt</code> cannot be changed after generation</strong>:
+changing <code>encrypt_key</code> means encrypted email/phone columns can <strong>never be decrypted again</strong> (no recovery);
+changing <code>hashids_salt</code> invalidates every public short id already issued. <strong>Back up this conf once generated.</strong></p>
+<p>⚠️ <code>initial_admin_password</code> is used only on the <strong>first start (when the admin table is empty)</strong> to create the built-in <code>admin</code> user.
+If it is too weak (shorter than 8 characters, or fewer than two of letters/numbers/symbols) the <strong>first</strong> start is rejected with a clear error;
+once the database is non-empty this key has no effect. Validation is deliberately <strong>not</strong> done while loading config —
+so an existing deployment with an old password in the conf can still start until you change it.</p>
+</blockquote>
+<p>See <a href="https://github.com/erikwang2013/bee-rust-admin/blob/main/admin/conf/app.conf.example" target="_blank" rel="noopener"><code>admin/conf/app.conf.example</code></a> for every key, defaults and notes such as “must differ per instance”.</p>
+<hr />
+<h2 id="2-three-ways-to-install">2. Three ways to install</h2>
+<h3 id="a-one-command-script-recommended">(a) One-command script (recommended)</h3>
+<p><strong>Clone the repository first; do not pipe <code>curl | bash</code></strong> — the script needs root for systemd and nginx, so read it first.
+<code>install.sh</code> is only the entry point; the steps live in <code>scripts/lib/install-*.sh</code> in the same repo (missing files cause an immediate error).
+The old “download a single <code>install.sh</code> and pipe it” flow is retired — clone the full repository:</p>
+<pre><code class="language-bash">git clone --depth 1 https://github.com/erikwang2013/bee-rust-admin.git
+cd bee-rust-admin
+less install.sh          # inspect first (steps live in scripts/lib/install-*.sh)
+bash install.sh          # interactive: asks for the database password
+</code></pre>
+<p>It then: downloads the release artifacts (binary + frontend dist) → generates secrets → writes <code>&lt;prefix&gt;/conf/app.conf</code> (0600)
+→ optionally creates the database → installs the systemd unit + nginx site → starts the service and checks <code>/api/v1/health</code>.
+The default prefix is <code>/opt/bee-admin</code>, exposed on <code>8081</code>.</p>
+<ul>
+<li><strong>Database creation is optional</strong>: pass <code>--db-admin-user U --db-admin-pass P</code> to create the database and user automatically;
+  otherwise it prints SQL for you to run (it does not guess the root password, does not <code>DROP</code>, and does not install MySQL).
+  <strong>Upgrades (<code>--keep-conf</code>) never create a database or user</strong>: connection credentials come from the existing <code>app.conf</code> dsn; <code>--db-*</code> is ignored;
+  if the connection fails it exits and lets you fix the dsn (it never alters an existing database account).</li>
+<li>Tables and the superadmin are created automatically on <strong>first start</strong>; no manual SQL import.</li>
+</ul>
+<p>Common variants (see <code>install.sh --help</code>):</p>
+<pre><code class="language-bash"># Older machines (glibc &lt; 2.38): build from source (needs rust 1.99+ / node 20+ / pnpm 9+)
+bash install.sh --mode build
+
+# Install a second instance (separate directory, service name, ports and snowflake node)
+bash install.sh --service-name bee-admin-2 --prefix /opt/bee-admin-2 \
+                --http-port 8091 --backend-port 8090 --snowflake 2,0
+
+# See what it would do (no writes, downloads or DB connections)
+bash install.sh --dry-run --yes
+
+# Upgrade: replace only the binary and service files; configuration is untouched (--db-* ignored, DSN from existing conf)
+bash install.sh --keep-conf ...
+
+# No root / manage the process yourself: skip systemd (and service restarts; manual start command is printed);
+# add --no-nginx to skip the nginx site too
+bash install.sh --no-systemd --no-nginx
+</code></pre>
+<blockquote>
+<p><strong>If <code>app.conf</code> already exists the script refuses to overwrite it by default</strong> (exit code <code>6</code>) — changing <code>encrypt_key</code>
+makes encrypted email/phone columns permanently unreadable. To overwrite, pass <code>--force</code>: it backs up the old file to
+<code>app.conf.bak.&lt;timestamp&gt;</code>, but data may still be undecryptable after a key change — only use it when you understand the consequence.
+<strong>Use <code>--keep-conf</code> for normal upgrades.</strong></p>
+</blockquote>
+<p><strong>Exit codes</strong>: <code>0</code> success · <code>1</code> argument/build failure · <code>2</code> preflight failure (nothing written) · <code>3</code> ready except root commands ·
+<code>4</code> database needs manual creation · <code>5</code> self-check failed · <code>6</code> existing configuration found without <code>--force</code>.</p>
+<h3 id="b-docker-compose">(b) Docker Compose</h3>
+<p>The repository includes <code>docker-compose.yml</code> (MySQL + backend + frontend, exposed on <code>8081</code>) and the helper
+<code>compose-up.sh</code> (generates missing passwords/secrets and writes them to <code>.env</code> and <code>admin/conf/app.conf</code>):</p>
+<pre><code class="language-bash">./compose-up.sh --build     # generates missing passwords/secrets and prints the initial password; drop --build when images exist
+# Open http://localhost:8081 (account admin; initial password is in admin/conf/app.conf under [seed] initial_admin_password)
+
+# Fill it yourself (or avoid the helper):
+cp .env.example .env &amp;&amp; cp admin/conf/app.conf.example admin/conf/app.conf
+vi .env admin/conf/app.conf    # set MySQL root password, jwt secret, encrypt_key
+docker compose up -d --build
+</code></pre>
+<ul>
+<li>The container database address is injected via <code>BEE_ADMIN_DB_DSN</code> (pointing at the compose <code>mysql</code> service);
+  the config file is mounted from the host <code>admin/conf/app.conf</code>, and JWT secret / initial password are read from it.</li>
+<li>The backend container runs as <strong>the owner of the host config file</strong> (<code>APP_UID</code>/<code>APP_GID</code> in <code>.env</code>, default <code>1000:1000</code>):
+  <code>app.conf</code> is usually mode 600, so the image’s default non-root user cannot read it and the service fails to start.
+  Change <code>APP_UID</code>/<code>APP_GID</code> if your host uid/gid is not 1000 (<code>id -u</code> / <code>id -g</code>).</li>
+<li>Uploaded avatars go to <code>/home/uploads</code> inside the container (the image sets WORKDIR to <code>/home</code> and pre-creates this writable directory:
+  <code>upload_dir=uploads</code> is relative to WORKDIR, while <code>/app</code> is owned by root and cannot be written as <code>APP_UID</code>);
+  <strong>they are lost when the container is recreated</strong>.</li>
+<li><code>compose-up.sh</code> only fills empty/placeholder values (existing values are left alone; rerunning does not regenerate them); generated values
+  live in the two local files, <strong>back up <code>admin/conf/app.conf</code></strong> (losing <code>encrypt_key</code> makes encrypted email/phone permanently unreadable).</li>
+<li>To use an existing MySQL: remove the compose <code>mysql</code> service and <code>depends_on</code>, then change <code>BEE_ADMIN_DB_DSN</code>.</li>
+<li><strong>Do not want to build locally</strong> (no Rust/Node toolchain): every Release also ships <code>bra-images-vX.Y.Z.tar.gz</code>
+  and <code>bra-compose-vX.Y.Z.tar.gz</code> offline packages (images are built on the maintainer’s machine; <code>docker load -i</code> imports them;
+  the compose package contains the compose file, a prefilled <code>.env</code> and a one-page README) — unpack and run <code>docker compose up -d</code>
+  (<strong>without <code>--build</code></strong>). See the Docker section in the root README for details.</li>
+</ul>
+<h3 id="c-manual-deployment">(c) Manual deployment</h3>
+<p>systemd runs the backend (listening on <code>127.0.0.1:8080</code>); nginx exposes <code>8081</code>:</p>
+<pre><code class="language-bash">cargo build --release -p bee_admin
+cd admin/web &amp;&amp; pnpm build
+
+sudo cp admin/deploy/bee-admin.service /etc/systemd/system/
+sudo systemctl daemon-reload &amp;&amp; sudo systemctl enable --now bee-admin
+
+# The nginx site directory depends on your nginx: source builds often use &lt;prefix&gt;/conf/vhost/, distros use /etc/nginx/conf.d/
+sudo cp admin/deploy/nginx.conf.example /usr/local/nginx/conf/vhost/bee-admin.conf
+sudo nginx -t &amp;&amp; sudo systemctl reload nginx
+</code></pre>
+<blockquote>
+<p>The paths and username in those two files are <strong>examples</strong> (<code>/home/wwwroot/bee-rust-admin</code> and <code>erik</code>); change them to your own values —
+or use <code>install.sh</code>, which renders the files from the actual paths / user / ports.</p>
+</blockquote>
+<p><strong>Machines without root / sudo can use a user-level unit</strong>, with the same capabilities:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>System-level</th>
+<th>User-level (no root)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Unit file</td>
+<td><code>admin/deploy/bee-admin.service</code></td>
+<td><code>admin/deploy/bee-admin.user.service</code></td>
+</tr>
+<tr>
+<td>Install</td>
+<td><code>sudo cp</code> to <code>/etc/systemd/system/</code></td>
+<td><code>cp</code> to <code>~/.config/systemd/user/</code>, no sudo</td>
+</tr>
+<tr>
+<td>Start at boot</td>
+<td>supported directly</td>
+<td>one-time <code>sudo loginctl enable-linger &lt;user&gt;</code> (<code>loginctl show-user &lt;user&gt; -p Linger</code>; otherwise it starts only after that user logs in)</td>
+</tr>
+<tr>
+<td>Manage / logs</td>
+<td><code>systemctl status/restart bee-admin</code>, <code>journalctl -u bee-admin</code></td>
+<td>same commands with <code>--user</code> (root’s <code>systemctl status</code> cannot see user units)</td>
+</tr>
+<tr>
+<td>Restart on crash</td>
+<td><code>Restart=on-failure</code>, retry after 3 seconds</td>
+<td>same</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-bash"># User-level install (no root; paths are examples from a local setup)
+mkdir -p ~/.config/systemd/user
+cp admin/deploy/bee-admin.user.service ~/.config/systemd/user/bee-admin.service
+systemctl --user daemon-reload &amp;&amp; systemctl --user enable --now bee-admin
+</code></pre>
+<p>Daily operations (upgrade = rebuild the binary, then restart):</p>
+<pre><code class="language-bash">systemctl --user status bee-admin          # drop --user for system-level
+systemctl --user restart bee-admin
+journalctl --user -u bee-admin -f          # follow logs
+</code></pre>
+<blockquote>
+<p>⚠️ The two unit templates use different <code>WorkingDirectory</code> values (system-level <code>&lt;repo&gt;/admin</code>, user-level <strong>repo root</strong>) —
+<code>uploads</code> is resolved <strong>relative to WorkingDirectory</strong>. When migrating an existing deployment, keep the original cwd, or avatars will 404.</p>
+</blockquote>
+<hr />
+<h2 id="3-post-install-checks">3. Post-install checks</h2>
+<pre><code class="language-bash">curl http://127.0.0.1:8080/api/v1/health     # =&gt; OK
+</code></pre>
+<p>Then open <code>http://&lt;machine address&gt;:8081</code> (replace the port if you changed it),
+log in with <code>admin</code> + <code>[seed] initial_admin_password</code>, and <strong>change the password immediately</strong>.</p>
+<hr />
+<h2 id="4-common-pitfalls">4. Common pitfalls</h2>
+<ul>
+<li><strong><code>app.conf</code> is mode 600</strong>: the service user must own it, or the service cannot start; in containers match <code>APP_UID</code>/<code>APP_GID</code>.</li>
+<li><strong><code>encrypt_key</code> cannot be changed</strong>: changing it makes encrypted email/phone permanently unreadable (no recovery). Back it up with the whole <code>app.conf</code>.</li>
+<li><strong>Changing <code>hashids_salt</code></strong> invalidates every public short id already issued.</li>
+<li><strong>The initial password only applies when the database is empty</strong>: if <code>admin</code> already exists, it is ignored; change the password in the UI.</li>
+<li><strong>Upgrade the backend and frontend together</strong>: the new backend removed the old base64 avatar endpoint; an old frontend against a new backend gets a 404 on avatar upload.</li>
+<li><strong>Captcha is on by default</strong> (<code>[auth] captcha = true</code>): login takes one extra step; wrong captcha answers do not count toward lockout.</li>
+<li><strong>Drag-trajectory validation is off by default</strong> (<code>[auth] captcha_trajectory</code>): when enabled, slider answers must include a trajectory
+  (plugin defaults: ≥4 points, 300–5000 ms, linearity ≤0.99); clients that send only the raw value fail.
+  The new frontend always reports trajectories, so enabling it does not require a frontend redeploy; the cost is that an extremely fast flick (&lt;300 ms) is treated as a bot —
+  users see “captcha error” no matter how they drag; adjust the plugin’s <code>min_duration_ms</code> to relax it.</li>
+<li><strong><code>install.sql</code> in the repository root is unrelated</strong> (it is another tool’s schema); installation does not need it.</li>
+<li><strong>Forgot the superadmin password</strong>: update the <code>admin</code> table in the database (or recreate the database).</li>
+</ul>
+</article></div>
+</main>
+<footer class="site-footer" id="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <div class="footer-brand">
+          <img src="../assets/img/en/pet/keeper-head.svg" alt="" width="52" height="52">
+          <div><b>BRA</b><small>BEE RUST ADMIN</small></div>
+        </div>
+        <p>Rust backend + React frontend RBAC admin. Guard the permissions, ship the admin.</p>
+      </div>
+      <div>
+        <h3>Project</h3>
+        <ul class="footer-links">
+          <li><a href="index.html#intro">Overview</a></li>
+          <li><a href="index.html#features">Features</a></li>
+          <li><a href="index.html#architecture">Architecture</a></li>
+          <li><a href="index.html#timeline">Timeline</a></li>
+          <li><a href="index.html#support">Support</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Docs</h3>
+        <ul class="footer-links">
+          <li><a href="install.html">Installation</a></li>
+          <li><a href="usage.html">User guide</a></li>
+          <li><a href="faq.html">FAQ</a></li>
+          <li><a href="releases.html">Releases</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Links</h3>
+        <ul class="footer-links">
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin" target="_blank" rel="noopener">GitHub ↗</a></li>
+          <li><a href="https://erik.xyz" target="_blank" rel="noopener">Erik (艾瑞可) ↗</a></li>
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin/blob/main/LICENSE" target="_blank" rel="noopener">Code: Apache-2.0 ↗</a></li>
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin/blob/main/ASSETS-LICENSE.md" target="_blank" rel="noopener">Visual assets ↗</a></li>
+          <li><a href="../install.html" hreflang="zh-CN" lang="zh-CN">中文</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© <span data-year>2026</span> erik · Code Apache-2.0</span>
+      <div class="footer-info" id="busuanzi">
+        <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+        <span id="busuanzi_container_page_pv"><span data-i18n="post.readA">Views</span> <b id="busuanzi_value_page_pv">0</b> <span data-i18n="post.readB">views 👀</span></span>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<button class="to-top" id="to-top" type="button" aria-label="Back to top">
+  <img src="../assets/img/en/pet/keeper-onduty.svg" alt="" width="76" height="76">
+</button>
+
+<script src="../assets/js/site.js" defer></script>
+</body>
+</html>

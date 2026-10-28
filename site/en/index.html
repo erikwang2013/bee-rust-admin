@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BRA · Bee Rust Admin — Rust + React RBAC admin</title>
+<meta name="description" content="BRA (Bee Rust Admin): a Rust + React RBAC admin. Button-level permissions, five data-scope levels, TOTP, audit trails and scheduled jobs, ready out of the box.">
+<meta name="keywords" content="BRA, Bee Rust Admin, Rust admin, RBAC, permissions, data scope, audit logs">
+<meta name="theme-color" content="#fff9ec">
+<link rel="canonical" href="https://package.erik.xyz/bra/en/">
+<link rel="alternate" hreflang="en" href="https://package.erik.xyz/bra/en/">
+<link rel="alternate" hreflang="zh-CN" href="https://package.erik.xyz/bra/">
+<link rel="alternate" hreflang="x-default" href="https://package.erik.xyz/bra/">
+<meta name="author" content="erik">
+<meta name="robots" content="index,follow">
+<meta property="og:site_name" content="BRA · Bee Rust Admin">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:url" content="https://package.erik.xyz/bra/en/">
+<meta property="og:image" content="https://package.erik.xyz/bra/en/assets/img/en/og.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="BRA · Bee Rust Admin preview">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="BRA · Bee Rust Admin — Rust + React RBAC admin">
+<meta name="twitter:description" content="BRA (Bee Rust Admin): a Rust + React RBAC admin. Button-level permissions, five data-scope levels, TOTP, audit trails and scheduled jobs, ready out of the box.">
+<meta name="twitter:image" content="https://package.erik.xyz/bra/en/assets/img/en/og.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "BRA · Bee Rust Admin",
+  "alternateName": "Bee Rust Admin",
+  "url": "https://package.erik.xyz/bra/en/",
+  "description": "RBAC admin built on bee-rust: Rust backend + React frontend, button-level permissions, five data-scope levels, TOTP and audit trails.",
+  "applicationCategory": "BusinessApplication",
+  "operatingSystem": "Linux",
+  "softwareVersion": "2.16.2",
+  "inLanguage": "en",
+  "license": "https://github.com/erikwang2013/bee-rust-admin/blob/main/LICENSE",
+  "codeRepository": "https://github.com/erikwang2013/bee-rust-admin",
+  "image": "https://package.erik.xyz/bra/assets/img/en/og.png",
+  "author": {"@type": "Person", "name": "erik", "url": "https://erik.xyz"},
+  "offers": {"@type": "Offer", "price": "0", "priceCurrency": "CNY"}
+}
+</script>
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/base.css">
+<link rel="stylesheet" href="../assets/css/components.css">
+<link rel="stylesheet" href="../assets/css/search.css">
+</head>
+<body data-base="../">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="index.html" aria-label="BRA home">
+      <img src="../assets/img/en/pet/keeper-head.svg" alt="" width="38" height="38">
+      <span>BRA<small>BEE RUST ADMIN</small></span>
+    </a>
+    <button class="nav-toggle" type="button" aria-controls="site-nav" aria-expanded="false" aria-label="Open navigation"><span></span></button>
+    <nav class="nav" id="site-nav" aria-label="Main navigation">
+      <a href="index.html">Home</a>
+      <a href="index.html#intro">Intro</a>
+      <a href="index.html#features">Features</a>
+      <a href="index.html#architecture">Architecture</a>
+      <a href="index.html#timeline">Timeline</a>
+      <a href="releases.html">Releases</a>
+      <a href="install.html">Install</a>
+      <a href="usage.html">Usage</a>
+      <button class="nav-search" type="button" data-search-open aria-haspopup="dialog">Search</button>
+      <a class="nav-lang" href="../index.html" hreflang="zh-CN" lang="zh-CN">中文</a>
+      <a class="nav-ext" href="https://github.com/erikwang2013/bee-rust-admin" target="_blank" rel="noopener">GitHub ↗</a>
+      <a class="nav-ext" href="https://erik.xyz" target="_blank" rel="noopener">Erik (艾瑞可) ↗</a>
+    </nav>
+  </div>
+</header>
+<main id="main">
+<section class="hero">
+  <canvas id="hive-canvas" aria-hidden="true"></canvas>
+  <div class="container">
+    <div class="hero-inner">
+      <div class="hero-copy">
+        <p class="eyebrow">Rust · RBAC · Ready to run</p>
+        <h1>Guard permissions,<br> <em>ship the admin.</em></h1>
+        <p class="lead">BRA (Bee Rust Admin) is an out-of-the-box admin system: Rust backend + React 18 + Ant Design 5. Permissions down to buttons, five data-scope levels, and a complete audit trail.</p>
+        <div class="btn-row">
+          <a class="btn" href="install.html">Get started <span aria-hidden="true">→</span></a>
+          <a class="btn btn--ghost" href="https://github.com/erikwang2013/bee-rust-admin" target="_blank" rel="noopener">GitHub repo</a>
+        </div>
+        <ul class="badges">
+          <li class="badge badge--honey">Apache-2.0</li>
+          <li class="badge">Rust 1.99+</li>
+          <li class="badge">MySQL 8.4</li>
+          <li class="badge badge--cyan">JWT + TOTP</li>
+        </ul>
+        <p class="hero-note">Tables and seed data are created on startup — no manual SQL migrations.</p>
+      </div>
+      <div class="pet-stage">
+        <div class="pet-stage__platform" aria-hidden="true"></div>
+        <div class="pet-stage__pet">
+          <img src="../assets/img/en/pet/keeper-onduty.svg" alt="Keeper, the BRA project pet, on duty" width="512" height="512">
+        </div>
+        <span class="pet-chip pet-chip--1" aria-hidden="true">JWT</span>
+        <span class="pet-chip pet-chip--2" aria-hidden="true">RBAC</span>
+        <span class="pet-chip pet-chip--3" aria-hidden="true">TOTP</span>
+        <button class="pet-stage__hint" type="button" data-pet-next>Change expression ↻</button>
+      </div>
+    </div>
+    <div class="stats">
+      <div class="stat"><b>93</b><span>API endpoints</span></div>
+      <div class="stat"><b>22</b><span>tables</span></div>
+      <div class="stat"><b>8</b><span>built-in jobs</span></div>
+      <div class="stat"><b>12</b><span>expressions</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="intro">
+  <div class="container intro-grid">
+    <div class="intro-copy reveal">
+      <p class="eyebrow">Overview</p>
+      <h2>An admin that treats permissions as the main feature</h2>
+      <p>It solves practical problems: <strong>permissions down to individual buttons, data limited to a visible scope, and a trace of every login and operation</strong>. Hiding a button in the UI is only UX; the backend re-checks every endpoint. List queries inject scope conditions in the data layer with bound parameters — never by concatenating user input.</p>
+      <p>The backend uses this repo’s <a href="https://github.com/erikwang2013/bee-rust" target="_blank" rel="noopener">bee-rust</a> framework (axum routing + a custom ORM execution layer + INI config); the frontend is a Vite + React 18 + Ant Design 5 SPA. They share one <code>{code, msg, data}</code> contract.</p>
+      <p>Startup creates tables and seeds: superadmin, menu permission tree and eight built-in jobs. Upgrades only add columns — never drop or retype them.</p>
+      <p><a href="usage.html">Read the user guide</a> · <a href="install.html">Read the installation guide</a></p>
+    </div>
+    <ul class="fact-list">
+      <li class="fact reveal"><span class="fact__icon">01</span><div><h3>Button-level permissions</h3><p>Roles hold permission codes such as <code>system:admin:resetPwd</code>; the UI renders menus, the backend checks every endpoint.</p></div></li>
+      <li class="fact reveal"><span class="fact__icon">02</span><div><h3>Five data scopes</h3><p>All / department and below / own department / self only / custom. Multiple roles are unioned; no active role means no data at all.</p></div></li>
+      <li class="fact reveal"><span class="fact__icon">03</span><div><h3>Force logout</h3><p>JWT carries <code>token_version</code>: password changes, disabling and logout invalidate old tokens without a blacklist.</p></div></li>
+      <li class="fact reveal"><span class="fact__icon">04</span><div><h3>Full audit trail</h3><p>Successful, failed and logout events plus every side-effecting operation are stored; four entity types also record field-level change summaries.</p></div></li>
+    </ul>
+  </div>
+  <div class="container" style="margin-top:40px">
+    <div class="tech-strip" aria-label="Technology stack">
+      <span>Rust</span><span>axum</span><span>bee_orm</span><span>MySQL 8.4</span><span>React 18</span><span>Ant Design 5</span><span>Vite</span><span>JWT</span><span>Argon2id</span><span>RFC 6238 TOTP</span><span>Webhook HMAC</span>
+    </div>
+  </div>
+</section>
+
+<section class="section section--paper" id="features">
+  <div class="container">
+    <div class="section-head reveal">
+      <p class="eyebrow">Features</p>
+      <h2>Everything you need, with security built in</h2>
+      <p class="lead">From the front gate to the ledger, from data channels to notification exits. Every module carries its own permission codes and audit path.</p>
+    </div>
+    <div class="features">
+      <article class="feature reveal"><span class="feature__num">01 / RBAC</span><h3>Menu + button permissions</h3><p>Admin ← roles ← menus and buttons; superadmins bypass codes. The UI hides, the backend checks every request.</p><div class="chips"><code>admin_role</code><code>role_menu</code><code>require()</code></div></article>
+      <article class="feature reveal"><span class="feature__num">02 / SCOPE</span><h3>Five data-scope levels</h3><p>List queries inject department subtrees, self-only or custom departments; multiple roles are unioned and parameters are always bound.</p><div class="chips"><code>datascope</code><code>role_dept</code></div></article>
+      <article class="feature reveal"><span class="feature__num">03 / SESSION</span><h3>Stateless sessions, force logout</h3><p>JWT carries a version; password changes, disabling and logout invalidate old tokens. Sign out other devices in one click.</p><div class="chips"><code>token_version</code><code>jwt-rust</code></div></article>
+      <article class="feature reveal"><span class="feature__num">04 / AUDIT</span><h3>Audit and request scanning</h3><p>Login records, audit logs and change summaries; 32 attack-signature detectors, report-only by default, block mode available.</p><div class="chips"><code>login_log</code><code>audit_log</code><code>security-rust</code></div></article>
+      <article class="feature reveal"><span class="feature__num">05 / TOTP</span><h3>Dynamic codes + backup codes</h3><p>The code field appears only after the password is accepted; 10 one-time backup codes stored as hashes; encrypted secret; device list can kick one device.</p><div class="chips"><code>RFC 6238</code><code>AES-256-GCM</code><code>backup_code</code></div></article>
+      <article class="feature reveal"><span class="feature__num">06 / JOBS</span><h3>Scheduled jobs and backups</h3><p>Eight code-registered jobs: backup, attachment cleanup, notification retry, export execution; interval scheduling and manual runs.</p><div class="chips"><code>job</code><code>job_log</code><code>db_backup</code></div></article>
+      <article class="feature reveal"><span class="feature__num">07 / DATA</span><h3>Import, export and attachments</h3><p>CSV import is all-or-nothing; the export center runs asynchronously with generation names; chunked uploads, dedup and orphan cleanup.</p><div class="chips"><code>import</code><code>export</code><code>attach</code></div></article>
+      <article class="feature reveal"><span class="feature__num">08 / NOTIFY</span><h3>Webhook and SMTP</h3><p>Event notifications with HMAC-SHA256 signatures; failed deliveries are retried and recorded; private addresses are blocked at send time; redirects are not followed.</p><div class="chips"><code>notice.published</code><code>account.locked</code><code>SMTP</code></div></article>
+      <article class="feature reveal"><span class="feature__num">09 / I18N</span><h3>Bilingual UI + public config</h3><p>Chinese and English copy with error-code lookup; login page and footer read public config for subtitle, copyright and repository link.</p><div class="chips"><code>i18n</code><code>configs/public</code></div></article>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="architecture">
+  <div class="container">
+    <div class="section-head reveal">
+      <p class="eyebrow">Architecture</p>
+      <h2>Five layers, one request path</h2>
+      <p class="lead">Browser → nginx → bee_router → Auth extractor → handler → bee_orm → MySQL. 401 and 403 short-circuit before the database.</p>
+    </div>
+    <div class="tabs reveal" role="tablist" aria-label="Architecture diagrams">
+      <button class="tab" type="button" role="tab" id="tab-arch" aria-selected="true" aria-controls="diagram-arch" data-diagram="diagram-arch">Architecture</button>
+      <button class="tab" type="button" role="tab" id="tab-feat" aria-selected="false" aria-controls="diagram-feat" data-diagram="diagram-feat" tabindex="-1">Features</button>
+      <button class="tab" type="button" role="tab" id="tab-req" aria-selected="false" aria-controls="diagram-req" data-diagram="diagram-req" tabindex="-1">Request cycle</button>
+      <button class="tab" type="button" role="tab" id="tab-life" aria-selected="false" aria-controls="diagram-life" data-diagram="diagram-life" tabindex="-1">Lifecycle</button>
+    </div>
+    <div class="diagram-panel is-active reveal" id="diagram-arch" role="tabpanel" aria-labelledby="tab-arch">
+      <div class="diagram-frame"><img src="../assets/img/en/diagrams/architecture.svg" alt="BRA five-layer architecture: client, gateway, application, framework, data" width="980" height="700"></div>
+      <p class="diagram-caption">Client SPA · nginx :8081 · bee_admin · bee_orm / bee_config / bee_logs · MySQL 8.4 (22 tables).</p>
+    </div>
+    <div class="diagram-panel" id="diagram-feat" role="tabpanel" aria-labelledby="tab-feat">
+      <div class="diagram-frame"><img src="../assets/img/en/diagrams/features.svg" alt="BRA feature design: admin, role, menu and department many-to-many permission model" width="980" height="830" loading="lazy"></div>
+      <p class="diagram-caption">Three-part permission model: admin ← admin_role → role ← role_menu → menus and buttons; role ← role_dept → departments for custom scopes.</p>
+    </div>
+    <div class="diagram-panel" id="diagram-req" role="tabpanel" aria-labelledby="tab-req">
+      <div class="diagram-frame"><img src="../assets/img/en/diagrams/request-cycle.svg" alt="BRA request cycle: 12 steps from browser to MySQL" width="980" height="780" loading="lazy"></div>
+      <p class="diagram-caption">A 12-step path for GET /api/v1/admins; signature, version and account status are checked before roles and permission codes load.</p>
+    </div>
+    <div class="diagram-panel" id="diagram-life" role="tabpanel" aria-labelledby="tab-life">
+      <div class="diagram-frame"><img src="../assets/img/en/diagrams/lifecycle.svg" alt="BRA service lifecycle: config, database, migrate, seed, listen and exit" width="980" height="700" loading="lazy"></div>
+      <p class="diagram-caption">Config validation → MySQL → migrate::sync adds tables/columns → idempotent seed → listen on 127.0.0.1:8080 → SIGTERM exit.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section section--paper" id="timeline">
+  <div class="container">
+    <div class="section-head reveal">
+      <p class="eyebrow">Timeline</p>
+      <h2>From the first RBAC line to 2.16</h2>
+      <p class="lead">A continuous run of iterations in October 2026: guard the door, add data channels, then finish the engineering.</p>
+    </div>
+    <ol class="timeline">
+      <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v1.0.0</span><span class="tl-date">2026-10-05</span></div><h3>First release</h3><p>Complete RBAC admin, bee_orm execution layer, React SPA and deployment artifacts; create the database and go.</p></li>
+      <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v1.2.0</span><span class="tl-date">2026-10-06</span></div><h3>Audit and UX</h3><p>Audit logs, export, profile, login lockout, dark theme; configuration stops lying.</p></li>
+      <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v1.3.0 – v1.4.0</span><span class="tl-date">2026-10-06</span></div><h3>Hardening</h3><p>Login rate limiting, data scope on write paths, anti-self-escalation, 693 kB first-paint reduction, no more white screens.</p></li>
+      <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v1.6.0 – v1.7.0</span><span class="tl-date">2026-10-06</span></div><h3>Automation and i18n</h3><p>Dictionaries, scheduled jobs, notices, and a complete Chinese/English UI.</p></li>
+      <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v2.0.0</span><span class="tl-date">2026-10-07</span></div><h3>Framework upgrade</h3><p>bee-rust 1.2.3 and a new ORM implementation; the HTTP contract is unchanged.</p></li>
+      <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v2.1.0 – v2.6.0</span><span class="tl-date">2026-10-07 ~ 10-08</span></div><h3>Plugin pieces</h3><p>Snowflake IDs + hashids, jwt-rust, encrypted columns, login captcha, chunked avatars, request scanning and an API docs site.</p></li>
+      <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v2.11.0 – v2.14.0</span><span class="tl-date">2026-10-15 ~ 10-16</span></div><h3>Platform capabilities</h3><p>Dashboard, system config, backup/import/export, TOTP and login devices, notification channels, attachments and module scaffolding.</p></li>
+      <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v2.15.0 – v2.16.2</span><span class="tl-date">2026-10-17 ~ 10-28</span></div><h3>Engineering finish + site</h3><p>500-line split, versioned API directory, TOTP backup codes, Webhook signing and retry, hardening, and the project static site.</p></li>
+    </ol>
+    <div class="btn-row" style="margin-top:24px"><a class="btn btn--ghost" href="releases.html">View the full release log →</a></div>
+  </div>
+</section>
+
+<section class="section" id="pet">
+  <div class="container">
+    <div class="section-head reveal">
+      <p class="eyebrow">Project pet · Keeper</p>
+      <h2>Keeper is on duty</h2>
+      <p class="lead">The hive’s guard: checks credentials, issues keys, logs visitors. Five states follow the project state; twelve expressions follow your clicks.</p>
+    </div>
+    <div class="pet-states">
+      <div class="pet-state reveal"><img src="../assets/img/en/pet/keeper-onduty.svg" alt="Keeper on duty" loading="lazy"><b>On duty</b><code>(⌐■_■)</code><span>Gate is normal; permissions and menu tree agree</span></div>
+      <div class="pet-state reveal"><img src="../assets/img/en/pet/keeper-verifying.svg" alt="Keeper verifying" loading="lazy"><b>Verifying</b><code>(・_・)?</code><span>Changes pending review; credentials, please</span></div>
+      <div class="pet-state reveal"><img src="../assets/img/en/pet/keeper-superuser.svg" alt="Keeper as superuser" loading="lazy"><b>Superuser</b><code>(＾▽＾)</code><span>Superadmin on site, bypassing all permission codes</span></div>
+      <div class="pet-state reveal"><img src="../assets/img/en/pet/keeper-dozing.svg" alt="Keeper dozing" loading="lazy"><b>Dozing</b><code>(-_-)zZ</code><span>Late night, no visitors</span></div>
+      <div class="pet-state reveal"><img src="../assets/img/en/pet/keeper-alarmed.svg" alt="Keeper with stinger raised" loading="lazy"><b>Stinger</b><code>(#°益°)</code><span>A secret file was found in the repository</span></div>
+    </div>
+    <div class="mood-layout">
+      <div class="mood-stage reveal">
+        <img data-mood-img src="../assets/img/en/pet/expressions/smile.svg" alt="Keeper smiling" width="512" height="512">
+        <p class="mood-name">Current form: <b data-mood-name>Smile</b></p>
+      </div>
+      <div class="reveal">
+        <p>Click a thumbnail to zoom; click its name to change the form. Each SVG includes its own expression, mood effects and animation, and respects <code>prefers-reduced-motion</code>.</p>
+        <div class="expression-grid">
+          <button class="expression" type="button" data-mood="smile" data-mood-name="Smile" aria-pressed="true"><img src="../assets/img/en/pet/expressions/smile.svg" alt="" loading="lazy" width="88" height="88"><b>Smile</b><code>:emoji-smile:</code></button>
+          <button class="expression" type="button" data-mood="joy" data-mood-name="Joy" aria-pressed="false"><img src="../assets/img/en/pet/expressions/joy.svg" alt="" loading="lazy" width="88" height="88"><b>Joy</b><code>:emoji-joy:</code></button>
+          <button class="expression" type="button" data-mood="cry" data-mood-name="Cry" aria-pressed="false"><img src="../assets/img/en/pet/expressions/cry.svg" alt="" loading="lazy" width="88" height="88"><b>Cry</b><code>:emoji-cry:</code></button>
+          <button class="expression" type="button" data-mood="depressed" data-mood-name="Depressed" aria-pressed="false"><img src="../assets/img/en/pet/expressions/depressed.svg" alt="" loading="lazy" width="88" height="88"><b>Depressed</b><code>:emoji-depressed:</code></button>
+          <button class="expression" type="button" data-mood="terrified" data-mood-name="Terrified" aria-pressed="false"><img src="../assets/img/en/pet/expressions/terrified.svg" alt="" loading="lazy" width="88" height="88"><b>Terrified</b><code>:emoji-terrified:</code></button>
+          <button class="expression" type="button" data-mood="angry" data-mood-name="Angry" aria-pressed="false"><img src="../assets/img/en/pet/expressions/angry.svg" alt="" loading="lazy" width="88" height="88"><b>Angry</b><code>:emoji-angry:</code></button>
+          <button class="expression" type="button" data-mood="coquettish" data-mood-name="Coquettish" aria-pressed="false"><img src="../assets/img/en/pet/expressions/coquettish.svg" alt="" loading="lazy" width="88" height="88"><b>Coquettish</b><code>:emoji-coquettish:</code></button>
+          <button class="expression" type="button" data-mood="cute" data-mood-name="Cute" aria-pressed="false"><img src="../assets/img/en/pet/expressions/cute.svg" alt="" loading="lazy" width="88" height="88"><b>Cute</b><code>:emoji-cute:</code></button>
+          <button class="expression" type="button" data-mood="pleasing" data-mood-name="Pleasing" aria-pressed="false"><img src="../assets/img/en/pet/expressions/pleasing.svg" alt="" loading="lazy" width="88" height="88"><b>Pleasing</b><code>:emoji-pleasing:</code></button>
+          <button class="expression" type="button" data-mood="knocking" data-mood-name="Knocking" aria-pressed="false"><img src="../assets/img/en/pet/expressions/knocking.svg" alt="" loading="lazy" width="88" height="88"><b>Knocking</b><code>:emoji-knocking:</code></button>
+          <button class="expression" type="button" data-mood="facepalm" data-mood-name="Facepalm" aria-pressed="false"><img src="../assets/img/en/pet/expressions/facepalm.svg" alt="" loading="lazy" width="88" height="88"><b>Facepalm</b><code>:emoji-facepalm:</code></button>
+          <button class="expression" type="button" data-mood="tongue" data-mood-name="Tongue Out" aria-pressed="false"><img src="../assets/img/en/pet/expressions/tongue.svg" alt="" loading="lazy" width="88" height="88"><b>Tongue Out</b><code>:emoji-tongue:</code></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section section--paper" id="quickstart">
+  <div class="container">
+    <div class="section-head reveal">
+      <p class="eyebrow">Quick start</p>
+      <h2>Three commands, or let the script do it</h2>
+      <p class="lead">Prebuilt artifacts need glibc ≥ 2.38; older machines use a source build or Docker. The script checks before writing anything and prints alternatives.</p>
+    </div>
+    <div class="quick-grid">
+      <div class="quick-card quick-card--steps reveal">
+        <h3>Manual path</h3>
+        <ol class="steps">
+          <li><div><b>Clone the repository</b><br><code>git clone --depth 1 https://github.com/erikwang2013/bee-rust-admin.git</code></div></li>
+          <li><div><b>Generate configuration</b><br>Set <code>[db] dsn</code>, <code>[jwt] secret</code> and <code>[app] encrypt_key</code> (the last one cannot be changed).</div></li>
+          <li><div><b>Start backend and frontend</b><br><code>cargo run -p bee_admin</code>, then <code>cd admin/web &amp;&amp; pnpm i &amp;&amp; pnpm dev</code>.</div></li>
+        </ol>
+        <div class="quick-links"><a class="btn" href="install.html">Installation guide</a><a class="btn btn--ghost" href="usage.html">User guide</a></div>
+      </div>
+      <div class="quick-card quick-card--term reveal">
+        <h3>One-command install</h3>
+        <p>The script downloads or builds, generates config, creates the database, installs systemd + nginx, and runs a self-check.</p>
+        <pre class="terminal"><span class="c"># interactive; --help lists all options</span>
+git clone --depth 1 \
+  https://github.com/erikwang2013/bee-rust-admin.git
+cd bee-rust-admin
+less install.sh &amp;&amp; bash install.sh</pre>
+        <p>Older machines: <code>bash install.sh --mode build</code>; containers: <code>./compose-up.sh --build</code>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="support">
+  <div class="container">
+    <div class="section-head reveal">
+      <p class="eyebrow">Support the project</p>
+      <h2>Buy Keeper a jar of honey</h2>
+      <p class="lead">If BRA saved you time, a voluntary tip is welcome. Click a QR code to enlarge it.</p>
+    </div>
+    <div class="donate-grid">
+      <figure class="donate-card donate-card--wechat reveal">
+        <img src="../assets/img/en/donate/weixinpay.png" alt="WeChat Pay donation QR code" width="386" height="423" loading="lazy">
+        <figcaption><b>WeChat Pay</b><span>Scan to tip; any amount</span></figcaption>
+      </figure>
+      <figure class="donate-card donate-card--alipay reveal">
+        <img src="../assets/img/en/donate/alipay.png" alt="Alipay donation QR code" width="412" height="450" loading="lazy">
+        <figcaption><b>Alipay</b><span>Scan to tip; any amount</span></figcaption>
+      </figure>
+    </div>
+    <p class="donate-note">Tips are entirely voluntary and do not affect the license or features.</p>
+  </div>
+</section>
+
+</main>
+<footer class="site-footer" id="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <div class="footer-brand">
+          <img src="../assets/img/en/pet/keeper-head.svg" alt="" width="52" height="52">
+          <div><b>BRA</b><small>BEE RUST ADMIN</small></div>
+        </div>
+        <p>Rust backend + React frontend RBAC admin. Guard the permissions, ship the admin.</p>
+      </div>
+      <div>
+        <h3>Project</h3>
+        <ul class="footer-links">
+          <li><a href="index.html#intro">Overview</a></li>
+          <li><a href="index.html#features">Features</a></li>
+          <li><a href="index.html#architecture">Architecture</a></li>
+          <li><a href="index.html#timeline">Timeline</a></li>
+          <li><a href="index.html#support">Support</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Docs</h3>
+        <ul class="footer-links">
+          <li><a href="install.html">Installation</a></li>
+          <li><a href="usage.html">User guide</a></li>
+          <li><a href="faq.html">FAQ</a></li>
+          <li><a href="releases.html">Releases</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Links</h3>
+        <ul class="footer-links">
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin" target="_blank" rel="noopener">GitHub ↗</a></li>
+          <li><a href="https://erik.xyz" target="_blank" rel="noopener">Erik (艾瑞可) ↗</a></li>
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin/blob/main/LICENSE" target="_blank" rel="noopener">Code: Apache-2.0 ↗</a></li>
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin/blob/main/ASSETS-LICENSE.md" target="_blank" rel="noopener">Visual assets ↗</a></li>
+          <li><a href="../index.html" hreflang="zh-CN" lang="zh-CN">中文</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© <span data-year>2026</span> erik · Code Apache-2.0</span>
+      <div class="footer-info" id="busuanzi">
+        <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+        <span id="busuanzi_container_page_pv"><span data-i18n="post.readA">Views</span> <b id="busuanzi_value_page_pv">0</b> <span data-i18n="post.readB">views 👀</span></span>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<button class="to-top" id="to-top" type="button" aria-label="Back to top">
+  <img src="../assets/img/en/pet/keeper-onduty.svg" alt="" width="76" height="76">
+</button>
+
+<script src="../assets/js/site.js" defer></script>
+</body>
+</html>

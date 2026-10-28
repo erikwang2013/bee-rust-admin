@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Releases · BRA</title>
+<meta name="description" content="BRA release log: from v1.0.0 to v2.16.2, features, security fixes and deployment changes.">
+<meta name="keywords" content="BRA, Bee Rust Admin, Rust admin, RBAC, permissions, data scope, audit logs">
+<meta name="theme-color" content="#fff9ec">
+<link rel="canonical" href="https://package.erik.xyz/bra/en/releases.html">
+<link rel="alternate" hreflang="en" href="https://package.erik.xyz/bra/en/releases.html">
+<link rel="alternate" hreflang="zh-CN" href="https://package.erik.xyz/bra/releases.html">
+<link rel="alternate" hreflang="x-default" href="https://package.erik.xyz/bra/releases.html">
+<meta name="author" content="erik">
+<meta name="robots" content="index,follow">
+<meta property="og:site_name" content="BRA · Bee Rust Admin">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:url" content="https://package.erik.xyz/bra/en/releases.html">
+<meta property="og:image" content="https://package.erik.xyz/bra/en/assets/img/en/og.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="BRA · Bee Rust Admin preview">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Releases · BRA">
+<meta name="twitter:description" content="BRA release log: from v1.0.0 to v2.16.2, features, security fixes and deployment changes.">
+<meta name="twitter:image" content="https://package.erik.xyz/bra/en/assets/img/en/og.png">
+
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/base.css">
+<link rel="stylesheet" href="../assets/css/components.css">
+<link rel="stylesheet" href="../assets/css/search.css">
+</head>
+<body data-base="../">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="index.html" aria-label="BRA home">
+      <img src="../assets/img/en/pet/keeper-head.svg" alt="" width="38" height="38">
+      <span>BRA<small>BEE RUST ADMIN</small></span>
+    </a>
+    <button class="nav-toggle" type="button" aria-controls="site-nav" aria-expanded="false" aria-label="Open navigation"><span></span></button>
+    <nav class="nav" id="site-nav" aria-label="Main navigation">
+      <a href="index.html">Home</a>
+      <a href="index.html#intro">Intro</a>
+      <a href="index.html#features">Features</a>
+      <a href="index.html#architecture">Architecture</a>
+      <a href="index.html#timeline">Timeline</a>
+      <a href="releases.html">Releases</a>
+      <a href="install.html">Install</a>
+      <a href="usage.html">Usage</a>
+      <button class="nav-search" type="button" data-search-open aria-haspopup="dialog">Search</button>
+      <a class="nav-lang" href="../releases.html" hreflang="zh-CN" lang="zh-CN">中文</a>
+      <a class="nav-ext" href="https://github.com/erikwang2013/bee-rust-admin" target="_blank" rel="noopener">GitHub ↗</a>
+      <a class="nav-ext" href="https://erik.xyz" target="_blank" rel="noopener">Erik (艾瑞可) ↗</a>
+    </nav>
+  </div>
+</header>
+<main id="main">
+<section class="release-hero">
+  <div class="container">
+    <p class="eyebrow">Releases</p>
+    <h1>37 releases, one continuous line</h1>
+    <p class="lead">From the first complete RBAC admin to the latest engineering finish. Every version says what changed and whether an upgrade is needed. Full notes are in Chinese on GitHub.</p>
+    <div class="release-meta">
+      <span class="badge badge--honey">Latest v2.16.2</span>
+      <span class="badge">2026-10-28</span>
+      <span class="badge badge--cyan">37 releases</span>
+      <a class="badge" href="https://github.com/erikwang2013/bee-rust-admin/releases" target="_blank" rel="noopener">GitHub Releases ↗</a>
+    </div>
+  </div>
+</section>
+<div class="container"><div class="release-list">
+<article class="release-item">
+  <div class="release-head"><span class="ver">v2.16.2</span><time class="date" datetime="2026-10-28">2026-10-28</time> <span class="latest">LATEST</span></div>
+  <h2 class="rel-title">Docs &amp; site</h2>
+  <p class="rel-summary">Docs and site only; no runtime code changes. Adds the project static site and removes HTML from the README.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.16.2" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v2.16.1</span><time class="date" datetime="2026-10-18">2026-10-18</time></div>
+  <h2 class="rel-title">Asset license</h2>
+  <p class="rel-summary">No code changes; adds a license notice for visual assets.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.16.1" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v2.16.0</span><time class="date" datetime="2026-10-18">2026-10-18</time></div>
+  <h2 class="rel-title">500-line refactor + four features</h2>
+  <p class="rel-summary">Splits oversized files, versions the API directory, and adds TOTP backup codes, Webhook signing, notification retry and send-time DNS blocking.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.16.0" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v2.15.0</span><time class="date" datetime="2026-10-17">2026-10-17</time></div>
+  <h2 class="rel-title">Cleanup batch: security &amp; UX</h2>
+  <p class="rel-summary">TOTP one-time codes, attachment reclaim protection, Webhook private-IP blocks, export cancel/progress/concurrency, device cleanup and notice email push.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.15.0" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v2.14.0</span><time class="date" datetime="2026-10-16">2026-10-16</time></div>
+  <h2 class="rel-title">Data, security, platform</h2>
+  <p class="rel-summary">Database backup, CSV import and export center; audit summaries, TOTP/login devices and notification channels; attachments and module scaffolding.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.14.0" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v2.13.0</span><time class="date" datetime="2026-10-16">2026-10-16</time></div>
+  <h2 class="rel-title">Security &amp; channels</h2>
+  <p class="rel-summary">Audit change summaries, TOTP + login devices, and notification channels (Webhook + SMTP test).</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.13.0" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v2.12.0</span><time class="date" datetime="2026-10-16">2026-10-16</time></div>
+  <h2 class="rel-title">Data channels</h2>
+  <p class="rel-summary">Database backup, CSV import and the async export center.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.12.0" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v2.11.0</span><time class="date" datetime="2026-10-15">2026-10-15</time></div>
+  <h2 class="rel-title">Foundation utilities</h2>
+  <p class="rel-summary">Version endpoint, Prometheus metrics, system config and a real dashboard.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.11.0" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v2.10.0</span><time class="date" datetime="2026-10-14">2026-10-14</time></div>
+  <h2 class="rel-title">Site information</h2>
+  <p class="rel-summary">Version, copyright and repository link in the login page and sidebar.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.10.0" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v2.9.5</span><time class="date" datetime="2026-10-14">2026-10-14</time></div>
+  <h2 class="rel-title">Compose out of the box</h2>
+  <p class="rel-summary">compose-up.sh generates missing secrets; one command starts the offline stack.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.9.5" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v2.9.4</span><time class="date" datetime="2026-10-13">2026-10-13</time></div>
+  <h2 class="rel-title">Offline images</h2>
+  <p class="rel-summary">Releases ship Docker images and compose bundles for offline deployment.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.9.4" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v2.9.3</span><time class="date" datetime="2026-10-13">2026-10-13</time></div>
+  <h2 class="rel-title">Maintenance</h2>
+  <p class="rel-summary">Tests and formatting only; no user-visible changes.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.9.3" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v2.9.2</span><time class="date" datetime="2026-10-13">2026-10-13</time></div>
+  <h2 class="rel-title">Security release</h2>
+  <p class="rel-summary">Fixes a privilege-escalation bug and three hardening issues; upgrades bee-rust to 1.3.0.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.9.2" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v2.9.1</span><time class="date" datetime="2026-10-12">2026-10-12</time></div>
+  <h2 class="rel-title">Docs</h2>
+  <p class="rel-summary">Documentation and images only.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.9.1" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v2.9.0</span><time class="date" datetime="2026-10-12">2026-10-12</time></div>
+  <h2 class="rel-title">Planning + four capabilities</h2>
+  <p class="rel-summary">Closes the plan and adds four capabilities, including the avatar upload contract.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.9.0" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v2.8.0</span><time class="date" datetime="2026-10-12">2026-10-12</time></div>
+  <h2 class="rel-title">Dependency and debt cleanup</h2>
+  <p class="rel-summary">Clears the backlog since v2.6.2 and upgrades dependencies.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.8.0" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v2.6.2</span><time class="date" datetime="2026-10-11">2026-10-11</time></div>
+  <h2 class="rel-title">Docs</h2>
+  <p class="rel-summary">Documentation only.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.6.2" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v2.6.1</span><time class="date" datetime="2026-10-10">2026-10-10</time></div>
+  <h2 class="rel-title">API docs fix</h2>
+  <p class="rel-summary">Fixes a wrong enum in the API docs and removes unreachable error codes.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.6.1" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v2.6.0</span><time class="date" datetime="2026-10-08">2026-10-08</time></div>
+  <h2 class="rel-title">Request scanner + API docs site</h2>
+  <p class="rel-summary">Adds security-rust scanning and the apidoc-rust documentation site.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.6.0" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v2.5.0</span><time class="date" datetime="2026-10-08">2026-10-08</time></div>
+  <h2 class="rel-title">Chunked avatar upload</h2>
+  <p class="rel-summary">Moves avatars to chunked upload with deduplication and resume.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.5.0" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v2.4.0</span><time class="date" datetime="2026-10-08">2026-10-08</time></div>
+  <h2 class="rel-title">Login captcha</h2>
+  <p class="rel-summary">Adds click/rotate/slider captchas ahead of login.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.4.0" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v2.3.0</span><time class="date" datetime="2026-10-07">2026-10-07</time></div>
+  <h2 class="rel-title">Encrypted email/phone</h2>
+  <p class="rel-summary">Encrypts admin email and phone columns with a required encrypt_key.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.3.0" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v2.2.0</span><time class="date" datetime="2026-10-07">2026-10-07</time></div>
+  <h2 class="rel-title">jwt-rust</h2>
+  <p class="rel-summary">Switches JWT issuance and validation to jwt-rust.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.2.0" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v2.1.0</span><time class="date" datetime="2026-10-07">2026-10-07</time></div>
+  <h2 class="rel-title">Snowflake IDs + hashids</h2>
+  <p class="rel-summary">Primary keys become snowflake IDs; public ids are hashids strings.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.1.0" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v2.0.0</span><time class="date" datetime="2026-10-07">2026-10-07</time></div>
+  <h2 class="rel-title">Framework upgrade</h2>
+  <p class="rel-summary">Upgrades bee-rust to 1.2.3 and replaces the ORM implementation; the HTTP contract is unchanged.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.0.0" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v1.8.3</span><time class="date" datetime="2026-10-07">2026-10-07</time></div>
+  <h2 class="rel-title">BRD → BRA</h2>
+  <p class="rel-summary">Renames the project abbreviation to BRA and fixes release artifacts.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v1.8.3" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v1.8.2</span><time class="date" datetime="2026-10-06">2026-10-06</time></div>
+  <h2 class="rel-title">Docs: C4 correction</h2>
+  <p class="rel-summary">Documents the corrected first-paint conclusion.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v1.8.2" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v1.8.1</span><time class="date" datetime="2026-10-06">2026-10-06</time></div>
+  <h2 class="rel-title">First-paint correction</h2>
+  <p class="rel-summary">Corrects the v1.8.0 conclusion: with gzip, the target was met.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v1.8.1" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v1.8.0</span><time class="date" datetime="2026-10-06">2026-10-06</time></div>
+  <h2 class="rel-title">First-paint optimization</h2>
+  <p class="rel-summary">Measures and reduces the first-paint bundle (1489.7 kB → 1103.6 kB uncompressed).</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v1.8.0" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v1.7.0</span><time class="date" datetime="2026-10-06">2026-10-06</time></div>
+  <h2 class="rel-title">Full i18n</h2>
+  <p class="rel-summary">Chinese/English UI, Ant Design locale and date formats.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v1.7.0" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v1.6.0</span><time class="date" datetime="2026-10-06">2026-10-06</time></div>
+  <h2 class="rel-title">Jobs + notices</h2>
+  <p class="rel-summary">Adds scheduled jobs and notices.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v1.6.0" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v1.5.0</span><time class="date" datetime="2026-10-06">2026-10-06</time></div>
+  <h2 class="rel-title">Dictionaries</h2>
+  <p class="rel-summary">Adds two-level dictionaries as a dropdown data source.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v1.5.0" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v1.4.0</span><time class="date" datetime="2026-10-06">2026-10-06</time></div>
+  <h2 class="rel-title">Data-scope writes + hardening</h2>
+  <p class="rel-summary">Adds data scope to write paths, anti-self-escalation, logout-other-devices, frontend tests and streaming export.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v1.4.0" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v1.3.0</span><time class="date" datetime="2026-10-06">2026-10-06</time></div>
+  <h2 class="rel-title">Rate limit + bundle reduction</h2>
+  <p class="rel-summary">Uses security-rust throttling, fixes white-screen error boundaries, and cuts the first-paint bundle by 693 kB.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v1.3.0" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v1.2.0</span><time class="date" datetime="2026-10-06">2026-10-06</time></div>
+  <h2 class="rel-title">Audit, export, lockout, dark theme</h2>
+  <p class="rel-summary">Adds audit logs, export, profile, login lockout and dark theme.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v1.2.0" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v1.1.0</span><time class="date" datetime="2026-10-05">2026-10-05</time></div>
+  <h2 class="rel-title">Docker + project pet</h2>
+  <p class="rel-summary">Adds Docker packaging, one-command stack, and Keeper; fixes real-build issues.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v1.1.0" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v1.0.0</span><time class="date" datetime="2026-10-05">2026-10-05</time></div>
+  <h2 class="rel-title">First release</h2>
+  <p class="rel-summary">Complete RBAC admin, bee_orm execution layer, React SPA and deployment artifacts.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v1.0.0" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article>
+</div></div>
+</main>
+<footer class="site-footer" id="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <div class="footer-brand">
+          <img src="../assets/img/en/pet/keeper-head.svg" alt="" width="52" height="52">
+          <div><b>BRA</b><small>BEE RUST ADMIN</small></div>
+        </div>
+        <p>Rust backend + React frontend RBAC admin. Guard the permissions, ship the admin.</p>
+      </div>
+      <div>
+        <h3>Project</h3>
+        <ul class="footer-links">
+          <li><a href="index.html#intro">Overview</a></li>
+          <li><a href="index.html#features">Features</a></li>
+          <li><a href="index.html#architecture">Architecture</a></li>
+          <li><a href="index.html#timeline">Timeline</a></li>
+          <li><a href="index.html#support">Support</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Docs</h3>
+        <ul class="footer-links">
+          <li><a href="install.html">Installation</a></li>
+          <li><a href="usage.html">User guide</a></li>
+          <li><a href="faq.html">FAQ</a></li>
+          <li><a href="releases.html">Releases</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Links</h3>
+        <ul class="footer-links">
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin" target="_blank" rel="noopener">GitHub ↗</a></li>
+          <li><a href="https://erik.xyz" target="_blank" rel="noopener">Erik (艾瑞可) ↗</a></li>
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin/blob/main/LICENSE" target="_blank" rel="noopener">Code: Apache-2.0 ↗</a></li>
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin/blob/main/ASSETS-LICENSE.md" target="_blank" rel="noopener">Visual assets ↗</a></li>
+          <li><a href="../releases.html" hreflang="zh-CN" lang="zh-CN">中文</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© <span data-year>2026</span> erik · Code Apache-2.0</span>
+      <div class="footer-info" id="busuanzi">
+        <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+        <span id="busuanzi_container_page_pv"><span data-i18n="post.readA">Views</span> <b id="busuanzi_value_page_pv">0</b> <span data-i18n="post.readB">views 👀</span></span>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<button class="to-top" id="to-top" type="button" aria-label="Back to top">
+  <img src="../assets/img/en/pet/keeper-onduty.svg" alt="" width="76" height="76">
+</button>
+
+<script src="../assets/js/site.js" defer></script>
+</body>
+</html>

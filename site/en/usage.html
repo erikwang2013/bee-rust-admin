@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>User Guide · BRA</title>
+<meta name="description" content="BRA user guide: login, permissions, module notes and the five data-scope levels.">
+<meta name="keywords" content="BRA, Bee Rust Admin, Rust admin, RBAC, permissions, data scope, audit logs">
+<meta name="theme-color" content="#fff9ec">
+<link rel="canonical" href="https://package.erik.xyz/bra/en/usage.html">
+<link rel="alternate" hreflang="en" href="https://package.erik.xyz/bra/en/usage.html">
+<link rel="alternate" hreflang="zh-CN" href="https://package.erik.xyz/bra/usage.html">
+<link rel="alternate" hreflang="x-default" href="https://package.erik.xyz/bra/usage.html">
+<meta name="author" content="erik">
+<meta name="robots" content="index,follow">
+<meta property="og:site_name" content="BRA · Bee Rust Admin">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:url" content="https://package.erik.xyz/bra/en/usage.html">
+<meta property="og:image" content="https://package.erik.xyz/bra/en/assets/img/en/og.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="BRA · Bee Rust Admin preview">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="User Guide · BRA">
+<meta name="twitter:description" content="BRA user guide: login, permissions, module notes and the five data-scope levels.">
+<meta name="twitter:image" content="https://package.erik.xyz/bra/en/assets/img/en/og.png">
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/base.css">
+<link rel="stylesheet" href="../assets/css/components.css">
+<link rel="stylesheet" href="../assets/css/search.css">
+</head>
+<body data-base="../">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="index.html" aria-label="BRA home">
+      <img src="../assets/img/en/pet/keeper-head.svg" alt="" width="38" height="38">
+      <span>BRA<small>BEE RUST ADMIN</small></span>
+    </a>
+    <button class="nav-toggle" type="button" aria-controls="site-nav" aria-expanded="false" aria-label="Open navigation"><span></span></button>
+    <nav class="nav" id="site-nav" aria-label="Main navigation">
+      <a href="index.html">Home</a>
+      <a href="index.html#intro">Intro</a>
+      <a href="index.html#features">Features</a>
+      <a href="index.html#architecture">Architecture</a>
+      <a href="index.html#timeline">Timeline</a>
+      <a href="releases.html">Releases</a>
+      <a href="install.html">Install</a>
+      <a href="usage.html">Usage</a>
+      <button class="nav-search" type="button" data-search-open aria-haspopup="dialog">Search</button>
+      <a class="nav-lang" href="../usage.html" hreflang="zh-CN" lang="zh-CN">中文</a>
+      <a class="nav-ext" href="https://github.com/erikwang2013/bee-rust-admin" target="_blank" rel="noopener">GitHub ↗</a>
+      <a class="nav-ext" href="https://erik.xyz" target="_blank" rel="noopener">Erik (艾瑞可) ↗</a>
+    </nav>
+  </div>
+</header>
+<main id="main">
+<section class="doc-hero">
+  <div class="container">
+    <p class="eyebrow">User guide</p>
+    <h1>Put the permission model to work</h1>
+    <p class="lead">Start with login and profile, then build departments → roles → admins, and work through each module.</p>
+    <div class="doc-actions">
+      <a class="btn" href="install.html">Install first</a>
+      <a class="btn btn--ghost" href="https://github.com/erikwang2013/bee-rust-admin/blob/main/site/i18n/en/usage.md" target="_blank" rel="noopener">View source on GitHub ↗</a>
+    </div>
+  </div>
+</section>
+<div class="container"><article class="doc">
+<blockquote>
+<p>This guide is for <strong>users</strong>: administrators and authorised users with an account. It explains how to get things done in the UI.
+Installation, deployment and upgrades are covered in the <a href="install.html">Installation Guide</a>; troubleshooting and operations
+are in the <a href="faq.html">FAQ</a>.</p>
+<p>Button and menu names match the admin UI; look for the same labels on screen.</p>
+</blockquote>
+<h2 id="contents">Contents</h2>
+<ol>
+<li><a href="#1-login-and-profile">Login and profile</a></li>
+<li><a href="#2-how-permissions-work">How permissions work</a></li>
+<li><a href="#3-module-notes">Module notes</a></li>
+<li><a href="#4-data-scope-five-levels-and-how-to-verify">Data scope: five levels and how to verify</a></li>
+</ol>
+<hr />
+<h2 id="1-login-and-profile">1. Login and profile</h2>
+<h3 id="11-login">1.1 Login</h3>
+<ol>
+<li>Open the admin URL and go to the login page (BRA · Admin).</li>
+<li>Enter <strong>username</strong> and <strong>password</strong>, then complete the image captcha.</li>
+<li>Click <strong>Login</strong>. You land on the dashboard.</li>
+</ol>
+<p>If your account has <strong>TOTP</strong> enabled, login is two-step: after the password is accepted, a <strong>dynamic code / backup code</strong> field appears.
+Enter the current 6-digit code from your authenticator app and click <strong>Login</strong> again. A <strong>backup code</strong> (10 alphanumeric characters,
+generated in your profile, <strong>single use</strong>) can be entered in the same field; the backend treats 6 digits as TOTP and anything else as a backup code.
+Backup-code hashes derive their pepper from <code>encrypt_key</code> — <strong>changing that key invalidates every existing backup code</strong>.
+Codes change every 30 seconds; a code can be used only once per time window, so two devices cannot both log in with the same code.</p>
+<p>The footer shows site information (version, copyright, repository link; editable under <strong>System Config</strong>).</p>
+<p>Login failures:</p>
+<table>
+<thead>
+<tr>
+<th>Message</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Username and password are required</td>
+<td>One field is empty</td>
+</tr>
+<tr>
+<td>Invalid username or password</td>
+<td>The same message for an unknown account and a wrong password (no account enumeration)</td>
+</tr>
+<tr>
+<td>Captcha error</td>
+<td>Redo the captcha; a wrong captcha does <strong>not</strong> count toward lockout</td>
+</tr>
+<tr>
+<td>Dynamic code required</td>
+<td>TOTP is enabled and the password was correct; enter the 6-digit code or a backup code</td>
+</tr>
+<tr>
+<td>Invalid dynamic code</td>
+<td>Wrong/expired code (30-second window), or a wrong/used backup code. Counts as a failed attempt</td>
+</tr>
+<tr>
+<td>Dynamic code already used</td>
+<td>The code was used in this window (multi-device or a recent login). Counts as a failed attempt</td>
+</tr>
+<tr>
+<td>Account disabled</td>
+<td>Ask a superadmin to enable it</td>
+</tr>
+<tr>
+<td>Too many attempts, try again in N minutes</td>
+<td>Lockout, see the FAQ</td>
+</tr>
+</tbody>
+</table>
+<p>Default policy: <strong>5</strong> failed passwords for the same account or source IP lock it for <strong>10</strong> minutes. Wrong captchas do not count.</p>
+<h3 id="12-top-bar">1.2 Top bar</h3>
+<p>From left to right: breadcrumb, <strong>language</strong> (简体中文 / English), <strong>light/dark theme</strong>, unread-notice bell, avatar menu.</p>
+<ul>
+<li>Language and theme are local browser preferences, not account settings.</li>
+<li>Initial language follows the browser; initial theme follows the system. Your changes stick.</li>
+<li>The avatar menu has <strong>Profile</strong> and <strong>Sign out</strong>.</li>
+</ul>
+<h3 id="13-profile">1.3 Profile</h3>
+<p><strong>Profile details</strong>: nickname, email, phone. Saving affects only your profile; email and phone are encrypted at rest.</p>
+<p><strong>Avatar</strong>:</p>
+<ul>
+<li>PNG / JPEG only, max <strong>512 KB</strong>. Larger images are compressed in the browser (long edge 512 px, decreasing JPEG quality);
+  if still over 512 KB you are asked to choose a smaller file.</li>
+<li>Upload shows progress; the top-bar avatar updates on success.</li>
+</ul>
+<p><strong>Change password</strong>: current password, new password (at least 8 characters with at least two of letters/numbers/symbols), confirm.
+All sessions on <strong>every device, including this one</strong>, are invalidated; log in again with the new password.</p>
+<p><strong>Sign out other devices</strong>: other sessions are invalidated immediately; <strong>this device stays signed in</strong> (the backend quietly issues a new token).</p>
+<p><strong>TOTP</strong>: click <strong>Generate secret</strong> → scan the QR code with an authenticator (Google Authenticator / 1Password, etc.) or enter the secret manually →
+enter the 6-digit code and click <strong>Bind</strong>. After that, login is password + code. Notes:</p>
+<ul>
+<li>Binding and unbinding require a current code.</li>
+<li>The secret is stored encrypted; plaintext is shown only once. Unbinding clears the secret and backup codes.</li>
+<li><strong>Backup codes</strong>: after binding, click <strong>Generate backup codes</strong>, confirm with the current 6-digit code, and save the <strong>10 one-time codes</strong>
+  (ambiguous characters such as <code>0/O/1/I</code> are excluded). Plaintext is shown once; only hashes are stored. Regenerating invalidates old codes.</li>
+<li><strong>Current-code confirmation is rate-limited</strong>: after 5 wrong current codes, even a correct code gets 429 for 5 minutes (per account, per process).</li>
+<li>If the authenticator and all backup codes are lost, only an operator with database access can clear the account’s TOTP columns and backup-code rows;
+  resetting the password does <strong>not</strong> disable TOTP.</li>
+</ul>
+<p><strong>Login devices</strong>: one row per device (browser id, IP, login time, last seen); the current device is marked. <strong>Kick</strong> invalidates that device’s token only
+(change password invalidates all). Kicked devices fail on their next request. The row is soft-deleted and retained per <code>[auth] device_keep_days</code>
+(default 30 days; <code>0</code> = forever), cleaned by the <code>device_clean</code> job. Validity is cached for 30 seconds per process; kicks apply immediately in the same process
+and within 30 seconds on other instances.</p>
+<h3 id="14-dashboard">1.4 Dashboard</h3>
+<p>The first screen after login: a welcome card (account, nickname, superadmin flag, permission count, accessible menus) and four counters
+(<strong>admins / roles / departments / notices</strong>), followed by two 7-day trend cards (successful and failed logins). Hover a bar for date and count;
+missing days are zero; an all-zero week shows an empty state. The dashboard needs no permission code and is not filtered by data scope.</p>
+<hr />
+<h2 id="2-how-permissions-work">2. How permissions work</h2>
+<p>In one sentence:</p>
+<ul>
+<li><strong>What you can click = role menu permissions</strong> (down to individual buttons);</li>
+<li><strong>What data you can see = role data scope</strong> (five levels, section 4).</li>
+</ul>
+<p>Both live on <strong>roles</strong>; admins get permissions by being assigned roles. The built-in superadmin (<code>admin</code>) bypasses both and sees everything.</p>
+<p>Recommended order: <strong>departments → roles → admins</strong>.</p>
+<ol>
+<li>Create departments first; roles and admins reference them.</li>
+<li>Define roles (what can be clicked + what data is visible).</li>
+<li>Create admins and assign roles.</li>
+</ol>
+<h3 id="21-step-1-departments">2.1 Step 1: departments</h3>
+<p>Menu <strong>System → Departments</strong>. Departments form an arbitrarily deep tree.</p>
+<ol>
+<li>Click <strong>Add</strong> for a top-level department, or <strong>Add child</strong> on a row.</li>
+<li>Fill parent, name, order, owner, phone, status.</li>
+<li>Delete constraints: <strong>delete child departments first</strong>, and <strong>no admins may remain in the department</strong>; a department cannot be moved under its own descendant (no cycles).</li>
+</ol>
+<p>Departments affect <strong>data scope only</strong>, not functional permissions. A disabled department can still be selected in admin forms and is still part of “department and below” subtrees.</p>
+<h3 id="22-step-2-roles">2.2 Step 2: roles</h3>
+<p>Menu <strong>System → Roles</strong>.</p>
+<ol>
+<li>Click <strong>Add</strong>; enter a <strong>role name</strong> (display name, e.g. “Dept lead”) and <strong>role code</strong> (3–64 chars, letters/numbers/underscore/colon, e.g. <code>admin</code>).</li>
+<li>Choose a <strong>data scope</strong> (five levels; section 4).</li>
+<li>Save, then click <strong>Permissions</strong> on the row to open the “Assign permissions: …” drawer.</li>
+</ol>
+<p>The drawer is a three-level <strong>menu tree</strong>: <strong>directory → menu → button</strong>.</p>
+<ul>
+<li>Checking a menu makes it appear in the sidebar; checking a menu without buttons lets the user open the page but hides actions.</li>
+<li>Button nodes are marked <strong>(button)</strong>, e.g. Add, Edit, Delete, Reset password.</li>
+<li>Changes apply immediately; no re-login required.</li>
+</ul>
+<p>The drawer loads both the menu tree and the department tree, so the operator also needs <strong>Menu management</strong> and <strong>Department management</strong> view permissions
+(<code>system:menu:list</code>, <code>system:dept:list</code>) in addition to the role being edited; otherwise the drawer cannot load its trees.</p>
+<h3 id="23-step-3-admins">2.3 Step 3: admins</h3>
+<p>Menu <strong>System → Admins</strong>.</p>
+<ol>
+<li>Click <strong>Add</strong>; enter username, initial password, nickname, department, roles, status.</li>
+<li>Rules: username 3–64 chars (letters/numbers/underscore, unique); password at least 8 chars with at least two of letters/numbers/symbols;
+   nickname required (max 64 chars).</li>
+<li><strong>Usernames cannot be changed</strong> after creation; passwords are changed via <strong>Reset password</strong> (or by the user in Profile).</li>
+<li>Give the user the username and initial password; ask them to change it immediately.</li>
+</ol>
+<p>The role selector accepts a <strong>role name filter</strong>; at most <strong>100</strong> roles are listed at once (use the search box when there are more).</p>
+<p>Important consequences:</p>
+<ul>
+<li><strong>Reset password</strong> invalidates all sessions for that account. This is intentional; notify the user.</li>
+<li><strong>Disable</strong> also invalidates all sessions and prevents future logins.</li>
+<li>You cannot delete the superadmin, delete yourself, change the superadmin’s status, change your own status, or reset another superadmin’s password.</li>
+</ul>
+<p>Data scope also constrains whom you can manage:</p>
+<ul>
+<li>Admins outside your scope are not listed and cannot be edited/deleted; forced operations are rejected with <strong>outside your data scope</strong>.</li>
+<li>You cannot create/edit an admin into a department outside your scope.</li>
+<li>You cannot grant roles whose data scope is wider than yours (“All data”, “Department and below”, “Custom”) or that contain permission codes you lack;
+  such roles are greyed out. On edit, only newly added roles are checked.</li>
+<li>The same rule applies to editing roles: you cannot modify a role wider than yours or grant menus/permissions you lack; you can only set its data scope to
+  “Own department” or “Self only”. Widening your own role is rejected.</li>
+</ul>
+<h3 id="24-permission-codes">2.4 Permission codes</h3>
+<p>Permission codes are <code>module:resource:action</code>, for example:</p>
+<ul>
+<li><code>system:admin:list</code> — view admins;</li>
+<li><code>system:admin:resetPwd</code> — reset passwords;</li>
+<li><code>system:notice:edit</code> — edit notices (publish/unpublish uses the same code).</li>
+</ul>
+<p>See them under <strong>System → Menus</strong>; the <strong>Permission code</strong> column lists the code for every node, including button nodes.</p>
+<p>Built-in codes:</p>
+<table>
+<thead>
+<tr>
+<th>Menu</th>
+<th>Prefix</th>
+<th>Actions</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Admins</td>
+<td><code>system:admin</code></td>
+<td><code>list</code>, <code>add</code>, <code>edit</code>, <code>remove</code>, <code>resetPwd</code></td>
+</tr>
+<tr>
+<td>Roles</td>
+<td><code>system:role</code></td>
+<td><code>list</code>, <code>add</code>, <code>edit</code>, <code>remove</code></td>
+</tr>
+<tr>
+<td>Menus</td>
+<td><code>system:menu</code></td>
+<td><code>list</code>, <code>add</code>, <code>edit</code>, <code>remove</code></td>
+</tr>
+<tr>
+<td>Departments</td>
+<td><code>system:dept</code></td>
+<td><code>list</code>, <code>add</code>, <code>edit</code>, <code>remove</code></td>
+</tr>
+<tr>
+<td>Login logs</td>
+<td><code>system:loginlog</code></td>
+<td><code>list</code>, <code>remove</code> (clear)</td>
+</tr>
+<tr>
+<td>Audit logs</td>
+<td><code>system:auditlog</code></td>
+<td><code>list</code>, <code>remove</code> (clear)</td>
+</tr>
+<tr>
+<td>Dictionaries</td>
+<td><code>system:dict</code></td>
+<td><code>list</code>, <code>add</code>, <code>edit</code>, <code>remove</code> (items use the same codes)</td>
+</tr>
+<tr>
+<td>Jobs</td>
+<td><code>system:job</code></td>
+<td><code>list</code>, <code>edit</code> (interval, enable/disable, trigger once)</td>
+</tr>
+<tr>
+<td>Notices</td>
+<td><code>system:notice</code></td>
+<td><code>list</code>, <code>add</code>, <code>edit</code>, <code>remove</code></td>
+</tr>
+<tr>
+<td>System config</td>
+<td><code>system:config</code></td>
+<td><code>list</code>, <code>edit</code></td>
+</tr>
+<tr>
+<td>Notification settings</td>
+<td><code>system:notify</code></td>
+<td><code>list</code>, <code>edit</code></td>
+</tr>
+<tr>
+<td>Export center</td>
+<td><code>system:export</code></td>
+<td><code>list</code>, <code>remove</code> (starting/downloading also needs the data’s view code)</td>
+</tr>
+<tr>
+<td>Attachments</td>
+<td><code>system:attach</code></td>
+<td><code>list</code>, <code>add</code>, <code>edit</code>, <code>remove</code> (<code>edit</code> covers link/unlink)</td>
+</tr>
+</tbody>
+</table>
+<p>Notes:</p>
+<ul>
+<li>You can add menus/buttons and codes under <strong>Menu management</strong>, but a non-superadmin may only use codes they already have; otherwise the request is rejected.
+  New codes affect sidebar visibility and role checkboxes only; backend endpoints only recognise codes compiled into the code.</li>
+<li>Pages outside the sidebar (dashboard, profile, notice bell) need no permission code; login is enough.</li>
+</ul>
+<h3 id="25-hiding-buttons-is-ux-the-backend-checks-every-request">2.5 Hiding buttons is UX; the backend checks every request</h3>
+<ul>
+<li>The <strong>frontend</strong> hides buttons and blocks routes based on your codes; a blocked route shows a 403 page with <strong>Back to home</strong>.</li>
+<li>The <strong>backend</strong> re-checks your <strong>current</strong> codes on every API request; missing permissions are rejected. Re-showing a button or calling the API directly does not grant access.</li>
+<li>Permissions are evaluated per request: disabling a role or unchecking a menu takes effect on the next request. The sidebar menu is cached at login; refresh to see changes.</li>
+</ul>
+<hr />
+<h2 id="3-module-notes">3. Module notes</h2>
+<h3 id="31-admin-management-systemadmin">3.1 Admin management (system:admin)</h3>
+<p>Filter by username (fuzzy) and status; <strong>Export</strong> the current filter; bulk creation uses <strong>Import</strong>. Create with username, initial password, nickname, department, roles, status.
+Username and password cannot be edited in the edit form (use Reset password or the user’s Profile). Row actions include Edit, Reset password, Delete and a status switch;
+reset and disable immediately invalidate all sessions. Admins outside your data scope are not listed and cannot be operated on. Prefer disabling over deleting.</p>
+<h3 id="32-role-management-systemrole">3.2 Role management (system:role)</h3>
+<p>The <strong>Permissions</strong> button opens the permission drawer (menu tree down to buttons). Each role also has a <strong>data scope</strong> (section 4). A role in use by an admin cannot be deleted.
+Role codes are unique. Permission and data-scope changes apply immediately after a page refresh on affected accounts. Non-superadmins can only edit roles within their own scope and
+with a subset of their own codes; data scope can only be set to “Own department” or “Self only”.</p>
+<h3 id="33-menu-management-systemmenu">3.3 Menu management (system:menu)</h3>
+<p>Maintains the sidebar structure and permission-code table. Node types: <strong>directory</strong> (expandable group), <strong>menu</strong> (page), <strong>button</strong> (permission code only).
+Fields: parent, name, type, permission code, route, component, icon, order, visible, status. Delete constraints: delete child nodes first; remove the node from all roles first.
+<strong>Hidden</strong> only hides it from the sidebar; it does not affect permission checks. The 13 built-in modules are restored on every startup if deleted; to disable one, hide it or unassign it from all roles.</p>
+<h3 id="34-department-management-systemdept">3.4 Department management (system:dept)</h3>
+<p>Arbitrarily deep department tree. Each node can add a child or edit parent, name, order, owner, phone and status. Delete constraints: no child departments and no admins in the department;
+no cycles. Departments only provide coordinates for data scope. To reorganise, change the parent instead of deleting/recreating (recreation changes ids and breaks custom scopes and admins).
+Bulk creation uses <strong>Import</strong>.</p>
+<h3 id="35-dictionary-management-systemdict">3.5 Dictionary management (system:dict)</h3>
+<p>Left: dictionary types; right: items of the selected type. Types have a <strong>code</strong> (lowercase letters/numbers/underscore, 2–64 chars, immutable), name and status.
+Items have label, value (unique within the type), order and status. Deleting a type deletes all its items. Dictionaries are a data source for page dropdowns
+(<code>GET /dicts/{code}/items</code> returns enabled items only). The built-in pages currently do not use dictionary dropdowns, so creating a dictionary may not change the UI.
+<strong>Export</strong> downloads the current type’s items; bulk item creation uses <strong>Import</strong>.</p>
+<h3 id="36-jobs-systemjob">3.6 Jobs (system:job)</h3>
+<p>Two tabs: <strong>Tasks</strong> and <strong>Run history</strong>. Tasks are registered in code; the database stores only scheduling and run history, so the UI can change interval and enable/disable but cannot add or rename tasks.
+Eight built-in jobs: <code>log_retention</code>, <code>avatar_orphan_clean</code>, <code>attach_orphan_clean</code>, <code>db_backup</code>, <code>export_run</code>, <code>export_clean</code>, <code>device_clean</code>, <code>notify_retry</code>.
+Most run daily; <code>export_run</code> every 60 seconds; <code>attach_orphan_clean</code> every hour; <code>notify_retry</code> every 5 minutes. Intervals come from the database row, so upgrades do not overwrite existing rows.
+<strong>Trigger once</strong> runs in the background and returns immediately; the last run/result columns and run history update afterwards. Triggering a running job is rejected (409) and does not start a second copy.
+Disabled jobs are not scheduled, but <strong>Trigger once</strong> still works. Jobs run serially; a long job delays the next checks. In multi-instance deployments enable scheduling on only one instance
+(<code>[job] enabled = true</code>); the “already running” guard is per process.</p>
+<h3 id="37-notices-systemnotice">3.7 Notices (system:notice)</h3>
+<p>New notices are drafts and invisible to users until <strong>Publish</strong>. Unpublish removes them from unread lists (read records remain). The first publish time is preserved across unpublish/republish.
+Title max 128 chars; body is plain text with newlines preserved. The edit dialog has an <strong>images</strong> section (upload binds to the notice; save a new notice first). Deleting a notice cascades
+to read records and attachment rows in the same transaction (files are handled by orphan cleanup). The top-bar bell shows unread count; each notice can be marked read; only the latest 50 are listed.</p>
+<h3 id="38-login-logs-systemloginlog">3.8 Login logs (system:loginlog)</h3>
+<p>Every login attempt (success or failure) is recorded with username, IP, time and result. Filter and <strong>Export</strong> the current result (or use the Export center). <strong>Clear</strong> removes only records matching the current filter;
+the clear itself is audited. Records are constrained by data scope.</p>
+<h3 id="39-audit-logs-systemauditlog">3.9 Audit logs (system:auditlog)</h3>
+<p>Records side-effecting operations (POST/PUT/DELETE); login requests are in Login logs. Shows time, operator, module, action, request and IP; filter by username/module/time;
+<strong>Export</strong> or <strong>Clear</strong> (only the current filter; clearing is itself recorded). Modules include admins, roles, menus, departments, dictionaries, system config, import, export, login logs, audit logs,
+attachments, auth, other. Job/notice operations show the raw module <code>job</code>/<code>notice</code>, which are not in the dropdown; filter by username/time instead. For four entity types (admins, roles, departments, dictionaries)
+a <strong>change summary</strong> records changed fields as <code>field: old → new</code>; encrypted email/phone only say “changed”, and password APIs never produce summaries.</p>
+<h3 id="310-system-config-systemconfig">3.10 System config (system:config)</h3>
+<p>Grouped key/value configuration. Each item has key (immutable), value, type, group, note and a <strong>public</strong> switch. Only public keys are readable by the login page and footer.
+Save submits only changed items in the group. Public toggles and values are saved together. Four built-in public keys: <code>site.copyright</code>, <code>site.repo_url</code>, <code>site.footer_enabled</code>, <code>site.login_subtitle</code>.
+If the public endpoint is unavailable, the frontend falls back to built-in defaults. New items are private by default. Deleting a built-in public key falls back to defaults; startup restores missing built-in keys without touching existing values.
+The <code>notify</code> group appears after notification settings are configured; the SMTP password and Webhook signing secret are not visible or editable on this page.</p>
+<h3 id="311-csv-import-admins--departments--dictionary-items">3.11 CSV import (admins / departments / dictionary items)</h3>
+<p>The Admins, Departments and Dictionary items pages have an <strong>Import</strong> button: <strong>download template</strong> → fill → upload → review the per-row report. Headers are part of the contract and cannot be changed.</p>
+<ul>
+<li>Departments/parent departments/roles/type codes are referenced by name or code and must already exist. Empty parent = top level; multiple roles separated by <code>|</code>; empty roles = none.</li>
+<li>Status: <code>1</code>, <code>enabled</code> or empty means enabled; <code>0</code>/<code>disabled</code> means disabled. Username/password validation matches the create form.</li>
+<li><strong>All or nothing</strong>: one invalid row means no rows are written; the dialog lists row number and reason. Valid files commit in one transaction.</li>
+<li>Permissions and data scope are enforced per row. Import does not bypass them.</li>
+<li>UTF-8 only; at most 5000 rows per import. Empty data (header only) is reported as “no data”, not a failure.</li>
+<li>Long imports are subject to the 30-second request timeout; split very large imports or use the Export center for big data.</li>
+</ul>
+<h3 id="312-export-center-systemexport">3.12 Export center (system:export)</h3>
+<p>Choose a type → <strong>Start export</strong> → watch status (pending/running/completed/failed/cancelled) → <strong>Download</strong> completed rows; cancel pending/running rows.
+Filters are stored with the task and applied when it runs (username, module, status, time range). <strong>Run by</strong>: the <code>export_run</code> job (default every minute), up to 2 concurrent exports per process;
+the list auto-refreshes every 3 seconds while work is pending. Cancel removes the partial file and cannot leave a finished file behind. Progress shows rows exported (not a percentage); a heartbeat older than 10 minutes is treated as dead.
+Files are retained per <code>[export] retain_days</code> (default 7 days) and cleaned by <code>export_clean</code>. Two permission gates: <code>system:export:list</code> plus the data’s view code (<code>system:auditlog:list</code> or <code>system:loginlog:list</code>).
+The export center is a personal workspace: only your own tasks are visible. Data scope is re-evaluated when the task runs, using the initiator’s current scope.</p>
+<h3 id="313-notification-settings-systemnotify">3.13 Notification settings (system:notify)</h3>
+<p>Configures <strong>Webhook</strong> (event push) and <strong>SMTP</strong> (email). Values live in <code>notify.*</code> system config and apply immediately.</p>
+<ul>
+<li><strong>Webhook</strong>: URL must start with <code>http://</code> or <code>https://</code>. Saves reject link-local/unspecified IP literals (including <code>169.254.0.0/16</code>, <code>fe80::/10</code>, <code>0.0.0.0</code>, <code>::</code>; metadata service <code>169.254.169.254</code> is blocked); loopback is allowed.
+  Sending resolves the domain again and blocks link-local/unspecified results; redirects are not followed. Events: <code>notice.published</code> and <code>account.locked</code>; body is <code>{"event":…,"at":unix,"data":{…}}</code>.
+  Optional HMAC-SHA256 signing headers: <code>X-BRA-Timestamp</code> and <code>X-BRA-Signature: sha256=…</code> (HMAC over <code>"&lt;ts&gt;.&lt;raw body&gt;"</code>). Failures are stored in <code>notify_delivery</code> and retried by <code>notify_retry</code>
+  with 1/5/15-minute backoff, at most 3 retries; the ledger is kept for 30 days. Delivery is asynchronous.</li>
+<li><strong>SMTP</strong>: server, port, encryption (STARTTLS 587, SSL/TLS 465, none for local relays), username, password, sender. The password is encrypted and never returned; blank = unchanged,
+  filled = replace; <strong>Clear password</strong> is a separate action. Sender defaults to username; empty username = no auth. Test email goes to <strong>your own account email</strong> using saved settings.</li>
+<li><strong>Notice email push</strong>: when enabled, publishing a notice sends one email per enabled account with an email address, excluding the publisher. Delivery is per recipient, best-effort,
+  and does not retry; it requires SMTP to be configured.</li>
+<li>Permissions: <code>system:notify:list</code> to open; <code>system:notify:edit</code> to save and send the test email. Secrets are write-only everywhere.</li>
+</ul>
+<h3 id="314-attachments-systemattach">3.14 Attachments (system:attach)</h3>
+<p>A shared attachment library. Uploads are unbound until linked to a business object (v1: notice images). Page: <strong>Upload</strong> → list (name/size/uploader/binding/time) → <strong>Download / Link / Delete</strong>;
+filter by name and binding.</p>
+<ul>
+<li>Limits: 10 MB per file; whitelist of 13 extensions (png/jpg/gif/webp/bmp, pdf, txt, csv, docx/xlsx/pptx, zip); per-user quota <code>[attach] quota_mb</code> (default 200 MB, <code>0</code> = unlimited).
+  Deleting releases quota immediately; disk reclaim is by the hourly cleanup. Files deleted within the 5-minute protection window still occupy disk.</li>
+<li>Identical content is stored once (MD5); multiple rows may point to one file. Deleting rows does not delete the file; orphan cleanup removes unreferenced files after the protection window.</li>
+<li>Download: attachments bound to a <strong>published notice</strong> are public to logged-in users; others follow the uploader’s data scope. Link/delete require <code>system:attach:edit</code> / <code>system:attach:remove</code>.
+  Linking a notice is done in the attachment center (empty selection = unlink); notice editing can upload and bind images (save a new notice first).</li>
+<li>Deleting a notice cascades to its attachment rows in the same transaction; files go to orphan cleanup. The <code>attach_orphan_clean</code> job (hourly) removes unreferenced files older than 5 minutes.</li>
+</ul>
+<hr />
+<h2 id="4-data-scope-five-levels-and-how-to-verify">4. Data scope: five levels and how to verify</h2>
+<h3 id="41-the-five-levels">4.1 The five levels</h3>
+<table>
+<thead>
+<tr>
+<th>Level</th>
+<th>UI name</th>
+<th>Data visible to admins with this role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>All data</td>
+<td>No restriction; all departments and all admins</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Department and below</td>
+<td>Own department <strong>plus all descendants</strong>, recursively; other branches invisible</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Own department</td>
+<td>Only the exact department, <strong>not</strong> children</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Self only</td>
+<td>Only rows owned by the admin</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Custom</td>
+<td>A hand-picked set of departments, any branches/levels (checked in the permission drawer)</td>
+</tr>
+</tbody>
+</table>
+<p>Data scope applies to <strong>Admin management</strong> (by admin department), <strong>Login logs</strong> and <strong>Audit logs</strong> (by the recorded admin’s department), and <strong>Attachments</strong> (by uploader; published notice images are downloadable by the public rule).
+Menus, roles, dictionaries and notices are global configuration; everyone who can open them sees the same data.</p>
+<p>Edge cases:</p>
+<ul>
+<li>An admin <strong>without a department</strong> (“none”): “Department and below” sees nothing; “Own department” sees only other no-department admins. Assign a real department, or use “All data”/“Custom”.</li>
+<li><strong>No active role</strong> (none assigned, or all disabled): sees nothing. It is not “all” or “own department” by default.</li>
+</ul>
+<h3 id="42-verify-it-yourself">4.2 Verify it yourself</h3>
+<p>Create departments <strong>A</strong>, <strong>A-team</strong> (child of A), <strong>B</strong>; create test admins:</p>
+<table>
+<thead>
+<tr>
+<th>Account</th>
+<th>Department</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>u1</code></td>
+<td>A</td>
+<td>Subject</td>
+</tr>
+<tr>
+<td><code>u2</code></td>
+<td>A-team</td>
+<td>Descendant of A</td>
+</tr>
+<tr>
+<td><code>u3</code></td>
+<td>B</td>
+<td>Other branch</td>
+</tr>
+</tbody>
+</table>
+<p>Create two roles with only <strong>Admin management → list</strong> checked:</p>
+<ul>
+<li>“Dept lead”: data scope <strong>Department and below</strong>;</li>
+<li>“Global lead”: data scope <strong>All data</strong>.</li>
+</ul>
+<p>Then:</p>
+<ol>
+<li>Assign “Dept lead” to <code>u1</code>, log in as <code>u1</code>, open Admin management: only A and its descendants (u1, u2) plus u1 himself are listed; u3, the superadmin and other departments are hidden. Note the total.</li>
+<li>As the superadmin, change u1’s role to “Global lead”; u1 refreshes: more rows, including u3 and the superadmin.</li>
+<li>For <strong>Self only</strong>, create a role with that scope and assign it to u1; after refresh only u1 remains.</li>
+<li>For <strong>Custom</strong>, create a role with scope <strong>Custom</strong>, check only <strong>B</strong> in the department tree, assign it to u1; u1 sees u3 in B but not u2 in A-team.</li>
+</ol>
+<p>Only list counts change; menus and buttons do not (functional permissions and data scope are separate). No re-login is needed; refresh after changes. Keep filters identical when comparing counts.</p>
+<h3 id="43-multiple-roles">4.3 Multiple roles</h3>
+<p>Functional permissions and data scope are both <strong>unions</strong> across all active roles:</p>
+<ul>
+<li><strong>Permissions</strong>: union of all codes from enabled roles.</li>
+<li><strong>Data scope</strong>: union of department scopes; any role with “All data” wins; any role with “Self only” adds “own rows” on top of the department scope.</li>
+<li>Disabled roles contribute nothing.</li>
+<li>Adding a role always widens access; to narrow it, remove the wider role.</li>
+</ul>
+</article></div>
+</main>
+<footer class="site-footer" id="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <div class="footer-brand">
+          <img src="../assets/img/en/pet/keeper-head.svg" alt="" width="52" height="52">
+          <div><b>BRA</b><small>BEE RUST ADMIN</small></div>
+        </div>
+        <p>Rust backend + React frontend RBAC admin. Guard the permissions, ship the admin.</p>
+      </div>
+      <div>
+        <h3>Project</h3>
+        <ul class="footer-links">
+          <li><a href="index.html#intro">Overview</a></li>
+          <li><a href="index.html#features">Features</a></li>
+          <li><a href="index.html#architecture">Architecture</a></li>
+          <li><a href="index.html#timeline">Timeline</a></li>
+          <li><a href="index.html#support">Support</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Docs</h3>
+        <ul class="footer-links">
+          <li><a href="install.html">Installation</a></li>
+          <li><a href="usage.html">User guide</a></li>
+          <li><a href="faq.html">FAQ</a></li>
+          <li><a href="releases.html">Releases</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Links</h3>
+        <ul class="footer-links">
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin" target="_blank" rel="noopener">GitHub ↗</a></li>
+          <li><a href="https://erik.xyz" target="_blank" rel="noopener">Erik (艾瑞可) ↗</a></li>
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin/blob/main/LICENSE" target="_blank" rel="noopener">Code: Apache-2.0 ↗</a></li>
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin/blob/main/ASSETS-LICENSE.md" target="_blank" rel="noopener">Visual assets ↗</a></li>
+          <li><a href="../usage.html" hreflang="zh-CN" lang="zh-CN">中文</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© <span data-year>2026</span> erik · Code Apache-2.0</span>
+      <div class="footer-info" id="busuanzi">
+        <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+        <span id="busuanzi_container_page_pv"><span data-i18n="post.readA">Views</span> <b id="busuanzi_value_page_pv">0</b> <span data-i18n="post.readB">views 👀</span></span>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<button class="to-top" id="to-top" type="button" aria-label="Back to top">
+  <img src="../assets/img/en/pet/keeper-onduty.svg" alt="" width="76" height="76">
+</button>
+
+<script src="../assets/js/site.js" defer></script>
+</body>
+</html>

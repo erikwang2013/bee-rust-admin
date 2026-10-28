@@ -10,20 +10,24 @@
 <meta name="robots" content="index,follow">
 <meta name="theme-color" content="#fff9ec">
 <link rel="canonical" href="https://package.erik.xyz/bra/">
+<link rel="alternate" hreflang="zh-CN" href="https://package.erik.xyz/bra/">
+<link rel="alternate" hreflang="en" href="https://package.erik.xyz/bra/en/">
+<link rel="alternate" hreflang="x-default" href="https://package.erik.xyz/bra/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="BRA · Bee Rust Admin">
 <meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
 <meta property="og:title" content="BRA · Bee Rust Admin">
 <meta property="og:description" content="把权限守住，让后台开箱即用。Rust 服务端 + React 前端的 RBAC 管理后台。">
 <meta property="og:url" content="https://package.erik.xyz/bra/">
-<meta property="og:image" content="https://package.erik.xyz/bra/assets/img/og.png">
+<meta property="og:image" content="https://package.erik.xyz/bra/assets/img/zh/og.png">
 <meta property="og:image:width" content="1280">
 <meta property="og:image:height" content="640">
 <meta property="og:image:alt" content="BRA · Bee Rust Admin 项目预览">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="BRA · Bee Rust Admin">
 <meta name="twitter:description" content="Rust 服务端 + React 前端的 RBAC 管理后台，建库即用。">
-<meta name="twitter:image" content="https://package.erik.xyz/bra/assets/img/og.png">
+<meta name="twitter:image" content="https://package.erik.xyz/bra/assets/img/zh/og.png">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -38,7 +42,7 @@
   "inLanguage": "zh-CN",
   "license": "https://github.com/erikwang2013/bee-rust-admin/blob/main/LICENSE",
   "codeRepository": "https://github.com/erikwang2013/bee-rust-admin",
-  "image": "https://package.erik.xyz/bra/assets/img/og.png",
+  "image": "https://package.erik.xyz/bra/assets/img/zh/og.png",
   "author": {
     "@type": "Person",
     "name": "erik",
@@ -54,6 +58,7 @@
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="assets/css/base.css">
 <link rel="stylesheet" href="assets/css/components.css">
+<link rel="stylesheet" href="assets/css/search.css">
 </head>
 <body>
 <a class="skip-link" href="#main">跳到正文</a>
@@ -61,7 +66,7 @@
 <header class="site-header">
   <div class="container header-inner">
     <a class="brand" href="index.html" aria-label="BRA 首页">
-      <img src="assets/img/pet/keeper-head.svg" alt="" width="38" height="38">
+      <img src="assets/img/zh/pet/keeper-head.svg" alt="" width="38" height="38">
       <span>BRA<small>BEE RUST ADMIN</small></span>
     </a>
     <button class="nav-toggle" type="button" aria-controls="site-nav" aria-expanded="false" aria-label="打开导航"><span></span></button>
@@ -74,6 +79,8 @@
       <a href="releases.html">版本日志</a>
       <a href="install.html">安装</a>
       <a href="usage.html">使用</a>
+      <button class="nav-search" type="button" data-search-open aria-haspopup="dialog">搜索</button>
+      <a class="nav-lang" href="en/index.html" hreflang="en" lang="en">EN</a>
       <a class="nav-ext" href="https://github.com/erikwang2013/bee-rust-admin" target="_blank" rel="noopener">GitHub ↗</a>
       <a class="nav-ext" href="https://erik.xyz" target="_blank" rel="noopener">艾瑞可erik ↗</a>
     </nav>
@@ -104,7 +111,7 @@
         <div class="pet-stage">
           <div class="pet-stage__platform" aria-hidden="true"></div>
           <div class="pet-stage__pet">
-            <img src="assets/img/pet/keeper-onduty.svg" alt="阿守（Keeper），BRA 项目宠物，值守状态" width="512" height="512">
+            <img src="assets/img/zh/pet/keeper-onduty.svg" alt="阿守（Keeper），BRA 项目宠物，值守状态" width="512" height="512">
           </div>
           <span class="pet-chip pet-chip--1" aria-hidden="true">JWT</span>
           <span class="pet-chip pet-chip--2" aria-hidden="true">RBAC</span>
@@ -180,19 +187,19 @@
         <button class="tab" type="button" role="tab" id="tab-life" aria-selected="false" aria-controls="diagram-life" data-diagram="diagram-life" tabindex="-1">服务生命周期</button>
       </div>
       <div class="diagram-panel is-active reveal" id="diagram-arch" role="tabpanel" aria-labelledby="tab-arch">
-        <div class="diagram-frame"><img src="assets/img/diagrams/architecture.svg" alt="BRA 五层架构图：客户端、接入层、应用层、框架层、数据层" width="980" height="700"></div>
+        <div class="diagram-frame"><img src="assets/img/zh/diagrams/architecture.svg" alt="BRA 五层架构图：客户端、接入层、应用层、框架层、数据层" width="980" height="700"></div>
         <p class="diagram-caption">客户端 SPA · nginx :8081 · bee_admin · bee_orm / bee_config / bee_logs · MySQL 8.4（22 张表）。</p>
       </div>
       <div class="diagram-panel" id="diagram-feat" role="tabpanel" aria-labelledby="tab-feat">
-        <div class="diagram-frame"><img src="assets/img/diagrams/features.svg" alt="BRA 功能设计图：管理员、角色、菜单、部门的多对多权限模型" width="980" height="830" loading="lazy"></div>
+        <div class="diagram-frame"><img src="assets/img/zh/diagrams/features.svg" alt="BRA 功能设计图：管理员、角色、菜单、部门的多对多权限模型" width="980" height="830" loading="lazy"></div>
         <p class="diagram-caption">三段式权限模型：管理员 ← admin_role → 角色 ← role_menu → 菜单与按钮；角色 ← role_dept → 部门用于自定义数据范围。</p>
       </div>
       <div class="diagram-panel" id="diagram-req" role="tabpanel" aria-labelledby="tab-req">
-        <div class="diagram-frame"><img src="assets/img/diagrams/request-cycle.svg" alt="BRA 请求周期图：从浏览器到 MySQL 的 12 步链路" width="980" height="780" loading="lazy"></div>
+        <div class="diagram-frame"><img src="assets/img/zh/diagrams/request-cycle.svg" alt="BRA 请求周期图：从浏览器到 MySQL 的 12 步链路" width="980" height="780" loading="lazy"></div>
         <p class="diagram-caption">以 GET /api/v1/admins 为例的 12 步链路；校验签名、版本与账号状态后加载角色与权限码，再进入 handler。</p>
       </div>
       <div class="diagram-panel" id="diagram-life" role="tabpanel" aria-labelledby="tab-life">
-        <div class="diagram-frame"><img src="assets/img/diagrams/lifecycle.svg" alt="BRA 服务生命周期图：配置、连库、迁移、种子、监听与退出" width="980" height="700" loading="lazy"></div>
+        <div class="diagram-frame"><img src="assets/img/zh/diagrams/lifecycle.svg" alt="BRA 服务生命周期图：配置、连库、迁移、种子、监听与退出" width="980" height="700" loading="lazy"></div>
         <p class="diagram-caption">配置强度校验 → 连接 MySQL → migrate::sync 只建表 / 加列 → 幂等补齐超管、菜单与任务 → 监听 127.0.0.1:8080 → SIGTERM 退出。</p>
       </div>
     </div>
@@ -227,32 +234,32 @@
         <p class="lead">蜂巢的值守蜂：查凭证、发钥匙、登记访客。五种状态跟着项目状态切换，十二种表情跟着你点。</p>
       </div>
       <div class="pet-states">
-        <div class="pet-state reveal"><img src="assets/img/pet/keeper-onduty.svg" alt="阿守值守状态" loading="lazy"><b>值守</b><code>(⌐■_■)</code><span>门岗正常，权限表与菜单树一致</span></div>
-        <div class="pet-state reveal"><img src="assets/img/pet/keeper-verifying.svg" alt="阿守查证状态" loading="lazy"><b>查证</b><code>(・_・)?</code><span>有变更待验证，凭证拿来</span></div>
-        <div class="pet-state reveal"><img src="assets/img/pet/keeper-superuser.svg" alt="阿守超管状态" loading="lazy"><b>超管</b><code>(＾▽＾)</code><span>超管入场，旁路所有权限码</span></div>
-        <div class="pet-state reveal"><img src="assets/img/pet/keeper-dozing.svg" alt="阿守打盹状态" loading="lazy"><b>打盹</b><code>(-_-)zZ</code><span>深夜，无人来访</span></div>
-        <div class="pet-state reveal"><img src="assets/img/pet/keeper-alarmed.svg" alt="阿守竖针状态" loading="lazy"><b>竖针</b><code>(#°益°)</code><span>仓库里检出密钥文件</span></div>
+        <div class="pet-state reveal"><img src="assets/img/zh/pet/keeper-onduty.svg" alt="阿守值守状态" loading="lazy"><b>值守</b><code>(⌐■_■)</code><span>门岗正常，权限表与菜单树一致</span></div>
+        <div class="pet-state reveal"><img src="assets/img/zh/pet/keeper-verifying.svg" alt="阿守查证状态" loading="lazy"><b>查证</b><code>(・_・)?</code><span>有变更待验证，凭证拿来</span></div>
+        <div class="pet-state reveal"><img src="assets/img/zh/pet/keeper-superuser.svg" alt="阿守超管状态" loading="lazy"><b>超管</b><code>(＾▽＾)</code><span>超管入场，旁路所有权限码</span></div>
+        <div class="pet-state reveal"><img src="assets/img/zh/pet/keeper-dozing.svg" alt="阿守打盹状态" loading="lazy"><b>打盹</b><code>(-_-)zZ</code><span>深夜，无人来访</span></div>
+        <div class="pet-state reveal"><img src="assets/img/zh/pet/keeper-alarmed.svg" alt="阿守竖针状态" loading="lazy"><b>竖针</b><code>(#°益°)</code><span>仓库里检出密钥文件</span></div>
       </div>
       <div class="mood-layout">
         <div class="mood-stage reveal">
-          <img data-mood-img src="assets/img/pet/expressions/smile.svg" alt="阿守的笑表情" width="512" height="512">
+          <img data-mood-img src="assets/img/zh/pet/expressions/smile.svg" alt="阿守的笑表情" width="512" height="512">
           <p class="mood-name">当前形态：<b data-mood-name>笑</b></p>
         </div>
         <div class="reveal">
           <p>点小图放大；点图片下方的名字切换形态。每个 SVG 自带表情、情绪特效与整体动效，并遵循 <code>prefers-reduced-motion</code>。</p>
           <div class="expression-grid">
-            <button class="expression" type="button" data-mood="smile" data-mood-name="笑" aria-pressed="true"><img src="assets/img/pet/expressions/smile.svg" alt="" loading="lazy" width="88" height="88"><b>笑</b><code>:emoji-smile:</code></button>
-            <button class="expression" type="button" data-mood="joy" data-mood-name="欢乐" aria-pressed="false"><img src="assets/img/pet/expressions/joy.svg" alt="" loading="lazy" width="88" height="88"><b>欢乐</b><code>:emoji-joy:</code></button>
-            <button class="expression" type="button" data-mood="cry" data-mood-name="哭" aria-pressed="false"><img src="assets/img/pet/expressions/cry.svg" alt="" loading="lazy" width="88" height="88"><b>哭</b><code>:emoji-cry:</code></button>
-            <button class="expression" type="button" data-mood="depressed" data-mood-name="沮丧" aria-pressed="false"><img src="assets/img/pet/expressions/depressed.svg" alt="" loading="lazy" width="88" height="88"><b>沮丧</b><code>:emoji-depressed:</code></button>
-            <button class="expression" type="button" data-mood="terrified" data-mood-name="惊恐" aria-pressed="false"><img src="assets/img/pet/expressions/terrified.svg" alt="" loading="lazy" width="88" height="88"><b>惊恐</b><code>:emoji-terrified:</code></button>
-            <button class="expression" type="button" data-mood="angry" data-mood-name="愤怒" aria-pressed="false"><img src="assets/img/pet/expressions/angry.svg" alt="" loading="lazy" width="88" height="88"><b>愤怒</b><code>:emoji-angry:</code></button>
-            <button class="expression" type="button" data-mood="coquettish" data-mood-name="撒娇" aria-pressed="false"><img src="assets/img/pet/expressions/coquettish.svg" alt="" loading="lazy" width="88" height="88"><b>撒娇</b><code>:emoji-coquettish:</code></button>
-            <button class="expression" type="button" data-mood="cute" data-mood-name="卖萌" aria-pressed="false"><img src="assets/img/pet/expressions/cute.svg" alt="" loading="lazy" width="88" height="88"><b>卖萌</b><code>:emoji-cute:</code></button>
-            <button class="expression" type="button" data-mood="pleasing" data-mood-name="讨好" aria-pressed="false"><img src="assets/img/pet/expressions/pleasing.svg" alt="" loading="lazy" width="88" height="88"><b>讨好</b><code>:emoji-pleasing:</code></button>
-            <button class="expression" type="button" data-mood="knocking" data-mood-name="敲打" aria-pressed="false"><img src="assets/img/pet/expressions/knocking.svg" alt="" loading="lazy" width="88" height="88"><b>敲打</b><code>:emoji-knocking:</code></button>
-            <button class="expression" type="button" data-mood="facepalm" data-mood-name="捂脸" aria-pressed="false"><img src="assets/img/pet/expressions/facepalm.svg" alt="" loading="lazy" width="88" height="88"><b>捂脸</b><code>:emoji-facepalm:</code></button>
-            <button class="expression" type="button" data-mood="tongue" data-mood-name="吐舌头" aria-pressed="false"><img src="assets/img/pet/expressions/tongue.svg" alt="" loading="lazy" width="88" height="88"><b>吐舌头</b><code>:emoji-tongue:</code></button>
+            <button class="expression" type="button" data-mood="smile" data-mood-name="笑" aria-pressed="true"><img src="assets/img/zh/pet/expressions/smile.svg" alt="" loading="lazy" width="88" height="88"><b>笑</b><code>:emoji-smile:</code></button>
+            <button class="expression" type="button" data-mood="joy" data-mood-name="欢乐" aria-pressed="false"><img src="assets/img/zh/pet/expressions/joy.svg" alt="" loading="lazy" width="88" height="88"><b>欢乐</b><code>:emoji-joy:</code></button>
+            <button class="expression" type="button" data-mood="cry" data-mood-name="哭" aria-pressed="false"><img src="assets/img/zh/pet/expressions/cry.svg" alt="" loading="lazy" width="88" height="88"><b>哭</b><code>:emoji-cry:</code></button>
+            <button class="expression" type="button" data-mood="depressed" data-mood-name="沮丧" aria-pressed="false"><img src="assets/img/zh/pet/expressions/depressed.svg" alt="" loading="lazy" width="88" height="88"><b>沮丧</b><code>:emoji-depressed:</code></button>
+            <button class="expression" type="button" data-mood="terrified" data-mood-name="惊恐" aria-pressed="false"><img src="assets/img/zh/pet/expressions/terrified.svg" alt="" loading="lazy" width="88" height="88"><b>惊恐</b><code>:emoji-terrified:</code></button>
+            <button class="expression" type="button" data-mood="angry" data-mood-name="愤怒" aria-pressed="false"><img src="assets/img/zh/pet/expressions/angry.svg" alt="" loading="lazy" width="88" height="88"><b>愤怒</b><code>:emoji-angry:</code></button>
+            <button class="expression" type="button" data-mood="coquettish" data-mood-name="撒娇" aria-pressed="false"><img src="assets/img/zh/pet/expressions/coquettish.svg" alt="" loading="lazy" width="88" height="88"><b>撒娇</b><code>:emoji-coquettish:</code></button>
+            <button class="expression" type="button" data-mood="cute" data-mood-name="卖萌" aria-pressed="false"><img src="assets/img/zh/pet/expressions/cute.svg" alt="" loading="lazy" width="88" height="88"><b>卖萌</b><code>:emoji-cute:</code></button>
+            <button class="expression" type="button" data-mood="pleasing" data-mood-name="讨好" aria-pressed="false"><img src="assets/img/zh/pet/expressions/pleasing.svg" alt="" loading="lazy" width="88" height="88"><b>讨好</b><code>:emoji-pleasing:</code></button>
+            <button class="expression" type="button" data-mood="knocking" data-mood-name="敲打" aria-pressed="false"><img src="assets/img/zh/pet/expressions/knocking.svg" alt="" loading="lazy" width="88" height="88"><b>敲打</b><code>:emoji-knocking:</code></button>
+            <button class="expression" type="button" data-mood="facepalm" data-mood-name="捂脸" aria-pressed="false"><img src="assets/img/zh/pet/expressions/facepalm.svg" alt="" loading="lazy" width="88" height="88"><b>捂脸</b><code>:emoji-facepalm:</code></button>
+            <button class="expression" type="button" data-mood="tongue" data-mood-name="吐舌头" aria-pressed="false"><img src="assets/img/zh/pet/expressions/tongue.svg" alt="" loading="lazy" width="88" height="88"><b>吐舌头</b><code>:emoji-tongue:</code></button>
           </div>
         </div>
       </div>
@@ -299,11 +306,11 @@ less install.sh &amp;&amp; bash install.sh</pre>
       </div>
       <div class="donate-grid">
         <figure class="donate-card donate-card--wechat reveal">
-          <img src="assets/img/donate/weixinpay.png" alt="微信支付打赏二维码" width="386" height="423" loading="lazy">
+          <img src="assets/img/zh/donate/weixinpay.png" alt="微信支付打赏二维码" width="386" height="423" loading="lazy">
           <figcaption><b>微信支付</b><span>扫码打赏，金额随意</span></figcaption>
         </figure>
         <figure class="donate-card donate-card--alipay reveal">
-          <img src="assets/img/donate/alipay.png" alt="支付宝打赏二维码" width="412" height="450" loading="lazy">
+          <img src="assets/img/zh/donate/alipay.png" alt="支付宝打赏二维码" width="412" height="450" loading="lazy">
           <figcaption><b>支付宝</b><span>扫码打赏，金额随意</span></figcaption>
         </figure>
       </div>
@@ -317,7 +324,7 @@ less install.sh &amp;&amp; bash install.sh</pre>
     <div class="footer-grid">
       <div>
         <div class="footer-brand">
-          <img src="assets/img/pet/keeper-head.svg" alt="" width="52" height="52">
+          <img src="assets/img/zh/pet/keeper-head.svg" alt="" width="52" height="52">
           <div><b>BRA</b><small>BEE RUST ADMIN</small></div>
         </div>
         <p>Rust 服务端 + React 前端的 RBAC 管理后台。把权限守住，让后台开箱即用。</p>
@@ -330,6 +337,7 @@ less install.sh &amp;&amp; bash install.sh</pre>
           <li><a href="index.html#architecture">架构设计</a></li>
           <li><a href="index.html#timeline">功能迭代</a></li>
           <li><a href="index.html#support">打赏支持</a></li>
+          <li><a href="en/index.html" hreflang="en" lang="en">English</a></li>
         </ul>
       </div>
       <div>
@@ -362,7 +370,7 @@ less install.sh &amp;&amp; bash install.sh</pre>
 </footer>
 
 <button class="to-top" id="to-top" type="button" aria-label="返回顶部">
-  <img src="assets/img/pet/keeper-onduty.svg" alt="" width="76" height="76">
+  <img src="assets/img/zh/pet/keeper-onduty.svg" alt="" width="76" height="76">
 </button>
 
 <script src="assets/js/site.js" defer></script>

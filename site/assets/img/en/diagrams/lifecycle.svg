@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 700" width="980" height="700" role="img" aria-label="BRA service lifecycle diagram">
+  <title>BRA (Bee Rust Admin) — Lifecycle</title>
+  <desc>Read config → connect MySQL → migrate schema → seed (idempotent) → listen → serve requests → exit on signal</desc>
+  <style>
+    .bg { fill: #ffffff; }
+    .box-start  { fill: #eff6ff; stroke: #3b82f6; stroke-width: 1.5; }
+    .box-db     { fill: #fefce8; stroke: #eab308; stroke-width: 1.5; }
+    .box-backend{ fill: #f0fdf4; stroke: #22c55e; stroke-width: 1.5; }
+    .box-decision { fill: #f5f3ff; stroke: #8b5cf6; stroke-width: 1.5; }
+    .box-end    { fill: #f8fafc; stroke: #94a3b8; stroke-width: 1.5; }
+    .note       { fill: #fafafa; stroke: #e5e7eb; stroke-width: 1; }
+    .t-name { font: 600 12.5px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #111827; }
+    .t-sub  { font: 10.5px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #6b7280; }
+    .t-note { font: 10px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #4b5563; }
+    .t-edge { font: 10px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #7c3aed; }
+    .t-title{ font: 700 16px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #0f172a; }
+    .t-foot { font: 10px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #9ca3af; }
+    .a  { stroke: #94a3b8; stroke-width: 1.6; fill: none; }
+    .a-yes { stroke: #8b5cf6; stroke-width: 1.6; fill: none; }
+    .a-no  { stroke: #cbd5e1; stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="ay" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8b5cf6"/>
+    </marker>
+    <marker id="an" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#cbd5e1"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="980" height="700"/>
+  <text class="t-title" x="24" y="30">BRA · Lifecycle</text>
+  <text class="t-sub" x="24" y="48">From process start to exit (flow left, notes right)</text>
+
+  
+  <path class="a" d="M330,140 L330,158" marker-end="url(#a)"/>
+  <path class="a" d="M330,208 L330,226" marker-end="url(#a)"/>
+  <path class="a" d="M330,276 L330,294" marker-end="url(#a)"/>
+  <path class="a-yes" d="M330,344 L330,362" marker-end="url(#ay)"/>
+  <path class="a" d="M330,412 L330,440" marker-end="url(#a)"/>
+  <path class="a" d="M330,490 L330,508" marker-end="url(#a)"/>
+  <path class="a" d="M330,558 L330,576" marker-end="url(#a)"/>
+
+  
+  <path class="a-no" d="M540,319 L600,319 L600,466 L540,466" marker-end="url(#an)"/>
+  <text class="t-edge" x="606" y="300">No</text>
+  <text class="t-sub"  x="606" y="316">Later starts: skip superadmin write; menus/jobs still reconciled</text>
+  <text class="t-edge" x="546" y="366">Yes</text>
+
+  
+  <rect class="box-start" x="120" y="88" width="420" height="52" rx="7"/>
+  <text class="t-name" x="136" y="110">① Load config</text>
+  <text class="t-sub"  x="136" y="128">admin/conf/app.conf (INI, bee_config); BEE_ADMIN_CONF overrides path</text>
+
+  
+  <rect class="box-db" x="120" y="158" width="420" height="50" rx="7"/>
+  <text class="t-name" x="136" y="180">② Connect MySQL (pool)</text>
+  <text class="t-sub"  x="136" y="197">pool::mysql::Pool::connect; BEE_ADMIN_DB_DSN overrides DSN</text>
+
+  
+  <rect class="box-db" x="120" y="226" width="420" height="50" rx="7"/>
+  <text class="t-name" x="136" y="248">③ migrate schema</text>
+  <text class="t-sub"  x="136" y="265">Create tables / add columns from models; unique keys, indexes, 7 tables use raw DDL</text>
+
+  
+  <rect class="box-decision" x="120" y="294" width="420" height="50" rx="7"/>
+  <text class="t-name" x="136" y="316">④ admin table empty? (first run)</text>
+  <text class="t-sub"  x="136" y="333">True only on first run — controls only superadmin creation; menu/job reconciliation is independent</text>
+
+  
+  <rect class="box-backend" x="120" y="362" width="420" height="50" rx="7"/>
+  <text class="t-name" x="136" y="384">⑤ Reconcile seed (menus/jobs every start; superadmin first only)</text>
+  <text class="t-sub"  x="136" y="401">admin + menus (1 dir / 13 menus / 28 buttons) + 8 built-in jobs</text>
+
+  
+  <rect class="box-backend" x="120" y="440" width="420" height="50" rx="7"/>
+  <text class="t-name" x="136" y="462">⑥ Listen on 127.0.0.1:8080</text>
+  <text class="t-sub"  x="136" y="479">bee_router (axum) registers 93 endpoints; /api/v1/health for probes</text>
+
+  
+  <rect class="box-backend" x="120" y="508" width="420" height="50" rx="7"/>
+  <text class="t-name" x="136" y="530">⑦ Serving requests</text>
+  <text class="t-sub"  x="136" y="547">Auth → require(perm) → datascope → bee_orm → MySQL (see request cycle)</text>
+
+  
+  <rect class="box-end" x="120" y="576" width="420" height="50" rx="7"/>
+  <text class="t-name" x="136" y="598">⑧ Exit</text>
+  <text class="t-sub"  x="136" y="615">SIGTERM / Ctrl-C; systemd restart policy on-failure</text>
+
+  
+  <rect class="note" x="660" y="88" width="296" height="60" rx="6"/>
+  <text class="t-note" x="674" y="108">Invalid config refuses startup: </text>
+  <text class="t-note" x="674" y="124">JWT secret &lt; 32 chars or equal to</text>
+  <text class="t-note" x="674" y="140">changeme → process exits</text>
+
+  <rect class="note" x="660" y="226" width="296" height="60" rx="6"/>
+  <text class="t-note" x="674" y="246">migrate is additive: </text>
+  <text class="t-note" x="674" y="262">never drops columns or changes types; </text>
+  <text class="t-note" x="674" y="278">new model fields are added on next start</text>
+
+  <rect class="note" x="660" y="362" width="296" height="60" rx="6"/>
+  <text class="t-note" x="674" y="382">Seed is idempotent: </text>
+  <text class="t-note" x="674" y="398">menus reconciled by permission code, superadmin written only if missing; </text>
+  <text class="t-note" x="674" y="414">a failure is retried on the next start</text>
+
+  <rect class="note" x="660" y="508" width="296" height="60" rx="6"/>
+  <text class="t-note" x="674" y="528">Stateless sessions: </text>
+  <text class="t-note" x="674" y="544">JWT; password change / disable / logout</text>
+  <text class="t-note" x="674" y="560">invalidates old tokens via admin.token_version</text>
+
+  <text class="t-foot" x="24" y="686">© 2026 erik · https://erik.xyz</text>
+</svg>

@@ -446,7 +446,6 @@ body.lightbox-open { overflow: hidden; }
 }
 .nf-links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
 .nf-mini { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 22px; font-size: 13px; color: var(--ink-soft); }
-
 /* 页脚 */
 .site-footer { background: var(--ink); color: #f2e6d2; padding: clamp(44px, 6vw, 72px) 0 24px; }
 .footer-grid { display: grid; grid-template-columns: 1.4fr repeat(3, minmax(0, 0.7fr)); gap: clamp(20px, 4vw, 48px); }

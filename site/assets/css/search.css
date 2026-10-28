@@ -1,0 +1,66 @@
+/* 站点搜索 */
+body.search-open { overflow: hidden; }
+.search-dialog {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 8vh 4vw;
+  border: 0;
+  background: rgba(30, 22, 14, 0.72);
+  color: var(--paper);
+  display: none;
+}
+.search-dialog[open] { display: grid; place-items: start center; }
+.search-dialog::backdrop { background: rgba(30, 22, 14, 0.72); }
+.search-panel {
+  width: min(760px, 100%);
+  max-height: 78vh;
+  display: flex;
+  flex-direction: column;
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+.search-bar { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 2px solid var(--line); }
+.search-bar input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: clamp(18px, 2.4vw, 22px);
+  outline: none;
+}
+.search-bar input::placeholder { color: var(--ink-soft); }
+.search-close {
+  width: 36px; height: 36px; flex: none;
+  border: 1.5px solid var(--line); border-radius: 50%;
+  background: var(--card); color: var(--ink);
+  font: 700 20px/1 var(--font); cursor: pointer;
+}
+.search-close:hover { background: var(--honey); }
+.search-status { padding: 10px 18px 4px; font-family: var(--mono); font-size: 11px; color: var(--ink-soft); }
+.search-results { list-style: none; margin: 0; padding: 4px 8px 10px; overflow-y: auto; }
+.search-result a {
+  display: block;
+  padding: 11px 14px;
+  border-radius: 12px;
+  color: var(--ink);
+  text-decoration: none;
+}
+.search-result a:hover, .search-result a.is-active { background: var(--honey-soft); }
+.sr-page { display: block; font-family: var(--mono); font-size: 10.5px; color: var(--cyan-deep); }
+.sr-title { display: block; font-size: 16px; font-weight: 700; line-height: 1.4; }
+.sr-snippet { display: block; margin-top: 2px; font-size: 13px; line-height: 1.55; color: var(--ink-soft); }
+.search-result mark { padding: 0 2px; border-radius: 3px; background: var(--honey); color: var(--ink); }
+.search-hint { margin: 0; padding: 10px 18px 14px; border-top: 1px solid rgba(58,42,26,.14); font-size: 11px; color: var(--ink-soft); }
+.search-kbd { padding: 1px 5px; border: 1px solid rgba(58,42,26,.25); border-radius: 4px; font-family: var(--mono); font-size: 10px; }
+

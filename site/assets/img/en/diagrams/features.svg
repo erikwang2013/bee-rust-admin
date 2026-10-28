@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 830" width="980" height="830" role="img" aria-label="Bee Rust Admin feature diagram">
+  <title>BRA (Bee Rust Admin) — Features (RBAC)</title>
+  <desc>Auth flow, admin-role-menu/dept model, 5 data-scope levels, 13 modules</desc>
+  <style>
+    .bg { fill: #ffffff; }
+    .panel { fill: #f7f8fa; stroke: #e5e7eb; stroke-width: 1; }
+    .panel-label { font: 600 12px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #4b5563; }
+    .box-frontend { fill: #eff6ff; stroke: #3b82f6; stroke-width: 1.5; }
+    .box-backend  { fill: #f0fdf4; stroke: #22c55e; stroke-width: 1.5; }
+    .box-db       { fill: #fefce8; stroke: #eab308; stroke-width: 1.5; }
+    .box-security { fill: #fff1f2; stroke: #f43f5e; stroke-width: 1.5; }
+    .box-join     { fill: #ffffff; stroke: #a855f7; stroke-width: 1.4; }
+    .box-module   { fill: #f5f3ff; stroke: #8b5cf6; stroke-width: 1.4; }
+    .box-scope    { fill: #f8fafc; stroke: #94a3b8; stroke-width: 1.2; }
+    .t-name { font: 600 12.5px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #111827; }
+    .t-sub  { font: 10.5px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #6b7280; }
+    .t-join { font: 600 10px ui-monospace, Menlo, Consolas, monospace; fill: #7c3aed; }
+    .t-title{ font: 700 16px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #0f172a; }
+    .t-foot { font: 10px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #9ca3af; }
+    .a-default { stroke: #94a3b8; stroke-width: 1.4; fill: none; }
+    .a-data    { stroke: #a855f7; stroke-width: 1.4; fill: none; }
+  </style>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="ar-data" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#a855f7"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="980" height="830"/>
+  <text class="t-title" x="24" y="30">BRA · Features</text>
+  <text class="t-sub" x="24" y="48">Auth · RBAC (menus + buttons) · data scope · 13 modules</text>
+
+  
+  <rect class="panel" x="24" y="64" width="932" height="126" rx="8"/>
+  <text class="panel-label" x="40" y="86">1. Authentication (JWT)</text>
+  <path class="a-default" d="M188,124 L224,124" marker-end="url(#ar)"/>
+  <path class="a-default" d="M368,124 L404,124" marker-end="url(#ar)"/>
+  <path class="a-default" d="M548,124 L584,124" marker-end="url(#ar)"/>
+  <rect class="box-frontend" x="40" y="100" width="148" height="48" rx="6"/>
+  <text class="t-name" x="114" y="121" text-anchor="middle">Username + password</text>
+  <text class="t-sub"  x="114" y="138" text-anchor="middle">Login form</text>
+  <rect class="box-security" x="224" y="100" width="144" height="48" rx="6"/>
+  <text class="t-name" x="296" y="121" text-anchor="middle">argon2id verify</text>
+  <text class="t-sub"  x="296" y="138" text-anchor="middle">salted hash</text>
+  <rect class="box-security" x="404" y="100" width="144" height="48" rx="6"/>
+  <text class="t-name" x="476" y="121" text-anchor="middle">Issue JWT</text>
+  <text class="t-sub"  x="476" y="138" text-anchor="middle">HS256：sub/ver/exp</text>
+  <rect class="box-backend" x="584" y="100" width="356" height="48" rx="6"/>
+  <text class="t-name" x="762" y="121" text-anchor="middle">Auth extractor: verify signature / ver / status per request</text>
+  <text class="t-sub"  x="762" y="138" text-anchor="middle">Password change · disable · logout → token_version +1 → old tokens invalid</text>
+  <text class="t-sub"  x="40" y="176">Successful / failed / logout events logged (IP, UA, reason); failures not echoed; optional TOTP + 10 one-time backup codes</text>
+
+  
+  <rect class="panel" x="24" y="204" width="932" height="212" rx="8"/>
+  <text class="panel-label" x="40" y="226">2. Role model (many-to-many)</text>
+  <path class="a-data" d="M228,310 L294,310" marker-end="url(#ar-data)"/>
+  <text class="t-join" x="230" y="300">admin_role</text>
+  <path class="a-data" d="M462,310 L528,310" marker-end="url(#ar-data)"/>
+  <text class="t-join" x="466" y="300">role_menu</text>
+  <path class="a-data" d="M378,352 L378,376" marker-end="url(#ar-data)"/>
+  <rect class="box-frontend" x="60" y="270" width="166" height="80" rx="6"/>
+  <text class="t-name" x="143" y="298" text-anchor="middle">Admin</text>
+  <text class="t-sub"  x="143" y="316" text-anchor="middle">Department</text>
+  <text class="t-sub"  x="143" y="332" text-anchor="middle">is_super bypass</text>
+  <rect class="box-join" x="296" y="270" width="164" height="80" rx="6"/>
+  <text class="t-name" x="378" y="298" text-anchor="middle">Role</text>
+  <text class="t-sub"  x="378" y="316" text-anchor="middle">name / code / order</text>
+  <text class="t-sub"  x="378" y="332" text-anchor="middle">data_scope</text>
+  <rect class="box-backend" x="530" y="270" width="404" height="98" rx="6"/>
+  <text class="t-name" x="732" y="294" text-anchor="middle">Menus &amp; buttons (tree: dir M / menu C / button F)</text>
+  <text class="t-sub"  x="548" y="316">Permission code: system:{module}:{action}, admin example</text>
+  <text class="t-sub"  x="548" y="332">system:admin:list / add / edit / remove / resetPwd</text>
+  <text class="t-sub"  x="548" y="348">13 modules: admin…auditlog (9) + config/notify/export/attach (4)</text>
+  <rect class="box-join" x="296" y="380" width="164" height="26" rx="5"/>
+  <text class="t-name" x="378" y="397" text-anchor="middle" font-size="11">Department (role_dept · custom scope)</text>
+  <text class="t-sub"  x="600" y="392">UI renders by permission; backend re-checks every endpoint (hiding ≠ allowing)</text>
+
+  
+  <rect class="panel" x="24" y="434" width="932" height="140" rx="8"/>
+  <text class="panel-label" x="40" y="456">3. Data scope: five levels (per role; union)</text>
+  <rect class="box-scope" x="40" y="468" width="168" height="52" rx="6"/>
+  <text class="t-name" x="124" y="490" text-anchor="middle">All data</text>
+  <text class="t-sub"  x="124" y="506" text-anchor="middle">no filter</text>
+  <rect class="box-scope" x="220" y="468" width="168" height="52" rx="6"/>
+  <text class="t-name" x="304" y="490" text-anchor="middle">Dept &amp; below</text>
+  <text class="t-sub"  x="304" y="506" text-anchor="middle">dept_id ∈ subtree</text>
+  <rect class="box-scope" x="400" y="468" width="168" height="52" rx="6"/>
+  <text class="t-name" x="484" y="490" text-anchor="middle">Own dept</text>
+  <text class="t-sub"  x="484" y="506" text-anchor="middle">dept_id = own dept</text>
+  <rect class="box-scope" x="580" y="468" width="168" height="52" rx="6"/>
+  <text class="t-name" x="664" y="490" text-anchor="middle">Self only</text>
+  <text class="t-sub"  x="664" y="506" text-anchor="middle">admin_id = self</text>
+  <rect class="box-scope" x="760" y="468" width="168" height="52" rx="6"/>
+  <text class="t-name" x="844" y="490" text-anchor="middle">Custom</text>
+  <text class="t-sub"  x="844" y="506" text-anchor="middle">dept_id ∈ role_dept</text>
+  <text class="t-sub" x="40" y="542">Any role = All → no filter; no active role / no dept and not self → WHERE 1 = 0</text>
+  <text class="t-sub" x="40" y="558">Applied to list endpoints (admins/login logs/audit logs/attachments), parameterized</text>
+
+  
+  <rect class="panel" x="24" y="590" width="932" height="196" rx="8"/>
+  <text class="panel-label" x="40" y="612">4. Modules (13)</text>
+  <rect class="box-module" x="40" y="624" width="168" height="44" rx="6"/>
+  <text class="t-name" x="124" y="643" text-anchor="middle">Admin management</text>
+  <text class="t-sub"  x="124" y="659" text-anchor="middle">CRUD · roles · reset password</text>
+  <rect class="box-module" x="220" y="624" width="168" height="44" rx="6"/>
+  <text class="t-name" x="304" y="643" text-anchor="middle">Roles</text>
+  <text class="t-sub"  x="304" y="659" text-anchor="middle">menu grants · data scope</text>
+  <rect class="box-module" x="400" y="624" width="168" height="44" rx="6"/>
+  <text class="t-name" x="484" y="643" text-anchor="middle">Menus</text>
+  <text class="t-sub"  x="484" y="659" text-anchor="middle">dir/menu/button · cycle check</text>
+  <rect class="box-module" x="580" y="624" width="168" height="44" rx="6"/>
+  <text class="t-name" x="664" y="643" text-anchor="middle">Departments</text>
+  <text class="t-sub"  x="664" y="659" text-anchor="middle">tree · delete checks</text>
+  <rect class="box-module" x="760" y="624" width="168" height="44" rx="6"/>
+  <text class="t-name" x="844" y="643" text-anchor="middle">Dictionaries</text>
+  <text class="t-sub"  x="844" y="659" text-anchor="middle">two levels · cascade · dropdown source</text>
+  <rect class="box-module" x="40" y="676" width="168" height="44" rx="6"/>
+  <text class="t-name" x="124" y="695" text-anchor="middle">Jobs</text>
+  <text class="t-sub"  x="124" y="711" text-anchor="middle">8 built-in jobs · interval schedule</text>
+  <rect class="box-module" x="220" y="676" width="168" height="44" rx="6"/>
+  <text class="t-name" x="304" y="695" text-anchor="middle">Notices</text>
+  <text class="t-sub"  x="304" y="711" text-anchor="middle">draft/publish · unread bell</text>
+  <rect class="box-module" x="400" y="676" width="168" height="44" rx="6"/>
+  <text class="t-name" x="484" y="695" text-anchor="middle">Login logs</text>
+  <text class="t-sub"  x="484" y="711" text-anchor="middle">filter · data scope</text>
+  <rect class="box-module" x="580" y="676" width="168" height="44" rx="6"/>
+  <text class="t-name" x="664" y="695" text-anchor="middle">Audit logs</text>
+  <text class="t-sub"  x="664" y="711" text-anchor="middle">audit · data scope</text>
+  <rect class="box-module" x="760" y="676" width="168" height="44" rx="6"/>
+  <text class="t-name" x="844" y="695" text-anchor="middle">System config</text>
+  <text class="t-sub"  x="844" y="711" text-anchor="middle">grouped KV · live updates</text>
+  <rect class="box-module" x="220" y="728" width="168" height="44" rx="6"/>
+  <text class="t-name" x="304" y="747" text-anchor="middle">Notification settings</text>
+  <text class="t-sub"  x="304" y="763" text-anchor="middle">Webhook signing · retry · SMTP</text>
+  <rect class="box-module" x="400" y="728" width="168" height="44" rx="6"/>
+  <text class="t-name" x="484" y="747" text-anchor="middle">Export center</text>
+  <text class="t-sub"  x="484" y="763" text-anchor="middle">background export · cancel/progress</text>
+  <rect class="box-module" x="580" y="728" width="168" height="44" rx="6"/>
+  <text class="t-name" x="664" y="747" text-anchor="middle">Attachments</text>
+  <text class="t-sub"  x="664" y="763" text-anchor="middle">upload/link · orphan cleanup</text>
+
+  <text class="t-foot" x="24" y="808">© 2026 erik · https://erik.xyz</text>
+</svg>

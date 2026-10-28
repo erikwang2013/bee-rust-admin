@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FAQ & Operations · BRA</title>
+<meta name="description" content="BRA FAQ: superadmin password recovery, lockouts, jobs, notifications, database backup and restore.">
+<meta name="keywords" content="BRA, Bee Rust Admin, Rust admin, RBAC, permissions, data scope, audit logs">
+<meta name="theme-color" content="#fff9ec">
+<link rel="canonical" href="https://package.erik.xyz/bra/en/faq.html">
+<link rel="alternate" hreflang="en" href="https://package.erik.xyz/bra/en/faq.html">
+<link rel="alternate" hreflang="zh-CN" href="https://package.erik.xyz/bra/faq.html">
+<link rel="alternate" hreflang="x-default" href="https://package.erik.xyz/bra/faq.html">
+<meta name="author" content="erik">
+<meta name="robots" content="index,follow">
+<meta property="og:site_name" content="BRA · Bee Rust Admin">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:url" content="https://package.erik.xyz/bra/en/faq.html">
+<meta property="og:image" content="https://package.erik.xyz/bra/en/assets/img/en/og.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="BRA · Bee Rust Admin preview">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="FAQ &amp; Operations · BRA">
+<meta name="twitter:description" content="BRA FAQ: superadmin password recovery, lockouts, jobs, notifications, database backup and restore.">
+<meta name="twitter:image" content="https://package.erik.xyz/bra/en/assets/img/en/og.png">
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/base.css">
+<link rel="stylesheet" href="../assets/css/components.css">
+<link rel="stylesheet" href="../assets/css/search.css">
+</head>
+<body data-base="../">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="index.html" aria-label="BRA home">
+      <img src="../assets/img/en/pet/keeper-head.svg" alt="" width="38" height="38">
+      <span>BRA<small>BEE RUST ADMIN</small></span>
+    </a>
+    <button class="nav-toggle" type="button" aria-controls="site-nav" aria-expanded="false" aria-label="Open navigation"><span></span></button>
+    <nav class="nav" id="site-nav" aria-label="Main navigation">
+      <a href="index.html">Home</a>
+      <a href="index.html#intro">Intro</a>
+      <a href="index.html#features">Features</a>
+      <a href="index.html#architecture">Architecture</a>
+      <a href="index.html#timeline">Timeline</a>
+      <a href="releases.html">Releases</a>
+      <a href="install.html">Install</a>
+      <a href="usage.html">Usage</a>
+      <button class="nav-search" type="button" data-search-open aria-haspopup="dialog">Search</button>
+      <a class="nav-lang" href="../faq.html" hreflang="zh-CN" lang="zh-CN">中文</a>
+      <a class="nav-ext" href="https://github.com/erikwang2013/bee-rust-admin" target="_blank" rel="noopener">GitHub ↗</a>
+      <a class="nav-ext" href="https://erik.xyz" target="_blank" rel="noopener">Erik (艾瑞可) ↗</a>
+    </nav>
+  </div>
+</header>
+<main id="main">
+<section class="doc-hero">
+  <div class="container">
+    <p class="eyebrow">FAQ & operations</p>
+    <h1>Troubleshooting and operations</h1>
+    <p class="lead">Forgot passwords, lockouts, jobs that did not run, notifications, backups and restores — the answers to the usual blockers.</p>
+    <div class="doc-actions">
+      <a class="btn" href="usage.html">Read the user guide</a>
+      <a class="btn btn--ghost" href="https://github.com/erikwang2013/bee-rust-admin/blob/main/site/i18n/en/faq.md" target="_blank" rel="noopener">View source on GitHub ↗</a>
+    </div>
+  </div>
+</section>
+<div class="container"><article class="doc">
+<blockquote>
+<p>Troubleshooting and operations for BRA. Installation lives in the <a href="install.html">Installation Guide</a>; daily usage in the <a href="usage.html">User Guide</a>.</p>
+</blockquote>
+<h2 id="contents">Contents</h2>
+<ol>
+<li><a href="#5-common-questions-and-operations">5. Common questions and operations</a></li>
+</ol>
+<h2 id="5-common-questions-and-operations">5. Common questions and operations</h2>
+<h3 id="51-forgot-the-superadmin-password">5.1 Forgot the superadmin password</h3>
+<p>There is no email-based reset. Choose one:</p>
+<ol>
+<li><strong>Reset in the database</strong>: generate an argon2id hash for a new password and update <code>admin.password</code> for the superadmin. Prefer creating a second superadmin through the app when you still have access.</li>
+<li><strong>Restore a backup</strong> of the database.</li>
+<li><strong>Recreate the database</strong> as a last resort (this loses all data).</li>
+</ol>
+<p>After resetting, log in and change the password in Profile. Resetting the password does <strong>not</strong> disable TOTP; clear the TOTP columns and backup-code rows if the authenticator is also lost.</p>
+<h3 id="52-account-locked">5.2 Account locked</h3>
+<p>Default: 5 failed passwords for the same account or source IP lock it for 10 minutes. Wait, or have a superadmin disable/re-enable the account or reset its password. Wrong captcha answers do not count toward lockout.
+A dynamic-code failure does count.</p>
+<h3 id="53-where-are-language-and-theme-changed">5.3 Where are language and theme changed?</h3>
+<p>Top bar: language (简体中文 / English) and light/dark theme. Both are stored in the <strong>local browser</strong>, not the account; set them again on another computer.
+The initial language follows the browser, the theme follows the system.</p>
+<h3 id="54-avatar-upload-fails">5.4 Avatar upload fails</h3>
+<ul>
+<li>Only PNG/JPEG, max 512 KB. The browser compresses larger images; if compression still exceeds 512 KB, pick a smaller file.</li>
+<li>Check <code>upload_dir</code> and its permissions; in Docker the upload directory is <code>/home/uploads</code> and is lost when the container is recreated.</li>
+<li>If you upgraded only the backend or only the frontend, upgrade both: the old base64 avatar endpoint was removed.</li>
+</ul>
+<h3 id="55-a-published-notice-is-not-visible-to-some-users">5.5 A published notice is not visible to some users</h3>
+<ul>
+<li>Drafts are invisible; both the notice and attachments must be published.</li>
+<li>The unread bell lists at most the latest 50 unread notices.</li>
+<li>Check that the user is enabled and can log in; login logs show failures.</li>
+<li>Notice email push is opt-in per account (email must be present and decryption must work) and excludes the publisher.</li>
+</ul>
+<h3 id="56-a-scheduled-job-did-not-run">5.6 A scheduled job did not run</h3>
+<ul>
+<li>Check <code>[job] enabled</code> in <code>app.conf</code>; when off, jobs are not scheduled (manual <strong>Trigger once</strong> still works).</li>
+<li>Check the job interval and the last run/result columns. Jobs run serially; a long job delays others.</li>
+<li>In multi-instance deployments enable scheduling on only one instance.</li>
+<li>Look at run history for errors (database backup, export, notification retry, etc.).</li>
+</ul>
+<h3 id="57-why-re-login-after-an-upgrade">5.7 Why re-login after an upgrade?</h3>
+<p>The frontend and backend must be the same version. The frontend uses the current API contract; an old token/frontend may be rejected after an upgrade. Log in again.
+For upgrades, replace both the binary and the frontend dist; use <code>install.sh --keep-conf</code> for configuration-preserving upgrades.</p>
+<h3 id="58-what-is-a-security-scan-hit-in-the-audit-log">5.8 What is a “security scan hit” in the audit log?</h3>
+<p>The built-in request scanner (<code>security-rust</code>) detects attack signatures (SQLi, command injection, SSRF, XXE, Log4Shell, path traversal, etc.). By default <code>scan = off</code> only logs a WARN and an audit record
+(level and detector name, not the raw payload). <code>scan = high</code>/<code>critical</code> returns 403 with <code>err = security.blocked</code>. XSS is detected but scored Low and is not blocked by the high/critical threshold;
+multipart uploads are not scanned. Referer/Origin are scanned only after <code>scheme://authority</code> to avoid false SSRF hits on internal IPs.</p>
+<h3 id="59-operations-cleaning-plaintext-backups">5.9 Operations: cleaning plaintext backups</h3>
+<p>If encrypted columns were ever backed up as plaintext (e.g., <code>admin_email_phone_backup</code>), restrict access to the database and backups, then delete or re-encrypt those copies according to your retention policy.
+Never expose database dumps or the <code>admin</code> table to untrusted users. Back up <code>app.conf</code> securely: losing <code>encrypt_key</code> makes encrypted columns permanently unreadable.</p>
+<h3 id="510-operations-database-backup-and-restore">5.10 Operations: database backup and restore</h3>
+<ul>
+<li>The built-in <code>db_backup</code> job runs <code>mysqldump</code> to disk (files mode 0600, configurable directory and retention, default 7 copies); run history is in <code>job_log</code>.</li>
+<li>Restore is manual: stop the service, import the dump (<code>mysql &lt; dump</code>), then start the service. Test restores regularly.</li>
+<li>Back up <code>admin/conf/app.conf</code> separately; <code>encrypt_key</code> and <code>hashids_salt</code> cannot be regenerated without data loss.</li>
+<li>The <code>notify_retry</code> ledger and other retention jobs are configured in System Config / jobs.</li>
+</ul>
+<h3 id="511-notifications-are-not-sent--test-email-fails">5.11 Notifications are not sent / test email fails</h3>
+<ul>
+<li><strong>Webhook</strong>: check the URL starts with <code>http://</code>/<code>https://</code>; link-local/unspecified IPs are rejected at save and send time; redirects are not followed; the endpoint must return 2xx within 5 seconds.
+  Signatures use <code>X-BRA-Timestamp</code> and <code>X-BRA-Signature: sha256=…</code> over <code>"&lt;ts&gt;.&lt;raw body&gt;"</code>. Failed deliveries are retried by <code>notify_retry</code> with backoff (max 3 retries); check <code>notify_delivery</code>.</li>
+<li><strong>SMTP</strong>: check server, port and encryption (STARTTLS 587, SSL/TLS 465), username/password and sender. Test email goes to your own account email using saved settings.
+  A blank password means “unchanged”; use <strong>Clear password</strong> to remove it. Check the SMTP provider’s quota/rate limits; notice email push is one SMTP session per recipient and is best-effort (no retry).</li>
+<li>Permissions: <code>system:notify:list</code> to open the page; <code>system:notify:edit</code> to save/send.</li>
+</ul>
+</article></div>
+</main>
+<footer class="site-footer" id="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <div class="footer-brand">
+          <img src="../assets/img/en/pet/keeper-head.svg" alt="" width="52" height="52">
+          <div><b>BRA</b><small>BEE RUST ADMIN</small></div>
+        </div>
+        <p>Rust backend + React frontend RBAC admin. Guard the permissions, ship the admin.</p>
+      </div>
+      <div>
+        <h3>Project</h3>
+        <ul class="footer-links">
+          <li><a href="index.html#intro">Overview</a></li>
+          <li><a href="index.html#features">Features</a></li>
+          <li><a href="index.html#architecture">Architecture</a></li>
+          <li><a href="index.html#timeline">Timeline</a></li>
+          <li><a href="index.html#support">Support</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Docs</h3>
+        <ul class="footer-links">
+          <li><a href="install.html">Installation</a></li>
+          <li><a href="usage.html">User guide</a></li>
+          <li><a href="faq.html">FAQ</a></li>
+          <li><a href="releases.html">Releases</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Links</h3>
+        <ul class="footer-links">
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin" target="_blank" rel="noopener">GitHub ↗</a></li>
+          <li><a href="https://erik.xyz" target="_blank" rel="noopener">Erik (艾瑞可) ↗</a></li>
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin/blob/main/LICENSE" target="_blank" rel="noopener">Code: Apache-2.0 ↗</a></li>
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin/blob/main/ASSETS-LICENSE.md" target="_blank" rel="noopener">Visual assets ↗</a></li>
+          <li><a href="../faq.html" hreflang="zh-CN" lang="zh-CN">中文</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© <span data-year>2026</span> erik · Code Apache-2.0</span>
+      <div class="footer-info" id="busuanzi">
+        <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+        <span id="busuanzi_container_page_pv"><span data-i18n="post.readA">Views</span> <b id="busuanzi_value_page_pv">0</b> <span data-i18n="post.readB">views 👀</span></span>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<button class="to-top" id="to-top" type="button" aria-label="Back to top">
+  <img src="../assets/img/en/pet/keeper-onduty.svg" alt="" width="76" height="76">
+</button>
+
+<script src="../assets/js/site.js" defer></script>
+</body>
+</html>
