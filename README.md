@@ -8,7 +8,7 @@
 
 ## 项目宠物
 
-<img src="docs/pet/keeper-onduty.svg" width="240" align="right" alt="阿守（Keeper）· BRA 项目宠物：站在六边形巢门平台上、爪挂三把钥匙的值守蜂">
+![阿守（Keeper）· BRA 项目宠物：站在六边形巢门平台上、爪挂三把钥匙的值守蜂](docs/pet/keeper-onduty.svg)
 
 **阿守（Keeper）** —— 蜂巢的值守蜂。
 
@@ -25,26 +25,31 @@
 
 **五种状态**（与框架宠物同一套判定机制，由项目状态自动切换；形象由 `docs/pet/render.mjs` 统一渲染）：
 
-| 值守 | 查证 | 超管 | 打盹 | 竖针 |
-|:--:|:--:|:--:|:--:|:--:|
-| <img src="docs/pet/keeper-onduty.svg" width="112" alt="值守"> | <img src="docs/pet/keeper-verifying.svg" width="112" alt="查证"> | <img src="docs/pet/keeper-superuser.svg" width="112" alt="超管"> | <img src="docs/pet/keeper-dozing.svg" width="112" alt="打盹"> | <img src="docs/pet/keeper-alarmed.svg" width="112" alt="竖针"> |
-| `(⌐■_■)` | `(・_・)?` | `(＾▽＾)` | `(-_-)zZ` | `(#°益°)` |
-| 门岗正常，权限表与菜单树一致 | 有变更待验证，凭证拿来 | 超管入场，旁路所有权限码 | 这个点没人来访，登录记录空着 | 尾针竖起来了——有人把密钥写进仓库了！ |
-| 测试全绿 · 无未提交改动 | 有未提交改动待审 | 在 main · 刚打 tag | 深夜 · 无人来访 | 仓库里检出密钥文件 |
+![阿守的五种状态：值守 / 查证 / 超管 / 打盹 / 竖针](docs/pet/keeper-states.png)
 
+| 状态 | 表情 | 含义 | 触发条件 |
+|:--:|:--:|---|---|
+| 值守 | `(⌐■_■)` | 门岗正常，权限表与菜单树一致 | 测试全绿 · 无未提交改动 |
+| 查证 | `(・_・)?` | 有变更待验证，凭证拿来 | 有未提交改动待审 |
+| 超管 | `(＾▽＾)` | 超管入场，旁路所有权限码 | 在 main · 刚打 tag |
+| 打盹 | `(-_-)zZ` | 这个点没人来访，登录记录空着 | 深夜 · 无人来访 |
+| 竖针 | `(#°益°)` | 尾针竖起来了——有人把密钥写进仓库了！ | 仓库里检出密钥文件 |
 
-<!-- pet-expressions:start -->
 ## 项目宠物表情形态 · 阿守
 
-<table align="center">
-<tr><td align="center"><img src="docs/pet/expressions/smile.svg" width="88" alt="笑"><br><b>笑</b><br><code>:emoji-smile:</code></td><td align="center"><img src="docs/pet/expressions/joy.svg" width="88" alt="欢乐"><br><b>欢乐</b><br><code>:emoji-joy:</code></td><td align="center"><img src="docs/pet/expressions/cry.svg" width="88" alt="哭"><br><b>哭</b><br><code>:emoji-cry:</code></td><td align="center"><img src="docs/pet/expressions/depressed.svg" width="88" alt="沮丧"><br><b>沮丧</b><br><code>:emoji-depressed:</code></td><td align="center"><img src="docs/pet/expressions/terrified.svg" width="88" alt="惊恐"><br><b>惊恐</b><br><code>:emoji-terrified:</code></td><td align="center"><img src="docs/pet/expressions/angry.svg" width="88" alt="愤怒"><br><b>愤怒</b><br><code>:emoji-angry:</code></td></tr>
-<tr><td align="center"><img src="docs/pet/expressions/coquettish.svg" width="88" alt="撒娇"><br><b>撒娇</b><br><code>:emoji-coquettish:</code></td><td align="center"><img src="docs/pet/expressions/cute.svg" width="88" alt="卖萌"><br><b>卖萌</b><br><code>:emoji-cute:</code></td><td align="center"><img src="docs/pet/expressions/pleasing.svg" width="88" alt="讨好"><br><b>讨好</b><br><code>:emoji-pleasing:</code></td><td align="center"><img src="docs/pet/expressions/knocking.svg" width="88" alt="敲打"><br><b>敲打</b><br><code>:emoji-knocking:</code></td><td align="center"><img src="docs/pet/expressions/facepalm.svg" width="88" alt="捂脸"><br><b>捂脸</b><br><code>:emoji-facepalm:</code></td><td align="center"><img src="docs/pet/expressions/tongue.svg" width="88" alt="吐舌头"><br><b>吐舌头</b><br><code>:emoji-tongue:</code></td></tr>
-</table>
+![阿守的 12 种表情形态：笑 / 欢乐 / 哭 / 沮丧 / 惊恐 / 愤怒 / 撒娇 / 卖萌 / 讨好 / 敲打 / 捂脸 / 吐舌头](docs/pet/keeper-expressions.png)
+
+| 名称 | 短码 | 名称 | 短码 |
+|:--:|---|---|:--:|
+| 笑 | `:emoji-smile:` | 欢乐 | `:emoji-joy:` |
+| 哭 | `:emoji-cry:` | 沮丧 | `:emoji-depressed:` |
+| 惊恐 | `:emoji-terrified:` | 愤怒 | `:emoji-angry:` |
+| 撒娇 | `:emoji-coquettish:` | 卖萌 | `:emoji-cute:` |
+| 讨好 | `:emoji-pleasing:` | 敲打 | `:emoji-knocking:` |
+| 捂脸 | `:emoji-facepalm:` | 吐舌头 | `:emoji-tongue:` |
 
 > 12 种彩色动态形态：笑 / 欢乐 / 哭 / 沮丧 / 惊恐 / 愤怒 / 撒娇 / 卖萌 / 讨好 / 敲打 / 捂脸 / 吐舌头。每个 SVG 自带表情、情绪特效与整体动效，并遵循 `prefers-reduced-motion`。
-<!-- pet-expressions:end -->
 
-<!-- assets-license:start -->
 ## 视觉资产授权 / Visual Assets License
 
 本项目的项目宠物、图片、图标、表情（包括 `docs/pet-expressions/` 等目录下的
@@ -53,7 +58,6 @@ SVG / PNG）**不是开源资产**，版权归作者所有。未经书面许可�
 [ASSETS-LICENSE.md](ASSETS-LICENSE.md)。
 
 > 代码部分仍遵循仓库原有 `LICENSE`；第三方素材（如明确标注的 Go Gopher 等）仍遵循其原许可证。
-<!-- assets-license:end -->
 
 
 ## 项目介绍
@@ -473,6 +477,6 @@ sudo nginx -t && sudo systemctl reload nginx
 
 ## 版权
 
-© 2026 erik · <https://erik.xyz>
+© 2026 erik · [https://erik.xyz](https://erik.xyz)
 
 本项目基于 [Apache-2.0](LICENSE) 许可发布。

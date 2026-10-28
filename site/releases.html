@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>版本日志 · BRA</title>
+<meta name="description" content="BRA 全部版本日志：从 v1.0.0 到 v2.16.1，功能迭代与安全修复记录。">
+<meta name="theme-color" content="#fff9ec">
+<meta property="og:title" content="版本日志 · BRA">
+<meta property="og:description" content="BRA 全部版本日志：从 v1.0.0 到 v2.16.1，功能迭代与安全修复记录。">
+<meta property="og:type" content="website">
+<meta property="og:image" content="assets/img/og.png">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/css/base.css">
+<link rel="stylesheet" href="assets/css/components.css">
+</head>
+<body>
+<a class="skip-link" href="#main">跳到正文</a>
+
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="index.html" aria-label="BRA 首页">
+      <img src="assets/img/pet/keeper-head.svg" alt="" width="38" height="38">
+      <span>BRA<small>BEE RUST ADMIN</small></span>
+    </a>
+    <button class="nav-toggle" type="button" aria-controls="site-nav" aria-expanded="false" aria-label="打开导航"><span></span></button>
+    <nav class="nav" id="site-nav" aria-label="主导航">
+      <a href="index.html">首页</a>
+      <a href="index.html#intro">介绍</a>
+      <a href="index.html#features">功能</a>
+      <a href="index.html#architecture">架构</a>
+      <a href="index.html#timeline">迭代</a>
+      <a href="releases.html">版本日志</a>
+      <a href="install.html">安装</a>
+      <a href="usage.html">使用</a>
+      <a class="nav-ext" href="https://github.com/erikwang2013/bee-rust-admin" target="_blank" rel="noopener">GitHub ↗</a>
+      <a class="nav-ext" href="https://erik.xyz" target="_blank" rel="noopener">艾瑞可erik ↗</a>
+    </nav>
+  </div>
+</header>
+<main id="main">
+<section class="release-hero">
+  <div class="container">
+    <p class="eyebrow">版本日志</p>
+    <h1>36 个版本，一条连续的线</h1>
+    <p class="lead">从 v1.0.0 的完整 RBAC 后台，到 v2.16.1 的工程化收口。每个版本都标了它改了什么、要不要升级。</p>
+    <div class="release-meta">
+      <span class="badge badge--honey">最新 v2.16.1</span>
+      <span class="badge">2026-10-18</span>
+      <span class="badge badge--cyan">36 个 Release</span>
+      <a class="badge" href="https://github.com/erikwang2013/bee-rust-admin/releases" target="_blank" rel="noopener">GitHub Releases ↗</a>
+    </div>
+  </div>
+</section>
+<div class="container">
+<div class="release-list">
+<article class="release-item">
+  <div class="release-head"><span class="ver">v2.16.1</span><time class="date" datetime="2026-10-18">2026-10-18</time> <span class="latest">LATEST</span></div>
+  <h2 class="rel-title">素材授权声明（文档与素材版）</h2>
+  <p class="rel-summary">本版不含功能与代码变更——与 v2.16.0 的代码完全一致； 新增美术资产授权声明：项目宠物（pets 表情）、图片、图标与 emoji 属专有素材， 商业使用需单独授权；代码许可不变。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.16.1" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v2.16.0</span><time class="date" datetime="2026-10-18">2026-10-18</time></div>
+  <h2 class="rel-title">500 行重构 + 四项能力</h2>
+  <p class="rel-summary">重构与新功能版：把全部「超行文件」拆到 500 行以内并给 API 层做版本化目录 （admin/src/api/v1/，URL 不变）；同时上四个能力：TOTP 备用码、Webhook 签名、 通知失败落库重投、发送时 DNS 封禁。接口 93，数据表 22，内置任务 8。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.16.0" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v2.15.0</span><time class="date" datetime="2026-10-17">2026-10-17</time></div>
+  <h2 class="rel-title">收尾批：安全与体验</h2>
+  <p class="rel-summary">收尾批：把扩展工程落地后的全部未闭项一次清完 —— 安全加固（TOTP 同码一次性、 附件回收保护期、Webhook 内网地址封禁）、导出中心的大任务体验（取消 / 进度 / 并发上限）、 登录设备清理、公告邮件推送、脚手架 datetime、发版工具按历史提交补发，以及一批 文本/注解/交互的收口。接口 92，数据表 20，内置任务 7。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.15.0" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v2.14.0</span><time class="date" datetime="2026-10-16">2026-10-16</time></div>
+  <h2 class="rel-title">数据通道 · 安全 · 平台化 三批合集</h2>
+  <p class="rel-summary">数据通道 · 安全与通道 · 平台化 三批合集：扩展工程剩余三批一起上车 —— 数据库备份、 CSV 导入、导出中心（数据通道）；操作日志变更摘要、动态验证码 + 登录设备、通知渠道 （安全与通道）；附件中心、模块脚手架（平台化）。接口 71→91，数据表 17→20，菜单 10→13， 内置任务增至 6 个。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.14.0" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v2.13.0</span><time class="date" datetime="2026-10-16">2026-10-16</time></div>
+  <h2 class="rel-title">安全与通道</h2>
+  <p class="rel-summary">版：操作日志变更摘要（before / after）、动态验证码（TOTP）+ 登录设备、 通知渠道（Webhook + SMTP 测试邮件）。接口 77→85，数据表 18→19。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.13.0" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v2.12.0</span><time class="date" datetime="2026-10-16">2026-10-16</time></div>
+  <h2 class="rel-title">数据通道</h2>
+  <p class="rel-summary">版：备份、导入、导出三件套 —— 数据库备份任务、CSV 导入（管理员 / 部门 / 字典项）、导出中心（异步导出）。接口 71→77，数据表 17→18。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.12.0" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v2.11.0</span><time class="date" datetime="2026-10-15">2026-10-15</time></div>
+  <h2 class="rel-title">基建小件：版本、指标、配置、仪表盘</h2>
+  <p class="rel-summary">基建小件版：四个底层能力一起上车 —— 版本接口（/api/v1/version）、Prometheus 指标端点（/metrics）、系统配置模块（新导航「系统配置」，登录页与页脚改读公开配置）、 首页真仪表盘（计数卡 + 近 7 天登录趋势）。全部零新依赖。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.11.0" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v2.10.0</span><time class="date" datetime="2026-10-14">2026-10-14</time></div>
+  <h2 class="rel-title">站点信息</h2>
+  <p class="rel-summary">小功能版：后台页面底部新增站点信息一行（版本号 · 版权 · 项目地址），登录页与侧边栏 都显示、点击直达项目仓库。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.10.0" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v2.9.5</span><time class="date" datetime="2026-10-14">2026-10-14</time></div>
+  <h2 class="rel-title">离线 compose 开箱即起</h2>
+  <p class="rel-summary">交付形态更新：离线 compose 包升级为「开箱即起」——新增 compose-up.sh，缺的口令 / 密钥自动生成并写回本地文件，不再需要手工填三处才能起栈。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.9.5" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v2.9.4</span><time class="date" datetime="2026-10-13">2026-10-13</time></div>
+  <h2 class="rel-title">离线镜像包</h2>
+  <p class="rel-summary">交付形态更新：从本版起每个 Release 除原有两个产物外，额外附带离线镜像包与 compose 包 —— 目标机不用 Rust/Node 工具链、不联网拉源码，docker load 后 docker compose up -d 就能起整栈。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.9.4" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v2.9.3</span><time class="date" datetime="2026-10-13">2026-10-13</time></div>
+  <h2 class="rel-title">维护版</h2>
+  <p class="rel-summary">本版只改仓库内的测试代码与格式，没有用户可见的代码变更。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.9.3" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v2.9.2</span><time class="date" datetime="2026-10-13">2026-10-13</time></div>
+  <h2 class="rel-title">安全版，建议升级</h2>
+  <p class="rel-summary">本版修掉一处权限提升漏洞与三处安全加固，另含一批内部清理 （死代码 / 重复实现 / 零调用 API），并把框架依赖升到已发布的 bee-rust 1.3.0。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.9.2" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v2.9.1</span><time class="date" datetime="2026-10-12">2026-10-12</time></div>
+  <h2 class="rel-title">文档版</h2>
+  <p class="rel-summary">本版只改仓库里的文档与图片，没有任何源码改动。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.9.1" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v2.9.0</span><time class="date" datetime="2026-10-12">2026-10-12</time></div>
+  <h2 class="rel-title">规划收口 + 四项能力</h2>
+  <p class="rel-summary">本版是 v2.8.0 之后的规划收口 + 四项新增能力；除特别说明外，升级无需改配置。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.9.0" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v2.8.0</span><time class="date" datetime="2026-10-12">2026-10-12</time></div>
+  <h2 class="rel-title">依赖与欠账清账</h2>
+  <p class="rel-summary">本版把 v2.6.2 之后的欠账一次性清完（原计划分四组发：v2.6.3 / v2.7.0 / v2.7.1 / v2.8.0）， 并把这一批依赖全部升到最新发布版。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.8.0" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v2.6.2</span><time class="date" datetime="2026-10-11">2026-10-11</time></div>
+  <h2 class="rel-title">文档版</h2>
+  <p class="rel-summary">本版只改了仓库里的说明文件，没有任何源码改动。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.6.2" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v2.6.1</span><time class="date" datetime="2026-10-10">2026-10-10</time></div>
+  <h2 class="rel-title">接口文档修正</h2>
+  <p class="rel-summary">扫尾补丁版：修掉 v2.6.0 里接口文档写错的一处枚举，外加清理一批已经不可能发生的错误码。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.6.1" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v2.6.0</span><time class="date" datetime="2026-10-08">2026-10-08</time></div>
+  <h2 class="rel-title">请求安全扫描 + 接口文档站</h2>
+  <p class="rel-summary">插件接入计划的最后两项：请求安全扫描（security-rust 3.0.0 的 32 个检测器） 与接口文档站（apidoc-rust 1.6.2）。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.6.0" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v2.5.0</span><time class="date" datetime="2026-10-08">2026-10-08</time></div>
+  <h2 class="rel-title">头像改分片上传</h2>
+  <p class="rel-summary">插件接入计划第四项下半：头像改分片上传（aetherupload-rust 1.0.3）。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.5.0" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v2.4.0</span><time class="date" datetime="2026-10-08">2026-10-08</time></div>
+  <h2 class="rel-title">登录验证码</h2>
+  <p class="rel-summary">插件接入计划第四项上半：登录验证码（poster-rust 1.1.2）。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.4.0" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v2.3.0</span><time class="date" datetime="2026-10-07">2026-10-07</time></div>
+  <h2 class="rel-title">邮箱/手机号落库加密</h2>
+  <p class="rel-summary">插件接入计划第三项：管理员邮箱/手机号落库加密（encryptable-rust 1.2.1）。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.3.0" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v2.2.0</span><time class="date" datetime="2026-10-07">2026-10-07</time></div>
+  <h2 class="rel-title">JWT 改用 jwt-rust</h2>
+  <p class="rel-summary">插件接入计划的第二项：JWT 签发/校验换成 jwt-rust（此前是手写 jsonwebtoken 调用）。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.2.0" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v2.1.0</span><time class="date" datetime="2026-10-07">2026-10-07</time></div>
+  <h2 class="rel-title">雪花 ID + hashids</h2>
+  <p class="rel-summary">破坏性变更：对外所有 id 从数字变成 hashids 短字符串；主键换成雪花 ID。 这是插件接入计划的第一项（snowflake-rust + hashids-rust）。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.1.0" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v2.0.0</span><time class="date" datetime="2026-10-07">2026-10-07</time></div>
+  <h2 class="rel-title">框架大版本升级</h2>
+  <p class="rel-summary">把 vendored 的 bee-rust 从 1.1.5 换到上游 1.2.3，其中 ORM 不是升级而是换实现。 这是本项目第一次 major 版本——对外 HTTP 契约不变，但「依赖什么、内部怎么访问数据库」整体换了。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.0.0" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v1.8.3</span><time class="date" datetime="2026-10-07">2026-10-07</time></div>
+  <h2 class="rel-title">BRD → BRA</h2>
+  <p class="rel-summary">项目缩写 BRD → BRA（Bee Rust Admin 的正确缩写）。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v1.8.3" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v1.8.2</span><time class="date" datetime="2026-10-06">2026-10-06</time></div>
+  <h2 class="rel-title">文档版：C4 结论更正</h2>
+  <p class="rel-summary">这一版没有代码变更，只有文档。单独发版是为了让「C4 的结论更正」有明确的落点， 而不是散在提交历史里。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v1.8.2" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v1.8.1</span><time class="date" datetime="2026-10-06">2026-10-06</time></div>
+  <h2 class="rel-title">首屏目标更正</h2>
+  <p class="rel-summary">更正 v1.8.0 的结论：首屏目标 &lt; 800 kB 实际是达成的，而我上一版说「没达到」—— 漏掉的是部署配置，不是包本身。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v1.8.1" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v1.8.0</span><time class="date" datetime="2026-10-06">2026-10-06</time></div>
+  <h2 class="rel-title">首屏体积优化</h2>
+  <p class="rel-summary">C 组最后一项：继续压缩首屏体积。这一项是测量驱动的——先量再改，不拍脑袋优化。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v1.8.0" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v1.7.0</span><time class="date" datetime="2026-10-06">2026-10-06</time></div>
+  <h2 class="rel-title">完整 i18n</h2>
+  <p class="rel-summary">C 组第三项：完整 i18n（中/英双语）。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v1.7.0" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v1.6.0</span><time class="date" datetime="2026-10-06">2026-10-06</time></div>
+  <h2 class="rel-title">定时任务 + 通知公告</h2>
+  <p class="rel-summary">C 组第二项：定时任务 + 通知公告。后台终于能自己干活、也能告诉人发生了什么。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v1.6.0" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v1.5.0</span><time class="date" datetime="2026-10-06">2026-10-06</time></div>
+  <h2 class="rel-title">字典管理</h2>
+  <p class="rel-summary">C 组四项的第一项：字典管理。把「不改代码就能改的配置项」（性别、状态、业务枚举）搬进后台， 前端下拉从这里取。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v1.5.0" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v1.4.0</span><time class="date" datetime="2026-10-06">2026-10-06</time></div>
+  <h2 class="rel-title">数据权限写路径与安全加固</h2>
+  <p class="rel-summary">在 v1.3.0 基础上补齐一批「已知但没修」的问题，并关闭当前最大的一处安全缺口。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v1.4.0" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v1.3.0</span><time class="date" datetime="2026-10-06">2026-10-06</time></div>
+  <h2 class="rel-title">登录限流与首屏减重</h2>
+  <p class="rel-summary">在 v1.2.0 基础上：登录限流改用框架已依赖的 security-rust，前端首屏减重 693 kB， 以及一个此前一直存在、只是没人注意到的缺口——任何渲染异常都会白屏整个后台。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v1.3.0" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v1.2.0</span><time class="date" datetime="2026-10-06">2026-10-06</time></div>
+  <h2 class="rel-title">审计、导出与登录锁定</h2>
+  <p class="rel-summary">在 v1.1.0 基础上修掉&quot;配置与开关在骗人&quot;的问题，并补齐管理后台的核心缺口。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v1.2.0" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v1.1.0</span><time class="date" datetime="2026-10-05">2026-10-05</time></div>
+  <h2 class="rel-title">Docker 与项目宠物</h2>
+  <p class="rel-summary">在 v1.0.0 基础上新增容器化部署与项目形象，并修掉若干只有真构建 / 真运行才会暴露的问题。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v1.1.0" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+<article class="release-item">
+  <div class="release-head"><span class="ver">v1.0.0</span><time class="date" datetime="2026-10-05">2026-10-05</time></div>
+  <h2 class="rel-title">首个版本</h2>
+  <p class="rel-summary">bee-rust 管理后台首个版本：基于 bee-rust 框架的完整 RBAC 后台，含服务端、前端 SPA 与部署产物。</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v1.0.0" target="_blank" rel="noopener">在 GitHub 查看完整 Release →</a>
+</article>
+</div>
+</div>
+</main>
+<footer class="site-footer" id="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <div class="footer-brand">
+          <img src="assets/img/pet/keeper-head.svg" alt="" width="52" height="52">
+          <div><b>BRA</b><small>BEE RUST ADMIN</small></div>
+        </div>
+        <p>Rust 服务端 + React 前端的 RBAC 管理后台。把权限守住，让后台开箱即用。</p>
+      </div>
+      <div>
+        <h3>项目</h3>
+        <ul class="footer-links">
+          <li><a href="index.html#intro">项目介绍</a></li>
+          <li><a href="index.html#features">功能设计</a></li>
+          <li><a href="index.html#architecture">架构设计</a></li>
+          <li><a href="index.html#timeline">功能迭代</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>文档</h3>
+        <ul class="footer-links">
+          <li><a href="install.html">安装说明</a></li>
+          <li><a href="usage.html">使用手册</a></li>
+          <li><a href="faq.html">常见问题</a></li>
+          <li><a href="releases.html">版本日志</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>链接</h3>
+        <ul class="footer-links">
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin" target="_blank" rel="noopener">GitHub 仓库 ↗</a></li>
+          <li><a href="https://erik.xyz" target="_blank" rel="noopener">艾瑞可erik ↗</a></li>
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin/blob/main/LICENSE" target="_blank" rel="noopener">代码许可 Apache-2.0 ↗</a></li>
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin/blob/main/ASSETS-LICENSE.md" target="_blank" rel="noopener">视觉资产授权 ↗</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© <span data-year>2026</span> erik · 代码 Apache-2.0</span>
+      <div class="footer-info" id="busuanzi">
+        <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+        <span id="busuanzi_container_page_pv"><span data-i18n="post.readA">阅读</span> <b id="busuanzi_value_page_pv">0</b> <span data-i18n="post.readB">次 👀</span></span>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<button class="to-top" id="to-top" type="button" aria-label="返回顶部">
+  <img src="assets/img/pet/keeper-onduty.svg" alt="" width="76" height="76">
+</button>
+
+<script src="assets/js/site.js" defer></script>
+</body>
+</html>

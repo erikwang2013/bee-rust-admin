@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>常见问题与运维 · BRA</title>
+<meta name="description" content="BRA 常见问题：忘记超管密码、账号锁定、定时任务、通知失败、数据库备份与恢复。">
+<meta name="theme-color" content="#fff9ec">
+<meta property="og:title" content="常见问题与运维 · BRA">
+<meta property="og:description" content="BRA 常见问题：忘记超管密码、账号锁定、定时任务、通知失败、数据库备份与恢复。">
+<meta property="og:type" content="website">
+<meta property="og:image" content="assets/img/og.png">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/css/base.css">
+<link rel="stylesheet" href="assets/css/components.css">
+</head>
+<body>
+<a class="skip-link" href="#main">跳到正文</a>
+
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="index.html" aria-label="BRA 首页">
+      <img src="assets/img/pet/keeper-head.svg" alt="" width="38" height="38">
+      <span>BRA<small>BEE RUST ADMIN</small></span>
+    </a>
+    <button class="nav-toggle" type="button" aria-controls="site-nav" aria-expanded="false" aria-label="打开导航"><span></span></button>
+    <nav class="nav" id="site-nav" aria-label="主导航">
+      <a href="index.html">首页</a>
+      <a href="index.html#intro">介绍</a>
+      <a href="index.html#features">功能</a>
+      <a href="index.html#architecture">架构</a>
+      <a href="index.html#timeline">迭代</a>
+      <a href="releases.html">版本日志</a>
+      <a href="install.html">安装</a>
+      <a href="usage.html">使用</a>
+      <a class="nav-ext" href="https://github.com/erikwang2013/bee-rust-admin" target="_blank" rel="noopener">GitHub ↗</a>
+      <a class="nav-ext" href="https://erik.xyz" target="_blank" rel="noopener">艾瑞可erik ↗</a>
+    </nav>
+  </div>
+</header>
+<main id="main">
+<section class="doc-hero">
+  <div class="container">
+    <p class="eyebrow">常见问题与运维</p>
+    <h1>排障与运维</h1>
+    <p class="lead">忘记密码、账号被锁、任务没跑、通知失败、备份恢复——把最容易卡住的地方一次说清。</p>
+    <div class="doc-actions">
+      <a class="btn" href="usage.html">看使用手册</a>
+      <a class="btn btn--ghost" href="https://github.com/erikwang2013/bee-rust-admin/blob/main/docs/faq.md" target="_blank" rel="noopener">在 GitHub 查看原文 ↗</a>
+    </div>
+  </div>
+</section>
+<div class="container"><article class="doc">
+<blockquote>
+<p>本册是<a href="usage.html">《使用手册》</a>第 5 章的单独成册：排障问答（5.1–5.8）与运维动作（5.9–5.11）。
+界面功能怎么用看使用手册，安装 / 部署 / 配置 / 升级看 <a href="install.html">install.md</a>。</p>
+</blockquote>
+<h2 id="目录">目录</h2>
+<ul>
+<li><a href="#51-忘记超管密码了怎么办">5.1 忘记超管密码了怎么办</a></li>
+<li><a href="#52-账号被锁了什么时候能再登">5.2 账号被锁了，什么时候能再登</a></li>
+<li><a href="#53-语言和主题在哪里改为什么换了台电脑就变了">5.3 语言和主题在哪里改，为什么换了台电脑就变了</a></li>
+<li><a href="#54-头像传不上去">5.4 头像传不上去</a></li>
+<li><a href="#55-公告发布了为什么有人看不到">5.5 公告发布了，为什么有人看不到</a></li>
+<li><a href="#56-定时任务为什么没跑">5.6 定时任务为什么没跑</a></li>
+<li><a href="#57-升级后为什么要重新登录">5.7 升级后为什么要重新登录</a></li>
+<li><a href="#58-操作日志里的安全扫描命中是什么">5.8 操作日志里的「安全扫描命中」是什么</a></li>
+<li><a href="#59-运维--清理明文备份">5.9 运维 · 清理明文备份</a></li>
+<li><a href="#510-运维--数据库备份与恢复">5.10 运维 · 数据库备份与恢复</a></li>
+<li><a href="#511-通知没发出去--测试邮件失败">5.11 通知没发出去 / 测试邮件失败</a></li>
+</ul>
+<h2 id="5-常见问题与运维">5. 常见问题与运维</h2>
+<h3 id="51-忘记超管密码了怎么办">5.1 忘记超管密码了怎么办</h3>
+<p>超管密码<strong>只在首次启动</strong>（管理员表为空的那一次）按配置里的初始密码写入一次。之后改配置文件、重启服务都不会影响已经存在的账号，所以「改配置再重启」这条路是不通的；密码在库里也是加密哈希，翻不出原文。</p>
+<p>界面上同样没有找回入口——系统有意禁止重置超级管理员的密码（「不能重置其他超级管理员的密码」），正是为了不让任何人借「重置」这条路接管超管。</p>
+<p>实际可行的只有两种：</p>
+<ul>
+<li>你还<strong>登录着</strong>超管（比如浏览器没退）：直接去 <strong>个人中心 → 修改密码</strong> 改掉它。</li>
+<li>已经登不进去了：这属于运维动作，需要能碰服务器的人侧处理（按部署文档在数据库层面重置，或从备份恢复）。注意：清空管理员表能让系统在下次启动时重新写入初始超管，但<strong>所有管理员账号会一起丢失</strong>，不到万不得已不要这么做。</li>
+</ul>
+<p>防患于未然：拿到初始密码后第一件事就是去个人中心改掉，并记进密码管理器。</p>
+<h3 id="52-账号被锁了什么时候能再登">5.2 账号被锁了，什么时候能再登</h3>
+<p>「尝试过于频繁，请 N 分钟后再试」是登录限流触发的，默认连续 <strong>5</strong> 次密码错误就锁 <strong>10</strong> 分钟。要点：</p>
+<ul>
+<li>触发维度有<strong>两个</strong>：同一个账号、同一个来源 IP（同一出口 IP 下的人可能互相「带累」）。</li>
+<li><strong>验证码答错不计入</strong>失败次数，只有密码错才算。</li>
+<li><strong>解锁方式就是等</strong>：窗口过去自动解除。成功登录会清掉该账号的失败计数；来源 IP 的计数要等窗口到期。</li>
+<li>计数保存在服务进程的内存里，所以<strong>服务重启会立刻清空</strong>。</li>
+<li>阈值本身是可配置项（失败次数、锁定时长），部署方可以按需要调；这两个值都设成 0（或负数）等于关闭限流。</li>
+<li>锁定的那一刻，如果配了 Webhook，会给接收端推一条 <code>account.locked</code>（哪个账号、来源 IP、解锁时间，见 <a href="usage.html#313-通知设置systemnotify">3.13</a>）。</li>
+</ul>
+<h3 id="53-语言和主题在哪里改为什么换了台电脑就变了">5.3 语言和主题在哪里改，为什么换了台电脑就变了</h3>
+<p>都在顶栏：<strong>切换语言</strong>、<strong>切换明暗主题</strong>。它们只保存在你这台电脑的浏览器里，不跟账号走——换设备、换浏览器、清浏览器数据之后都会回到默认（语言跟随浏览器、主题跟随系统）。</p>
+<h3 id="54-头像传不上去">5.4 头像传不上去</h3>
+<p>按提示对症处理：</p>
+<table>
+<thead>
+<tr>
+<th>现象 / 提示</th>
+<th>原因与处理</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>图片读取失败，请换一张 PNG/JPEG</td>
+<td>选的文件不是 PNG/JPEG（改了后缀的也不行），换一张真图</td>
+</tr>
+<tr>
+<td>压缩后仍超过 512KB，请换一张小一些的图片</td>
+<td>浏览器自动压缩后仍然超过 512 KB，换一张尺寸更小的图</td>
+</tr>
+<tr>
+<td>头像不能超过 512 KB</td>
+<td>服务端硬上限拦截，同上，换小图</td>
+</tr>
+<tr>
+<td>头像上传失败</td>
+<td>网络中断或服务不可用，重试一次；持续失败找管理员看服务状态</td>
+</tr>
+</tbody>
+</table>
+<p>别忘了上传过程中有进度显示，大图（接近 512 KB）在慢网络下要等几秒，别急着关页面。</p>
+<h3 id="55-公告发布了为什么有人看不到">5.5 公告发布了，为什么有人看不到</h3>
+<p>按顺序检查：</p>
+<ol>
+<li><strong>它还是草稿吗</strong>？列表里状态为「草稿」的公告对普通用户<strong>完全不可见</strong>，必须在列表里点 <strong>发布</strong>。</li>
+<li>对方看错地方了吗？未读提示在<strong>顶栏铃铛</strong>里，不在侧边栏菜单里。</li>
+<li>是不是已经被 <strong>取消发布</strong> 了？取消发布后它会从所有人的未读里消失（已读记录还留着，重新发布不会重复提醒已经读过的人）。</li>
+<li>铃铛里一次只列<strong>最近 50 条</strong>未读，如果对方积压了很多条，旧的那条可能没显示出来，列表底部会提示「还有 n 条未读」。</li>
+</ol>
+<h3 id="56-定时任务为什么没跑">5.6 定时任务为什么没跑</h3>
+<p>依次排查：</p>
+<ol>
+<li><strong>调度开关</strong>：部署配置里 <code>[job] enabled</code> 为 <code>true</code> 时，服务才会启动调度循环。它被关掉时，<strong>自动调度完全停摆</strong>，但手动 <strong>触发一次</strong> 仍然可用——先用「触发一次」确认任务本身没问题。</li>
+<li><strong>任务状态</strong>：列表里显示 <strong>停用</strong> 的任务不会被调度（但上面说了，仍然可以手动触发）。</li>
+<li><strong>间隔没到</strong>：任务按「上次运行时间 + 间隔」判定，间隔单位是<strong>秒</strong>；列表里的「间隔（秒）」和「上次运行」可以直接对。</li>
+<li><strong>从来没跑过</strong>：新装或新加的任务「上次运行」显示 <strong>从未运行</strong>，服务起来后第一个检查周期（10 秒内）就会补跑一次；如果一直没跑，回到第 1、2 条。</li>
+<li><strong>跑了但失败</strong>：「执行记录」页签里看每次执行的 结果 和 消息（列表的「上次结果」也写着最后一条结果）。任务失败不会重试，等下一个间隔再跑。</li>
+</ol>
+<h3 id="57-升级后为什么要重新登录">5.7 升级后为什么要重新登录</h3>
+<p>登录令牌里带了一个<strong>版本号</strong>。服务端<strong>每次请求</strong>都会拿它和账号上的版本号比对，对不上就判定为失效——界面表现是跳回登录页，提示「登录已失效，请重新登录」。</p>
+<p>会让版本号变动、从而让<strong>所有已签发的旧令牌立即作废</strong>的操作有：</p>
+<ul>
+<li><strong>退出登录</strong>、<strong>退出其他设备</strong>；</li>
+<li><strong>修改密码</strong>、<strong>被管理员重置密码</strong>；</li>
+<li><strong>账号被禁用</strong>。</li>
+</ul>
+<p>所以「升级后要重新登录」通常不是升级这个动作本身造成的，而是上面某件事（或者升级时顺手换掉了签名密钥）的结果。重新登录一次即可，数据不受影响。反过来看，这也是为什么重置别人密码之后要记得通知他：他会被立刻踢下线。</p>
+<h3 id="58-操作日志里的安全扫描命中是什么">5.8 操作日志里的「安全扫描命中」是什么</h3>
+<p>那是请求安全扫描的记录：服务会对每个请求做一遍攻击特征检测（SQL 注入、命令注入、路径穿越、SSRF 之类），命中的请求会在 <strong>操作日志</strong> 里留下一行，模块是 <code>security</code>、动作是 <strong>安全扫描命中</strong>。</p>
+<p>关键点：</p>
+<ul>
+<li><strong>默认只记录、不拦截</strong>：默认配置下命中的请求照常执行，只是留一条痕。这是有意的——误报真实存在（密码里带 <code>' or 1=1--</code> 的用户名、公告里贴的代码片段），直接拦会误伤正常工作。</li>
+<li>部署方可以把扫描调成「命中高危就拦截」；那种情况下被拦的请求会直接返回失败（提示 <strong>请求被安全策略拦截</strong>），日志里那行的结果会是失败——这时候用户在界面上看到的是操作没成功，而不是「服务坏了」。</li>
+<li>日志里<strong>只记等级和检测器的名字，不记请求的原始内容</strong>，所以别指望从这行里翻出对方到底发了什么；真要追查，结合同一时间的其它日志一起看。</li>
+</ul>
+<h3 id="59-运维--清理明文备份">5.9 运维 · 清理明文备份</h3>
+<p>这一条给能碰数据库的运维看，普通使用者可以跳过。</p>
+<p>表 <code>admin_email_phone_backup</code> 是 email / 手机号<strong>存量加密迁移</strong>留下的<strong>明文备份</strong>：迁移把库里原有的明文字段逐行加密回写，写之前先把<strong>原值</strong>存进这张表 —— 密钥一旦丢了或换错，密文就解不开了，这是唯一的退路。反过来说，只要它还留着，<strong>明文 PII 就一直敞在库里</strong>，确认不需要了就该清掉。</p>
+<p><strong>清理前必须验证</strong>：当前密钥能正常解密。登录后打开 <strong>个人中心</strong>，邮箱、手机号要显示<strong>原文</strong>（能正常读写即解密正常）。看不到原文就不算验证过 —— 页面能打开、显示空白或脱敏值都不能证明密文解得开。</p>
+<p>还要看一眼<strong>启动日志里有没有「加密失败，暂留明文」</strong>：服务每次启动都会把存量明文逐行加密，个别行搬不动（比如密文撑爆列宽）就留在原处、日志点名、下次启动再试。出现过这一行就说明<strong>库里还有明文行</strong> —— 那行没搬完之前先别清：清了备份表，下次启动又会把它重新写进（新建的）备份表。</p>
+<p>验证通过、且升级后确定不需要回滚了，就可以清理（<strong>不可逆</strong>，清完没有任何回退手段，密钥再丢就真的找不回了）：</p>
+<pre><code class="language-sql">DROP TABLE admin_email_phone_backup;
+</code></pre>
+<p>建议清之前先把表导出一份留档，存进密码管理器或离线位置：</p>
+<pre><code class="language-bash">mysqldump bee_admin admin_email_phone_backup &gt; admin_email_phone_backup.sql
+</code></pre>
+<p>服务每次启动都会数一下这张表的行数，还有数据就在日志里 warn 一行提醒；清掉之后提示自然消失。</p>
+<p><strong>清完表又冒出来（空表）是正常的</strong>：启动迁移里有 <code>CREATE TABLE IF NOT EXISTS</code>，删掉的表会在下次启动时以<strong>空表</strong>重建 —— 空 = 清理成功，别当成没清掉；只要行数是 0，就没有明文留在库里。</p>
+<h3 id="510-运维--数据库备份与恢复">5.10 运维 · 数据库备份与恢复</h3>
+<p>这一条也是给运维看的。内置任务 <strong>数据库备份</strong>（<code>db_backup</code>）把整个库用 <code>mysqldump</code> 导到磁盘上，默认每天跑一次。要点：</p>
+<ul>
+<li><strong>落在哪</strong>：<code>[backup] dir</code> 指定的目录；不配就落在 <code>{upload_dir}/backups/</code>（默认即 <code>uploads/backups/</code>）。文件名形如 <code>backup_20261016_030000.sql</code>，<strong>权限 0600</strong>（dump 里是全库数据，包括口令哈希，别改成同机可读）。</li>
+<li><strong>留几份</strong>：<code>[backup] keep</code>，默认 7 份；每跑完一次就删掉多余的<strong>最旧</strong>备份。<code>keep</code> 必须是 ≥ 1 的整数，配成 0 或负数服务会<strong>拒绝启动</strong>（等于每跑一次就把备份全删了）。</li>
+<li><strong>怎么立刻备一份</strong>：定时任务页里对 <strong>数据库备份</strong> 点 <strong>触发一次</strong>（立即受理、<strong>后台执行</strong>，不占着页面等），到 <strong>执行记录</strong> 页签里看这次跑的耗时与消息（含文件名和字节数）。</li>
+<li><strong>任务失败不算接口失败</strong>：跟其它任务一样，结果看执行记录里的 <code>status</code> 与 <code>msg</code>（常见原因：<code>mysqldump</code> 没装、DNS 里的账号密码不对、磁盘满）。</li>
+<li><strong>恢复是手工动作</strong>（不做自动恢复，避免误触发覆盖现网）：先在库里确认要恢复的 dump 文件，然后</li>
+</ul>
+<p><code>bash
+  # 1) 停服务（别带业务写入做恢复）
+  sudo systemctl stop bee-admin
+  # 2) 恢复（口令走环境变量，别进命令行历史）
+  MYSQL_PWD='口令' mysql -h 127.0.0.1 -u 用户 bee_admin &lt; /path/to/backup_20261016_030000.sql
+  # 3) 起服务
+  sudo systemctl start bee-admin</code></p>
+<p>恢复会按 dump 里的 <code>DROP TABLE IF EXISTS</code> + <code>CREATE TABLE</code> <strong>覆盖同名表</strong>，库里 dump 之后的新数据会没掉——这就是要先停服、想清楚的原因。恢复完照常登录（账号数据也来自 dump，用当时的密码）。
+- <code>mysqldump</code> 用的连接参数就是从 <code>[db] dsn</code> 里拆出来的（同一份凭据），所以备份能不能跑通可以直接用 <code>mysql</code> 客户端拿同一组参数试。</p>
+<h3 id="511-通知没发出去--测试邮件失败">5.11 通知没发出去 / 测试邮件失败</h3>
+<ul>
+<li><strong>Webhook 没收到</strong>：先看开关和地址（必须是 <code>http://</code> / <code>https://</code> 开头，保存时就会拦；地址写 <strong>IP 字面量</strong> 时（按 URL 规范化后的 host 判定），<code>169.254.0.0/16</code>、<code>fe80::/10</code>、<code>0.0.0.0</code>、<code>::</code> 这类链路本地 / 未指定地址也会被拒，<code>127.0.0.1</code> 等回环允许）。<strong>发送时还会解析域名</strong>：解析结果只要有一个落在链路本地 / 未指定地址，就不投递、记终态失败（<code>notify_delivery.status = failed</code>，<code>msg</code> 里写「链路本地」），<strong>域名解析到链路本地 / 未指定地址会被拦</strong>、也不会重投；保存时放行的域名不等于发送时一定放行（RFC1918 私网 / IPv6 ULA 不拦，需部署侧网络策略兜底）。再看接收端要求 —— 我们发的是 <code>POST</code> + <code>Content-Type: application/json</code>，body 是 <code>{"event","at","data"}</code>；配了签名密钥还会带 <code>X-BRA-Timestamp</code> / <code>X-BRA-Signature</code>（HMAC-SHA256，算法见 <a href="usage.html#313-通知设置systemnotify">3.13</a>）。接收端回非 2xx（含 <strong>3xx</strong> —— 我们<strong>不跟随重定向</strong>，不会把请求带到 <code>Location</code> 去）、5 秒没响应或连接失败，都算<strong>一次失败</strong>：落 <code>notify_delivery</code> 账本，首发失败 1 分钟后由 <code>notify_retry</code> 重投，之后按 5/15 分钟退避，<strong>最多重投 3 次</strong>（共 4 次尝试）后置 <code>failed</code>；成功置 <code>delivered</code>。排查看 <code>notify_delivery</code> 的 <code>msg</code> 与任务执行记录里的 <code>notify_retry</code>（账本保留 30 天）。</li>
+<li><strong>失败的事件会重投，但不保证顺序</strong>：Webhook <strong>首发失败才落</strong> <code>notify_delivery</code> 账本（成功不落行），由 <code>notify_retry</code> 重投，所以「对方服务器重启那 2 分钟里失败的事件」会在恢复后按退避收到。接收端请按 <code>event</code> + <code>at</code>（或 body 里的业务键）做<strong>幂等去重</strong> —— 重投可能乱序，也可能重复。发送时域名解析命中链路本地 / 未指定地址是<strong>终态失败、不重投</strong>；账本保留 <strong>30 天</strong>，过期后不再补。公告的<strong>邮件</strong>推送仍不落库、失败不重投（它只负责提醒去看公告）。</li>
+<li><strong>测试邮件失败</strong>：提示里就是原因。常见的几条：<code>connection refused</code> / 超时（主机名或端口不对，或对方只在内网通）、<code>authentication failed</code>（用户名 / 口令不对，或者服务商要求用<strong>应用专用密码</strong>）、证书相关报错（加密方式选错了：465 用 <strong>SSL/TLS</strong>、587 用 <strong>STARTTLS</strong>）、<code>sender address rejected</code>（发件人不是服务商允许的地址 —— 多要求发件人 = 认证账号）。<strong>测通了记得把 SMTP 开关打开</strong>，测试邮件本身不看开关。</li>
+<li><strong>收件箱里没有</strong>：先翻垃圾邮件 / 已过滤；再把发件人换成服务商允许的地址重试一次。</li>
+</ul>
+</article></div>
+</main>
+<footer class="site-footer" id="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <div class="footer-brand">
+          <img src="assets/img/pet/keeper-head.svg" alt="" width="52" height="52">
+          <div><b>BRA</b><small>BEE RUST ADMIN</small></div>
+        </div>
+        <p>Rust 服务端 + React 前端的 RBAC 管理后台。把权限守住，让后台开箱即用。</p>
+      </div>
+      <div>
+        <h3>项目</h3>
+        <ul class="footer-links">
+          <li><a href="index.html#intro">项目介绍</a></li>
+          <li><a href="index.html#features">功能设计</a></li>
+          <li><a href="index.html#architecture">架构设计</a></li>
+          <li><a href="index.html#timeline">功能迭代</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>文档</h3>
+        <ul class="footer-links">
+          <li><a href="install.html">安装说明</a></li>
+          <li><a href="usage.html">使用手册</a></li>
+          <li><a href="faq.html">常见问题</a></li>
+          <li><a href="releases.html">版本日志</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>链接</h3>
+        <ul class="footer-links">
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin" target="_blank" rel="noopener">GitHub 仓库 ↗</a></li>
+          <li><a href="https://erik.xyz" target="_blank" rel="noopener">艾瑞可erik ↗</a></li>
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin/blob/main/LICENSE" target="_blank" rel="noopener">代码许可 Apache-2.0 ↗</a></li>
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin/blob/main/ASSETS-LICENSE.md" target="_blank" rel="noopener">视觉资产授权 ↗</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© <span data-year>2026</span> erik · 代码 Apache-2.0</span>
+      <div class="footer-info" id="busuanzi">
+        <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+        <span id="busuanzi_container_page_pv"><span data-i18n="post.readA">阅读</span> <b id="busuanzi_value_page_pv">0</b> <span data-i18n="post.readB">次 👀</span></span>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<button class="to-top" id="to-top" type="button" aria-label="返回顶部">
+  <img src="assets/img/pet/keeper-onduty.svg" alt="" width="76" height="76">
+</button>
+
+<script src="assets/js/site.js" defer></script>
+</body>
+</html>

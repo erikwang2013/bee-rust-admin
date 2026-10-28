@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>安装说明 · BRA</title>
+<meta name="description" content="BRA 安装说明：一键脚本、Docker compose、手工部署，配置生成与常见坑。">
+<meta name="theme-color" content="#fff9ec">
+<meta property="og:title" content="安装说明 · BRA">
+<meta property="og:description" content="BRA 安装说明：一键脚本、Docker compose、手工部署，配置生成与常见坑。">
+<meta property="og:type" content="website">
+<meta property="og:image" content="assets/img/og.png">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/css/base.css">
+<link rel="stylesheet" href="assets/css/components.css">
+</head>
+<body>
+<a class="skip-link" href="#main">跳到正文</a>
+
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="index.html" aria-label="BRA 首页">
+      <img src="assets/img/pet/keeper-head.svg" alt="" width="38" height="38">
+      <span>BRA<small>BEE RUST ADMIN</small></span>
+    </a>
+    <button class="nav-toggle" type="button" aria-controls="site-nav" aria-expanded="false" aria-label="打开导航"><span></span></button>
+    <nav class="nav" id="site-nav" aria-label="主导航">
+      <a href="index.html">首页</a>
+      <a href="index.html#intro">介绍</a>
+      <a href="index.html#features">功能</a>
+      <a href="index.html#architecture">架构</a>
+      <a href="index.html#timeline">迭代</a>
+      <a href="releases.html">版本日志</a>
+      <a href="install.html">安装</a>
+      <a href="usage.html">使用</a>
+      <a class="nav-ext" href="https://github.com/erikwang2013/bee-rust-admin" target="_blank" rel="noopener">GitHub ↗</a>
+      <a class="nav-ext" href="https://erik.xyz" target="_blank" rel="noopener">艾瑞可erik ↗</a>
+    </nav>
+  </div>
+</header>
+<main id="main">
+<section class="doc-hero">
+  <div class="container">
+    <p class="eyebrow">安装说明</p>
+    <h1>从空库到能用</h1>
+    <p class="lead">三种装法、配置生成、装完自检与常见坑。预编译产物需要 glibc ≥ 2.38；老机器走源码构建或 Docker。</p>
+    <div class="doc-actions">
+      <a class="btn" href="index.html#quickstart">回到快速开始</a>
+      <a class="btn btn--ghost" href="https://github.com/erikwang2013/bee-rust-admin/blob/main/docs/install.md" target="_blank" rel="noopener">在 GitHub 查看原文 ↗</a>
+    </div>
+  </div>
+</section>
+<div class="container"><article class="doc">
+<p>Bee Rust Admin —— Rust 后端 <code>bee_admin</code> + React 前端 dist + MySQL 8 + nginx。
+本文给部署者：讲清怎么装。装好之后怎么用，见 <a href="usage.html">使用手册</a>；排障与运维见 <a href="faq.html">常见问题与运维</a>。</p>
+<hr />
+<h2 id="0-前置要求">0. 前置要求</h2>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>要求</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>系统</td>
+<td><strong>Linux x86_64</strong></td>
+<td>ARM 只能从源码构建或用 Docker（没有 arm64 预编译产物）</td>
+</tr>
+<tr>
+<td>数据库</td>
+<td><strong>MySQL 8.0+</strong>，字符集 <code>utf8mb4</code></td>
+<td>表结构与超管账号由服务<strong>首次启动时自动创建</strong>，不用手工导 SQL</td>
+</tr>
+<tr>
+<td>glibc</td>
+<td><strong>≥ 2.38</strong></td>
+<td>只有用预编译产物才要求，见下</td>
+</tr>
+<tr>
+<td>权限</td>
+<td>root 或 sudo</td>
+<td><strong>只有</strong>装 systemd 单元 / nginx 站点那一步需要，其余步骤普通用户即可</td>
+</tr>
+</tbody>
+</table>
+<h3 id="最要紧的一条glibc-版本">⚠️ 最要紧的一条：glibc 版本</h3>
+<p>预编译二进制需要 <strong>glibc ≥ 2.38</strong>（= Debian 13 / Ubuntu 24.04 及以上）。
+Ubuntu 22.04（2.35）、Debian 12（2.36）、CentOS 上会直接报
+<code>version 'GLIBC_2.38' not found</code>，二进制根本跑不起来。</p>
+<pre><code class="language-bash">ldd --version | head -1     # 末尾数字就是 glibc 版本
+</code></pre>
+<p><strong>低于 2.38 就分叉</strong>：改用「从源码构建」（<code>--mode build</code>）或「Docker」，别看一键脚本了。</p>
+<blockquote>
+<p><code>install.sh</code> 自己会检测这件事 —— 它会让下载来的二进制<strong>真的加载一次</strong>，
+跑不起来就在<strong>写盘之前</strong>退出，并给出上面这两条替代命令，
+不会留下一个装了一半、又起不来的安装。</p>
+</blockquote>
+<hr />
+<h2 id="1-生成配置">1. 生成配置</h2>
+<p><code>app.conf</code> 里有三样密钥必须自己生成（<strong>别用示例文件里的占位符，服务会拒绝启动</strong>）：</p>
+<pre><code class="language-bash"># 数据库口令（明文也行，脚本/示例里的都会处理）
+# 落库加密密钥（AES-256-GCM）—— 必须是 32 字节
+echo &quot;encrypt_key = base64:$(openssl rand -base64 32)&quot;
+# 对外短 id 的盐
+echo &quot;hashids_salt = $(openssl rand -hex 16)&quot;
+# JWT 签名密钥（≥32 字符）
+echo &quot;secret = $(openssl rand -hex 32)&quot;
+</code></pre>
+<p>然后把下面这份<strong>改好填进 <code>&lt;prefix&gt;/conf/app.conf</code></strong>（权限 <code>600</code>）：</p>
+<pre><code class="language-ini">[app]
+name = bee-rust-admin
+http_addr = 127.0.0.1:8080
+log_level = info
+upload_dir = uploads
+hashids_salt = &lt;上面生成的 hex&gt;
+hashids_min_len = 8
+snowflake_worker = 0
+snowflake_dc = 0
+encrypt_key = base64:&lt;上面生成的那串&gt;
+
+[db]
+dsn = mysql://&lt;用户&gt;:&lt;口令&gt;@127.0.0.1:3306/bee_admin
+
+[jwt]
+secret = &lt;上面生成的 hex&gt;
+expire_hours = 24
+
+[auth]
+max_fail = 5
+lock_minutes = 10
+captcha = true
+captcha_trajectory = false
+
+[log]
+retain_days = 90
+
+[job]
+enabled = true
+
+[security]
+scan = off
+
+[apidoc]
+enabled = false
+password =
+
+[seed]
+initial_admin_password = &lt;自己定一个&gt;
+</code></pre>
+<blockquote>
+<p>⚠️ <strong><code>encrypt_key</code> 与 <code>hashids_salt</code> 生成后不可更换</strong>：
+换 <code>encrypt_key</code> = 库里已加密的 email/phone <strong>永久解不开</strong>（没有救援）；
+换 <code>hashids_salt</code> = 已发出的对外短 id 全部作废。<strong>生成完就把这份 conf 备份好。</strong></p>
+<p>⚠️ <code>initial_admin_password</code> 只在<strong>首次启动（admin 表为空）</strong>时用来创建内置超管 <code>admin</code>：
+太弱（不足 8 位、或少于字母/数字/符号中的两类）会在<strong>那一次</strong>启动时被拒绝并给出明确错误，
+库非空后这个键就再也不起作用了。校验<strong>刻意不放在配置加载期</strong> —— 免得存量部署
+（conf 里还留着老口令）在换值之前起不来。</p>
+</blockquote>
+<p>各键的完整说明（含默认值与「多实例必须各不同」之类）见
+<a href="https://github.com/erikwang2013/bee-rust-admin/blob/main/admin/conf/app.conf.example" target="_blank" rel="noopener"><code>admin/conf/app.conf.example</code></a>。</p>
+<hr />
+<h2 id="2-三种装法">2. 三种装法</h2>
+<h3 id="a-一键脚本推荐">(a) 一键脚本（推荐）</h3>
+<p><strong>下载仓库后跑，别直接 <code>curl | bash</code></strong> —— 它要 root 装 systemd 与 nginx，值得先看一眼；
+而且 <code>install.sh</code> 只是入口，具体步骤在同仓库的 <code>scripts/lib/install-*.sh</code>（缺了会直接报错退出）。
+<strong>旧版「只下载一个 <code>install.sh</code> 再 <code>curl | bash</code>」的用法已退役</strong> —— 单文件跑不起来，必须先克隆完整仓库：</p>
+<pre><code class="language-bash">git clone --depth 1 https://github.com/erikwang2013/bee-rust-admin.git
+cd bee-rust-admin
+less install.sh          # 先看一眼（步骤在 scripts/lib/install-*.sh）
+bash install.sh          # 交互式：会问数据库口令
+</code></pre>
+<p>它依次做：拉发布产物（二进制 + 前端 dist）→ 生成密钥 → 写 <code>&lt;prefix&gt;/conf/app.conf</code>（0600）
+→ 建库（可选）→ 装 systemd 单元 + nginx 站点 → 起服务并自检 <code>/api/v1/health</code>。
+默认装到 <code>/opt/bee-admin</code>，对外 <code>8081</code>。</p>
+<ul>
+<li><strong>建库是可选的</strong>：给 <code>--db-admin-user U --db-admin-pass P</code> 它才自动建库建号；
+  不给就只打印 SQL 让你手工执行（它不猜 root 口令、不 <code>DROP</code>、不装 MySQL）。
+  <strong>升级（<code>--keep-conf</code>）时不建库建号</strong>：连库凭据以已有 <code>app.conf</code> 里的 dsn 为准，<code>--db-*</code> 不参与；
+  连不上会退出并让你自己修 dsn（它绝不 ALTER 库里已有的账号）</li>
+<li>表结构与超管账号由服务<strong>首次启动时自动创建</strong>，不需要手工导 SQL</li>
+</ul>
+<p>常用变体（参数名照 <code>install.sh --help</code>）：</p>
+<pre><code class="language-bash"># 老机器（glibc &lt; 2.38）：从源码构建（需要 rust 1.99+ / node 20+ / pnpm 9+）
+bash install.sh --mode build
+
+# 装第二套实例（目录、服务名、端口、雪花节点全错开）
+bash install.sh --service-name bee-admin-2 --prefix /opt/bee-admin-2 \
+                --http-port 8091 --backend-port 8090 --snowflake 2,0
+
+# 先看会做什么（不落盘、不下载、不连库）
+bash install.sh --dry-run --yes
+
+# 升级：只换二进制与服务文件，配置一个字节都不动（--db-* 不参与，DSN 以已有 conf 为准）
+bash install.sh --keep-conf ...
+
+# 没有 root / 自己管进程：不装 systemd 单元（也不会去 restart 服务，装完打印手动启动命令），
+# 站点也不装就再加 --no-nginx
+bash install.sh --no-systemd --no-nginx
+</code></pre>
+<blockquote>
+<p><strong>已经有 <code>app.conf</code> 时，脚本默认拒绝覆盖</strong>（退出码 <code>6</code>）—— 因为 <code>encrypt_key</code> 一换，
+库里已加密的 email/phone 就永久解不开。要覆盖得显式加 <code>--force</code>：它会先把原文件备份到
+<code>app.conf.bak.&lt;时间戳&gt;</code>，但换了密钥之后数据仍可能解不开 —— 只有明确知道后果才用它。
+<strong>正常升级走 <code>--keep-conf</code>。</strong></p>
+</blockquote>
+<p><strong>退出码</strong>：<code>0</code> 成功 · <code>1</code> 参数错误 / 构建失败等其它失败 · <code>2</code> 预检失败（什么都没写）· <code>3</code> 已就绪、只差 root 执行打印的命令 ·
+<code>4</code> 需要人工建库 · <code>5</code> 自检失败 · <code>6</code> 检测到已有配置且未给 <code>--force</code>。</p>
+<h3 id="b-docker-compose">(b) Docker compose</h3>
+<p>仓库里已备好 <code>docker-compose.yml</code>（MySQL + 后端 + 前端三件套，对外 <code>8081</code>）与一键脚本
+<code>compose-up.sh</code>（缺的口令 / 密钥自动生成，写回 <code>.env</code> 与 <code>admin/conf/app.conf</code>）：</p>
+<pre><code class="language-bash">./compose-up.sh --build     # 缺的口令/密钥自动生成并打印初始口令；已有镜像时去掉 --build
+# 打开 http://localhost:8081（初始账号 admin；初始口令在 admin/conf/app.conf 的 [seed] initial_admin_password）
+
+# 想自己填（或不想用脚本）：
+cp .env.example .env &amp;&amp; cp admin/conf/app.conf.example admin/conf/app.conf
+vi .env admin/conf/app.conf    # 填 MySQL root 密码、jwt secret、encrypt_key
+docker compose up -d --build
+</code></pre>
+<ul>
+<li>容器内的数据库地址由 <code>BEE_ADMIN_DB_DSN</code> 注入（指向 compose 里的 <code>mysql</code> 服务）；
+  配置文件仍从宿主机 <code>admin/conf/app.conf</code> 挂载进去，JWT secret 与初始口令从那儿读</li>
+<li>后端容器以<strong>「宿主机配置文件属主」的身份</strong>运行（<code>.env</code> 里的 <code>APP_UID</code>/<code>APP_GID</code>，
+  默认 <code>1000:1000</code>）：<code>app.conf</code> 常是 600 权限，用镜像默认的非 root 用户会读不到配置而启动失败。
+  你的宿主 uid/gid 不是 1000 就得在 <code>.env</code> 里改（<code>id -u</code> / <code>id -g</code> 查）</li>
+<li>上传的头像落在容器内 <code>/home/uploads</code>（镜像把 WORKDIR 指到 <code>/home</code>，并预置了这个可写目录：
+  <code>upload_dir=uploads</code> 是相对 WORKDIR 的路径，而 <code>/app</code> 属 root，以 <code>APP_UID</code> 跑写不进去）；
+  <strong>容器重建即丢</strong></li>
+<li><code>compose-up.sh</code> 只补「空 / 占位符」的值（填过的不动，重复跑不会重新生成）；生成的值就在本地
+  两个文件里，<strong>记得备份 <code>admin/conf/app.conf</code></strong>（<code>encrypt_key</code> 丢了，库里已加密的 email/phone 永久解不开）</li>
+<li>想接已有的 MySQL：删掉 compose 里的 <code>mysql</code> 服务与 <code>depends_on</code>，改 <code>BEE_ADMIN_DB_DSN</code> 即可</li>
+<li><strong>不想在本机编译</strong>（省掉 Rust/Node 工具链）：每个 Release 还附带 <code>bra-images-vX.Y.Z.tar.gz</code>
+  与 <code>bra-compose-vX.Y.Z.tar.gz</code> 两个离线包（镜像是本机构建好的，<code>docker load -i</code> 即导入；
+  compose 包里有 compose 文件、预填 <code>.env</code> 与一页说明）—— 解包后 <code>docker compose up -d</code>
+  （<strong>不加 <code>--build</code></strong>）就能起栈，细节见根 README 的 Docker 一节</li>
+</ul>
+<h3 id="c-手工部署">(c) 手工部署</h3>
+<p>systemd 托管后端（监听 <code>127.0.0.1:8080</code>）+ nginx 对外 <code>8081</code>：</p>
+<pre><code class="language-bash">cargo build --release -p bee_admin
+cd admin/web &amp;&amp; pnpm build
+
+sudo cp admin/deploy/bee-admin.service /etc/systemd/system/
+sudo systemctl daemon-reload &amp;&amp; sudo systemctl enable --now bee-admin
+
+# 站点目录按自己的 nginx 来：自编译版常在 &lt;prefix&gt;/conf/vhost/，发行版在 /etc/nginx/conf.d/
+sudo cp admin/deploy/nginx.conf.example /usr/local/nginx/conf/vhost/bee-admin.conf
+sudo nginx -t &amp;&amp; sudo systemctl reload nginx
+</code></pre>
+<blockquote>
+<p><code>admin/deploy/</code> 里那两个文件里的路径与用户名是<strong>示例</strong>（写的是
+<code>/home/wwwroot/bee-rust-admin</code> 和 <code>erik</code>），要按自己的改成实际值 ——
+或者直接用 <code>install.sh</code>，它会按实际路径 / 用户 / 端口渲染这两份文件。</p>
+</blockquote>
+<p><strong>没有 root / 不想 sudo 的机器用「用户级单元」</strong>，能力与上面系统级等价：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>系统级</th>
+<th>用户级（免 root）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>单元文件</td>
+<td><code>admin/deploy/bee-admin.service</code></td>
+<td><code>admin/deploy/bee-admin.user.service</code></td>
+</tr>
+<tr>
+<td>安装</td>
+<td><code>sudo cp</code> 到 <code>/etc/systemd/system/</code></td>
+<td><code>cp</code> 到 <code>~/.config/systemd/user/</code>，不用 sudo</td>
+</tr>
+<tr>
+<td>开机自启</td>
+<td>直接支持</td>
+<td>需要一次性 <code>sudo loginctl enable-linger &lt;用户&gt;</code>（<code>loginctl show-user &lt;用户&gt; -p Linger</code> 查；没开就等该用户登录后才起）</td>
+</tr>
+<tr>
+<td>管理 / 日志</td>
+<td><code>systemctl status/restart bee-admin</code>、<code>journalctl -u bee-admin</code></td>
+<td>同样命令<strong>全部带 <code>--user</code></strong>（root 的 <code>systemctl status</code> 看不到用户级单元）</td>
+</tr>
+<tr>
+<td>崩溃重启</td>
+<td><code>Restart=on-failure</code>，3 秒重试</td>
+<td>同左</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-bash"># 用户级安装（免 root；路径示例即本机实际值）
+mkdir -p ~/.config/systemd/user
+cp admin/deploy/bee-admin.user.service ~/.config/systemd/user/bee-admin.service
+systemctl --user daemon-reload &amp;&amp; systemctl --user enable --now bee-admin
+</code></pre>
+<p>日常（升级 = 重建二进制后重启即生效）：</p>
+<pre><code class="language-bash">systemctl --user status bee-admin          # 系统级就去掉 --user
+systemctl --user restart bee-admin
+journalctl --user -u bee-admin -f          # 跟日志
+</code></pre>
+<blockquote>
+<p>⚠️ 两份单元模板的 <code>WorkingDirectory</code> 不同（系统级示例是 <code>&lt;仓库&gt;/admin</code>，用户级是<strong>仓库根</strong>）——
+<code>uploads</code> 是<strong>相对 WorkingDirectory</strong> 落盘的，<strong>迁移已有部署时保持原 cwd</strong>，换了头像就 404。</p>
+</blockquote>
+<hr />
+<h2 id="3-装完自检">3. 装完自检</h2>
+<pre><code class="language-bash">curl http://127.0.0.1:8080/api/v1/health     # =&gt; OK
+</code></pre>
+<p>然后浏览器打开 <code>http://&lt;这台机器的地址&gt;:8081</code>（端口按你改的替换），
+用 <code>admin</code> + <code>[seed] initial_admin_password</code> 登录，<strong>登录后立刻改密码</strong>。</p>
+<hr />
+<h2 id="4-常见坑">4. 常见坑</h2>
+<ul>
+<li><strong><code>app.conf</code> 是 600 权限</strong>：跑服务的用户必须是它的属主，否则起不来；容器里则要对上 <code>APP_UID</code>/<code>APP_GID</code></li>
+<li><strong><code>encrypt_key</code> 不可更换</strong>：换 = 库里 email/phone 永久解不开（没有救援）。备份它，连同整份 <code>app.conf</code> 一起</li>
+<li><strong><code>hashids_salt</code> 一换</strong>，已发出去的对外短 id 全部作废</li>
+<li><strong>初始口令只在库为空时生效</strong>：库里已有 <code>admin</code> 就忽略它，得登录后在后台改</li>
+<li><strong>前后端要一起换</strong>：升级时后端删了旧的 base64 头像接口，老前端配新后端会在头像上传上报 404</li>
+<li><strong>验证码默认开</strong>（<code>[auth] captcha = true</code>）：登录要多点一下；答错不计入锁定次数</li>
+<li><strong>拖拽轨迹校验默认关</strong>（<code>[auth] captcha_trajectory</code>）：开启后滑块答案必须带轨迹
+  （插件默认阈值：≥4 点、300–5000ms、线性度 ≤0.99），只交裸数值的老客户端一律失败。
+  新前端总是上报轨迹，开这个开关不用重发前端；代价是「极快甩动」（&lt;300ms）会被判机器 ——
+  用户表现为滑块怎么拖都提示「验证码错误」，要放宽得改插件侧的 <code>min_duration_ms</code></li>
+<li><strong>仓库根目录的 <code>install.sql</code> 与本项目无关</strong>（那是另一个工具的库），安装不需要它</li>
+<li><strong>忘了超管密码</strong>：改库里的 <code>admin</code> 表（或重建库重来）</li>
+</ul>
+</article></div>
+</main>
+<footer class="site-footer" id="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <div class="footer-brand">
+          <img src="assets/img/pet/keeper-head.svg" alt="" width="52" height="52">
+          <div><b>BRA</b><small>BEE RUST ADMIN</small></div>
+        </div>
+        <p>Rust 服务端 + React 前端的 RBAC 管理后台。把权限守住，让后台开箱即用。</p>
+      </div>
+      <div>
+        <h3>项目</h3>
+        <ul class="footer-links">
+          <li><a href="index.html#intro">项目介绍</a></li>
+          <li><a href="index.html#features">功能设计</a></li>
+          <li><a href="index.html#architecture">架构设计</a></li>
+          <li><a href="index.html#timeline">功能迭代</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>文档</h3>
+        <ul class="footer-links">
+          <li><a href="install.html">安装说明</a></li>
+          <li><a href="usage.html">使用手册</a></li>
+          <li><a href="faq.html">常见问题</a></li>
+          <li><a href="releases.html">版本日志</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>链接</h3>
+        <ul class="footer-links">
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin" target="_blank" rel="noopener">GitHub 仓库 ↗</a></li>
+          <li><a href="https://erik.xyz" target="_blank" rel="noopener">艾瑞可erik ↗</a></li>
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin/blob/main/LICENSE" target="_blank" rel="noopener">代码许可 Apache-2.0 ↗</a></li>
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin/blob/main/ASSETS-LICENSE.md" target="_blank" rel="noopener">视觉资产授权 ↗</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© <span data-year>2026</span> erik · 代码 Apache-2.0</span>
+      <div class="footer-info" id="busuanzi">
+        <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+        <span id="busuanzi_container_page_pv"><span data-i18n="post.readA">阅读</span> <b id="busuanzi_value_page_pv">0</b> <span data-i18n="post.readB">次 👀</span></span>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<button class="to-top" id="to-top" type="button" aria-label="返回顶部">
+  <img src="assets/img/pet/keeper-onduty.svg" alt="" width="76" height="76">
+</button>
+
+<script src="assets/js/site.js" defer></script>
+</body>
+</html>

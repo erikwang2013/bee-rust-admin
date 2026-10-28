@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>使用手册 · BRA</title>
+<meta name="description" content="BRA 使用手册：登录、权限体系落地、各模块操作要点与五档数据权限验证。">
+<meta name="theme-color" content="#fff9ec">
+<meta property="og:title" content="使用手册 · BRA">
+<meta property="og:description" content="BRA 使用手册：登录、权限体系落地、各模块操作要点与五档数据权限验证。">
+<meta property="og:type" content="website">
+<meta property="og:image" content="assets/img/og.png">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/css/base.css">
+<link rel="stylesheet" href="assets/css/components.css">
+</head>
+<body>
+<a class="skip-link" href="#main">跳到正文</a>
+
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="index.html" aria-label="BRA 首页">
+      <img src="assets/img/pet/keeper-head.svg" alt="" width="38" height="38">
+      <span>BRA<small>BEE RUST ADMIN</small></span>
+    </a>
+    <button class="nav-toggle" type="button" aria-controls="site-nav" aria-expanded="false" aria-label="打开导航"><span></span></button>
+    <nav class="nav" id="site-nav" aria-label="主导航">
+      <a href="index.html">首页</a>
+      <a href="index.html#intro">介绍</a>
+      <a href="index.html#features">功能</a>
+      <a href="index.html#architecture">架构</a>
+      <a href="index.html#timeline">迭代</a>
+      <a href="releases.html">版本日志</a>
+      <a href="install.html">安装</a>
+      <a href="usage.html">使用</a>
+      <a class="nav-ext" href="https://github.com/erikwang2013/bee-rust-admin" target="_blank" rel="noopener">GitHub ↗</a>
+      <a class="nav-ext" href="https://erik.xyz" target="_blank" rel="noopener">艾瑞可erik ↗</a>
+    </nav>
+  </div>
+</header>
+<main id="main">
+<section class="doc-hero">
+  <div class="container">
+    <p class="eyebrow">使用手册</p>
+    <h1>把权限体系真正落地</h1>
+    <p class="lead">先说清楚登录与个人中心，再按「建部门 → 建角色 → 建管理员」把权限跑通，最后逐模块上手。</p>
+    <div class="doc-actions">
+      <a class="btn" href="install.html">先安装</a>
+      <a class="btn btn--ghost" href="https://github.com/erikwang2013/bee-rust-admin/blob/main/docs/usage.md" target="_blank" rel="noopener">在 GitHub 查看原文 ↗</a>
+    </div>
+  </div>
+</section>
+<div class="container"><article class="doc">
+<blockquote>
+<p>本手册给<strong>使用者</strong>看：管理员、以及拿到账号的被授权用户，讲的是「在界面上怎么把事做成」。
+安装、部署、配置、升级不在本册范围内（见 <a href="install.html">install.md</a>）；<strong>排障与运维</strong>单独成册，见 <a href="faq.html">常见问题与运维</a>。</p>
+<p>全文的按钮名、菜单名、提示语都与管理后台界面上的原话一致，照着屏幕上找即可。</p>
+</blockquote>
+<h2 id="目录">目录</h2>
+<ol>
+<li><a href="#1-登录与个人中心">登录与个人中心</a></li>
+<li><a href="#2-权限体系怎么落地">权限体系怎么落地</a></li>
+<li><a href="#3-各模块操作要点">各模块操作要点</a></li>
+<li><a href="#4-数据权限五档语义与验证方法">数据权限：五档语义与验证方法</a></li>
+<li><a href="faq.html">常见问题与运维</a>（单独成册：忘记超管密码、账号被锁、头像传不上去、任务没跑、备份恢复、通知发不出去…）</li>
+</ol>
+<hr />
+<h2 id="1-登录与个人中心">1. 登录与个人中心</h2>
+<h3 id="11-登录">1.1 登录</h3>
+<ol>
+<li>打开后台地址，进入登录页（BRA · 管理后台）。</li>
+<li>填 <strong>用户名</strong>、<strong>密码</strong>，再完成中间的图形验证码。</li>
+<li>点 <strong>登录</strong>。成功后自动进入首页。</li>
+</ol>
+<p>如果你的账号绑定了 <strong>动态验证码</strong>（见 <a href="#13-个人中心">1.3</a>），登录是<strong>两步</strong>的：密码对了之后
+用户名/密码下方会多出一格 <strong>动态验证码 / 备用码</strong>，填上验证器 App 里当前那 6 位数字再点一次 <strong>登录</strong>。
+验证器不在手边时，同一格可以填一枚<strong>备用码</strong>（10 位字母数字，个人中心生成，<strong>每枚只能用一次</strong>）；
+后端按长度分流：<strong>6 位纯数字</strong>按动态验证码校验，其余按备用码校验。备用码哈希的 pepper 派生自
+<code>encrypt_key</code>——<strong>更换该密钥会使已生成的全部备用码失效</strong>（需要重新生成，见 <a href="#13-个人中心">1.3</a>）。
+码 30 秒一变，提示 <strong>动态验证码错误</strong> 就等下一格数字再试；<strong>同一枚码在一个时间窗里只用一次</strong> ——
+两台设备拿同一枚码登录，只有先到的那台进得去，另一台会被拒（提示 <strong>动态验证码已使用，请等下一枚</strong>），
+等 App 跳到下一格数字再试即可。前提是<strong>服务器时钟准</strong>（建议开 NTP）：时钟被回拨后新码的步号可能小于已记账的步号，会被当成「已使用」而登不进去（时钟恢复或跳到更后的时间窗即恢复）。第一次登录时密码错了不会看到这一格 ——
+后端在密码验过之后才会告诉前端「这个账号开了验证码」，否则谁都能拿账号名探出「谁开了验证码」。</p>
+<p>页面底部有一行<strong>站点信息</strong>：当前版本号、版权与项目地址（点击在新标签打开仓库）；
+登录后侧边栏底部也有同一行（侧边栏折叠时隐藏）。报障时附上版本号最省事。
+版权文字与项目地址都可以在「系统配置」里修改，见 <a href="#310-系统配置systemconfig">3.10</a>。</p>
+<p>关于验证码，有三点值得知道：</p>
+<ul>
+<li>验证码有<strong>点击、旋转、滑块</strong>三种，每次随机出现一种，提示文字跟着类型走：
+  「按顺序点击图中出现的文字/图案」/「拖动图片，把它转正」/「拖动拼图块，补上图中的缺口」。</li>
+<li>点错了可以点 <strong>撤销</strong>，看不清可以点 <strong>换一张</strong>。</li>
+<li>验证码是<strong>一次性的</strong>：登录失败后验证码会刷新，需要重新做一遍，不是系统在刁难你。</li>
+</ul>
+<p>登录失败的提示对照：</p>
+<table>
+<thead>
+<tr>
+<th>界面提示</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>用户名和密码不能为空</td>
+<td>有一项没填</td>
+</tr>
+<tr>
+<td>用户名或密码错误</td>
+<td>账号不存在与密码错误共用这一句（不给探测账号是否存在的机会）</td>
+</tr>
+<tr>
+<td>验证码错误</td>
+<td>重做一次验证码即可；<strong>答错验证码不累计失败次数</strong></td>
+</tr>
+<tr>
+<td>需要动态验证码</td>
+<td>账号绑了动态验证码，密码已经对：填验证器 App 上的 6 位码，或一枚备用码（见 <a href="#13-个人中心">1.3</a>）</td>
+</tr>
+<tr>
+<td>动态验证码错误</td>
+<td>码不对或已过期（30 秒一变），等下一格数字再试；备用码错误、或备用码已经用过也报这一句。<strong>码错和密码错一样累计失败次数</strong></td>
+</tr>
+<tr>
+<td>动态验证码已使用，请等下一枚</td>
+<td>这枚码在本时间窗里已经用过（多设备登录、或刚在别处登过），等 App 跳到下一格数字再试；<strong>同样累计失败次数</strong></td>
+</tr>
+<tr>
+<td>账号已被禁用</td>
+<td>账号被停用了，联系超级管理员把它改回「启用」</td>
+</tr>
+<tr>
+<td>尝试过于频繁，请 N 分钟后再试</td>
+<td>失败次数触发了限流，见 <a href="faq.html#52-账号被锁了什么时候能再登">5.2</a></td>
+</tr>
+</tbody>
+</table>
+<p>默认策略：同一账号或同一来源 IP 累计 <strong>5</strong> 次密码错误，锁 <strong>10</strong> 分钟。验证码答错不算次数。</p>
+<h3 id="12-顶栏">1.2 顶栏</h3>
+<p>从左到右：面包屑（当前位置）、<strong>切换语言</strong>（简体中文 / English）、<strong>切换明暗主题</strong>、未读公告铃铛、头像菜单。</p>
+<ul>
+<li>语言与主题是<strong>本机偏好</strong>，存在你这台电脑的浏览器里，不跟着账号走 —— 换台电脑要重新设一次。</li>
+<li>语言初始跟随浏览器，主题初始跟随系统的深浅色设置。改了之后就一直用你选的那个。</li>
+<li>头像菜单两项：<strong>个人中心</strong>、<strong>退出登录</strong>。</li>
+</ul>
+<h3 id="13-个人中心">1.3 个人中心</h3>
+<p><strong>维护资料</strong>：昵称、邮箱、手机号等，改完点 <strong>保存资料</strong>，只影响你自己的资料，不影响任何人的登录状态（邮箱、手机号在库里是加密存放的）。</p>
+<p><strong>更换头像</strong>：</p>
+<ul>
+<li>只收 <strong>PNG / JPEG</strong> 两种格式。</li>
+<li>大小上限 <strong>512 KB</strong>；图片超过 512 KB 时浏览器会先自动压缩（最长边压到 512 像素、JPEG 质量逐档下调），压完仍然超过 512 KB 才会提示换一张小图。</li>
+<li>上传时显示进度（头像上传中），成功后顶栏头像立即更新。</li>
+</ul>
+<p><strong>修改密码</strong>：填 <strong>原密码</strong>、<strong>新密码</strong>（至少 8 位，且需包含字母、数字、符号中的至少两类）、<strong>确认新密码</strong>。改完之后<strong>所有设备（包括当前这台）立即下线</strong>，需要重新登录 —— 这是有意的，多端同步不了密码变更，只能全部作废。改完记得用新密码登录。</p>
+<p><strong>退出其他设备</strong>：点一下并确认后，其他设备上的登录<strong>立即失效</strong>、需要重新登录；<strong>当前这台设备保持登录</strong>（后台会悄悄给你换一张新令牌，你不会被踢下线）。适合「电脑借给别人用过」「密码疑似泄露」这类场景。</p>
+<p><strong>动态验证码</strong>（给账号加第二把锁）：点 <strong>生成密钥</strong> → 用验证器 App（Google Authenticator / 1Password 等）扫二维码，扫码不便就手工输入下面那串<strong>密钥</strong> → 把 App 上显示的 <strong>6 位动态验证码</strong>填回来点 <strong>绑定</strong>。绑定之后登录要「密码 + 码」两步（见 <a href="#11-登录">1.1</a>），登录页不用改什么，密码对了自会多出一格。要点：</p>
+<ul>
+<li><strong>绑定/解绑都要现码确认</strong>：只拿到你一次密码的人绑不上、也解不了绑。</li>
+<li><strong>密钥加密存库</strong>：库里存的是密文，界面上只在<strong>生成那一次</strong>显示明文密钥（之后再也看不到，也不会出现在任何日志与导出里）。解绑会把密钥与备用码一起清掉。</li>
+<li><strong>备用码（验证器丢了也能登）</strong>：绑定后可在下方点 <strong>生成备用码</strong>，输入当前 6 位码确认，弹窗一次列出 <strong>10 枚 10 位备用码</strong>（已剔除 <code>0/O/1/I</code> 等易混字符）。<strong>明文只显示这一次</strong>：库里只存哈希，关掉弹窗后就再也看不到，请当场保存。登录时在同一格填备用码即可，<strong>每枚只能用一次</strong>；<strong>重新生成会让旧码全部作废</strong>。按钮旁显示剩余可用数量，解绑会清空备用码。<strong>当前码确认限流</strong>：生成 / 解绑连续输错 5 次当前码后，5 分钟内连正确码也会回 429（进程内按账号计数，成功不清零、窗口自然过期；多实例部署下各进程各算各的）。</li>
+<li><strong>验证器与备用码都丢了，也没有别的自助恢复</strong>：解绑要求当场交出动态验证码（在别的设备上登录着也一样）；「管理员管理」里的<strong>重置密码也不会解绑</strong>（防的正是「拿到重置权限就能接管开了 2FA 的账号」）。这种情况只能走<strong>运维</strong>：由有数据库权限的人在库层清掉该账号的 TOTP 列 —— <code>UPDATE admin SET totp_secret='', totp_enabled=0, totp_last_step=NULL WHERE id=&lt;id&gt;;</code>（<code>&lt;id&gt;</code> 是管理员在库里的<strong>数字 id</strong>，不是界面上的短串；三项一起清，最后一项是「本窗已用过的码」的账本，不清干净会白等一格；备用码行也一并删掉：<code>DELETE FROM admin_backup_code WHERE admin_id=&lt;id&gt;;</code>），清完用密码重新登录、再绑新设备；或者直接<strong>恢复备份</strong>（同 <a href="faq.html#51-忘记超管密码了怎么办">5.1</a> 的超管口径）。</li>
+</ul>
+<p><strong>登录设备</strong>：一栏一台设备（浏览器标识、IP、登录时间、最近活跃），<strong>当前这台</strong>标着「当前设备」，其余的点 <strong>踢出</strong> 即可踢下线。每台设备有各自的令牌，踢出<strong>只作废那一台</strong>（改密码才是全部作废）；被踢的设备<strong>下一次请求</strong>就掉线（不是立刻，是下一次），它需要重新登录。踢出是<strong>软删</strong>（那台设备的行留痕，列表里不再显示），留多久由 <code>[auth] device_keep_days</code> 定（默认 30 天，按<strong>最后活跃时刻</strong>算，0 = 永久保留）：到期由内置任务 <strong>登录设备清理</strong>（<code>device_clean</code>，每天一次）删掉，<strong>在用的设备行一律不碰</strong>（见 <a href="#36-定时任务systemjob">3.6</a>）。设备有效性每个进程缓存 30 秒以省掉每请求一次查库：<strong>同一进程内</strong>踢出 / 退出其他设备 / 改密码立即生效；<strong>多实例部署时其他实例最迟 30 秒生效</strong>。</p>
+<h3 id="14-首页仪表盘">1.4 首页（仪表盘）</h3>
+<p>登录后第一屏是首页：一张欢迎卡（当前账号、昵称、是否超管、权限码数量、可访问菜单数），下面四张计数卡（<strong>管理员 / 角色 / 部门 / 公告</strong>），再下面是两张趋势卡：<strong>近 7 天登录</strong> 与 <strong>近 7 天失败登录</strong>，每张用 7 根柱子列出每天的次数（鼠标悬停显示那天的日期与次数；某天没有数据就是 0，整周都没有则显示「近 7 天暂无数据」）。首页<strong>登录即可看</strong>，不需要额外权限码；数字是全系统的汇总，不按数据范围过滤，也不含任何明细。</p>
+<hr />
+<h2 id="2-权限体系怎么落地">2. 权限体系怎么落地</h2>
+<p>一句话理解这套设计：</p>
+<ul>
+<li><strong>能点到什么 = 角色的菜单权限</strong>（勾到按钮级）；</li>
+<li><strong>能看到哪些数据 = 角色的数据范围</strong>（五档，见第 4 章）。</li>
+</ul>
+<p>两者都挂在<strong>角色</strong>上，管理员通过挂角色获得权限。超级管理员（内置的 <code>admin</code>）不受这两套限制，他有一切权限、能看到所有数据。</p>
+<p>推荐的落地顺序是 <strong>先建部门 → 再建角色 → 最后建管理员</strong>：</p>
+<ol>
+<li>部门先立好，后面角色的数据范围、管理员放在哪儿都要用它；</li>
+<li>角色把「能点什么 + 能看什么」定下来；</li>
+<li>最后建人，把人挂到角色上。</li>
+</ol>
+<p>反过来做也能做成，但管理员要等角色建好才能挂上，中途组织结构一改就得返工。</p>
+<h3 id="21-第一步建部门">2.1 第一步：建部门</h3>
+<p>菜单 <strong>系统管理 → 部门管理</strong>。部门是一棵可以无限分层的树。</p>
+<ol>
+<li>点 <strong>新增</strong> 建顶级部门，或某一行右侧的 <strong>新增子部门</strong> 往下挂。</li>
+<li>填 上级部门、名称、排序、负责人、联系电话、状态。</li>
+<li>删除有两条硬约束：<strong>请先删除子部门</strong>、<strong>该部门下还有管理员</strong>；另外也不允许把部门挂到自己的子部门下（防成环）。</li>
+</ol>
+<p>部门<strong>只影响数据范围</strong>，不影响功能权限：一个人能不能看见「角色管理」菜单，和他属于哪个部门毫无关系。</p>
+<p>「状态」目前只作标记：禁用的部门照样能被选进管理员表单、也算在「本部门及以下」的子树里 —— 别拿它当「关停部门」用。</p>
+<h3 id="22-第二步建角色">2.2 第二步：建角色</h3>
+<p>菜单 <strong>系统管理 → 角色管理</strong>。</p>
+<ol>
+<li>点 <strong>新增</strong>，填 <strong>角色名</strong>（给人看的，如「部门主管」）和 <strong>角色标识</strong>（程序用的，3–64 位，只能用字母、数字、下划线、冒号，如 <code>admin</code>）。</li>
+<li>选 <strong>数据范围</strong>：五档之一，语义见第 4 章。</li>
+<li>保存后回到列表，点该行的 <strong>权限</strong> 按钮，打开「分配权限：xxx」抽屉，勾菜单。</li>
+</ol>
+<p>抽屉里是一棵<strong>菜单树</strong>，三层：<strong>目录 → 菜单 → 按钮</strong>。</p>
+<ul>
+<li>勾了某个菜单，侧边栏才会出现它；勾了菜单没勾按钮，进得去页面但看不到操作按钮。</li>
+<li>按钮级节点会带 <strong>（按钮）</strong> 标记，例如「新增」「编辑」「删除」「重置密码」。</li>
+<li>保存后立即生效，不需要任何人重新登录。</li>
+</ul>
+<p>一个容易被绊到的点：这个抽屉打开时会<strong>同时</strong>加载菜单树和部门树，所以操作者除了角色的权限外，还需要 <strong>菜单管理</strong> 和 <strong>部门管理</strong> 的查看权限（<code>system:menu:list</code>、<code>system:dept:list</code>）——否则抽屉会因为拉不到树而打不开。给「只负责配角色」的人授权时记得把这两个查看权限一起给上。</p>
+<h3 id="23-第三步建管理员">2.3 第三步：建管理员</h3>
+<p>菜单 <strong>系统管理 → 管理员管理</strong>。</p>
+<ol>
+<li>点 <strong>新增</strong>，填 用户名、初始密码、昵称、部门、角色、状态。</li>
+<li>约束：用户名 3–64 位，只能用字母、数字、下划线，且不能重复；密码至少 8 位，且需包含字母、数字、符号中的至少两类；昵称必填（最长 64 字）。</li>
+<li><strong>用户名创建后不能修改</strong> —— 编辑表单里没有用户名这一项。密码也不在编辑里改，走 <strong>重置密码</strong>（或本人去个人中心改）。</li>
+<li>把用户名和初始密码告诉本人，让他登录后<strong>立刻在个人中心改密码</strong>。</li>
+</ol>
+<p><strong>角色选择框</strong>可以直接输入<strong>角色名</strong>过滤（多选自带搜索框）；一次最多列出 <strong>100</strong> 个角色，角色比这还多时下拉里会多一条「仅显示前 100 条，请在上方输入搜索」，照着输入名字筛出来即可。</p>
+<p>关于「重置密码」和「启用/禁用」，有三个必须知道的后果：</p>
+<ul>
+<li><strong>重置密码</strong>（管理员管理里对某一行的操作）会让该账号在<strong>所有设备</strong>上的登录立即失效，需要重新登录。这是安全设计，不是 bug，别忘了通知本人。</li>
+<li><strong>禁用</strong>账号同理：所有在线会话立即失效，之后也无法登录。</li>
+<li>系统有意设置了这几条硬规则：<strong>不能删除超级管理员</strong>、<strong>不能删除自己</strong>、<strong>不能修改超级管理员的状态</strong>、<strong>不能修改自己的状态</strong>、<strong>不能重置其他超级管理员的密码</strong>。</li>
+</ul>
+<p>数据范围还管着「你能管谁」：</p>
+<ul>
+<li>列表里看不见的管理员，你也改不到、删不掉，强行操作会被拒绝：<strong>超出你的数据权限范围</strong>。</li>
+<li>新增/编辑时把目标放进你不负责的部门，同样会被拒。</li>
+<li>给别人的<strong>新增角色</strong>也受约束：数据范围比你宽的角色（「全部数据」「本部门及以下」「自定义」）、以及带着你没有的权限码的角色，你都授不出去；这些角色在选择框里是<strong>灰掉</strong>的，提示「灰掉的角色超出你的数据权限，无法授予」。编辑时<strong>只校验本次新增的角色</strong> —— 别人手上本来就有的大权限角色不受影响，你照样能改他的昵称。</li>
+<li>同一条规则也管着<strong>角色的写入口</strong>：数据范围比你宽（「全部数据」「本部门及以下」「自定义」）、或带着你没有的权限码的角色，你既改不了它的信息，也给它挂不了菜单、改不了自定义部门。反过来，<strong>你给自己（或别人）的角色改数据范围，也只能落在「本部门」「仅本人」两档</strong> —— 想把自己的角色调成「全部数据」这种加宽操作会被拒（提示与授权时同一条：<strong>不能授予数据范围更宽的角色</strong>）。</li>
+</ul>
+<h3 id="24-权限码长什么样在哪儿看">2.4 权限码长什么样、在哪儿看</h3>
+<p>权限码是<strong>三段式</strong>的字符串 <code>模块:资源:动作</code>，例如：</p>
+<ul>
+<li><code>system:admin:list</code> —— 能看管理员列表；</li>
+<li><code>system:admin:resetPwd</code> —— 能重置密码；</li>
+<li><code>system:notice:edit</code> —— 能编辑公告（<strong>发布 / 取消发布</strong>也走这个码）。</li>
+</ul>
+<p>看它的地方：<strong>系统管理 → 菜单管理</strong>。列表里有 <strong>权限码</strong> 列，每一行（包括每个按钮节点）都写着它的码；你在角色里勾的东西就是这些行。</p>
+<p>内置的权限码全集只有下面这些（新建的库、没手工改过菜单时）：</p>
+<table>
+<thead>
+<tr>
+<th>菜单（侧边栏）</th>
+<th>权限码前缀</th>
+<th>该模块已内置的动作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>管理员管理</td>
+<td><code>system:admin</code></td>
+<td><code>list</code>、<code>add</code>、<code>edit</code>、<code>remove</code>、<code>resetPwd</code></td>
+</tr>
+<tr>
+<td>角色管理</td>
+<td><code>system:role</code></td>
+<td><code>list</code>、<code>add</code>、<code>edit</code>、<code>remove</code></td>
+</tr>
+<tr>
+<td>菜单管理</td>
+<td><code>system:menu</code></td>
+<td><code>list</code>、<code>add</code>、<code>edit</code>、<code>remove</code></td>
+</tr>
+<tr>
+<td>部门管理</td>
+<td><code>system:dept</code></td>
+<td><code>list</code>、<code>add</code>、<code>edit</code>、<code>remove</code></td>
+</tr>
+<tr>
+<td>登录记录</td>
+<td><code>system:loginlog</code></td>
+<td><code>list</code>、<code>remove</code>（清空）</td>
+</tr>
+<tr>
+<td>操作日志</td>
+<td><code>system:auditlog</code></td>
+<td><code>list</code>、<code>remove</code>（清空）</td>
+</tr>
+<tr>
+<td>字典管理</td>
+<td><code>system:dict</code></td>
+<td><code>list</code>、<code>add</code>、<code>edit</code>、<code>remove</code>（字典项用同一组码）</td>
+</tr>
+<tr>
+<td>定时任务</td>
+<td><code>system:job</code></td>
+<td><code>list</code>、<code>edit</code>（改间隔、启停、触发一次）</td>
+</tr>
+<tr>
+<td>通知公告</td>
+<td><code>system:notice</code></td>
+<td><code>list</code>、<code>add</code>、<code>edit</code>、<code>remove</code></td>
+</tr>
+<tr>
+<td>系统配置</td>
+<td><code>system:config</code></td>
+<td><code>list</code>、<code>edit</code>（改值、增删项同一码）</td>
+</tr>
+<tr>
+<td>通知设置</td>
+<td><code>system:notify</code></td>
+<td><code>list</code>、<code>edit</code>（保存、发测试邮件）</td>
+</tr>
+<tr>
+<td>导出中心</td>
+<td><code>system:export</code></td>
+<td><code>list</code>、<code>remove</code>（发起/下载另按对应数据的查看码）</td>
+</tr>
+<tr>
+<td>附件中心</td>
+<td><code>system:attach</code></td>
+<td><code>list</code>、<code>add</code>、<code>edit</code>、<code>remove</code>（<code>edit</code> 管关联/解绑）</td>
+</tr>
+</tbody>
+</table>
+<p>补充说明：</p>
+<ul>
+<li>在 <strong>菜单管理</strong> 里可以自己新增菜单/按钮并填权限码，但<strong>非超管只能填自己已有的码</strong>：界面示例里的 <code>system:admin:add</code>，只要你手上没有这个码就会被拒（<strong>没有权限：system:admin:add</strong>）。若放开这条，等于允许「自己造一个码、再挂到自己角色上」的提权；超管不受此限。另外要注意：<strong>新增的权限码只影响侧边栏显示和角色勾选</strong>，不会让某个后端接口改变校验 —— 接口只认代码里写好的那些码。</li>
+<li>侧边栏菜单之外的页面（首页、个人中心、顶栏的公告铃铛）不需要任何权限码，登录即可用。</li>
+</ul>
+<h3 id="25-前端藏按钮只是体验后端每次都还会校验">2.5 前端藏按钮只是体验，后端每次都还会校验</h3>
+<p>这一条是理解整套权限的关键：</p>
+<ul>
+<li><strong>前端</strong>会按你手上的权限码把按钮藏起来、把路由挡住。路由被挡住时你会看到 403 页：<strong>没有权限访问该页面</strong>，可以点 <strong>返回首页</strong>。</li>
+<li><strong>后端</strong>才是真正管事的：每一个接口收到请求后，都会重新拿你<strong>当前</strong>的权限码校验一遍；缺权限的请求会被拒绝并提示 <strong>没有权限</strong>。所以「想办法让按钮重新出现」（改前端、直接调接口）并不会真的拿到权限。</li>
+<li>权限是<strong>每个请求实时算的</strong>：停用角色、取消勾选菜单，下一个请求就生效，不需要重新登录。侧边栏菜单是登录时拉的一份缓存，刷新一下页面就能看到最新的；如果刷新后菜单项消失了，就是权限真的被收回了。</li>
+</ul>
+<hr />
+<h2 id="3-各模块操作要点">3. 各模块操作要点</h2>
+<h3 id="31-管理员管理systemadmin">3.1 管理员管理（system:admin）</h3>
+<p>列表按 用户名（模糊）和 状态 筛选，可以 <strong>导出</strong> 当前筛选结果；批量建号走 <strong>导入</strong>（见 <a href="#311-csv-导入管理员--部门--字典项">3.11</a>）。新增时填用户名、初始密码、昵称、部门、角色、状态；<strong>用户名和密码在编辑里不能改</strong>（用户名创建后固定，密码走「重置密码」或本人去个人中心改）。行操作里有 <strong>编辑</strong>、<strong>重置密码</strong>、<strong>删除</strong> 和状态开关；重置密码和禁用都会把该账号的所有会话立刻踢下线。用户名、密码有长度与字符要求（3–64 位、字母数字下划线；密码至少 8 位，且需包含字母、数字、符号中的至少两类），不符合会当场报错。你自己看不见的管理员不会出现在列表里，也操作不了。列表上的 状态 切换到「禁用」，比删除温和，建议优先用它。</p>
+<h3 id="32-角色管理systemrole">3.2 角色管理（system:role）</h3>
+<p>列表里的 <strong>权限</strong> 按钮打开分配权限抽屉（勾菜单树，到按钮级），第 2 章已经讲过。除菜单权限外，每个角色还有一档 <strong>数据范围</strong>，这决定它名下的管理员能看到哪些人的数据（第 4 章）。删除角色有条硬约束：<strong>该角色已被管理员使用，不能删除</strong> —— 先到管理员管理里把这个角色从所有人身上摘掉再删。角色标识（3–64 位，字母数字下划线冒号）不能重复。给角色勾权限、改数据范围都是即时生效的，改完在受影响账号那边刷新一下页面就能看到效果。非超管动手时，能改的只有<strong>自己管得了的那类角色</strong>：数据范围为「本部门」「仅本人」、且角色上挂的权限码是自己已有的子集（与第 2 章「能授出去」是同一条规则）；改数据范围也只能在这两档里改，给自己角色调成「全部数据」会被拒。</p>
+<h3 id="33-菜单管理systemmenu">3.3 菜单管理（system:menu）</h3>
+<p>这里维护的是<strong>侧边栏结构和权限码表</strong>：一行就是一棵树上的一个节点，类型有三种 —— <strong>目录</strong>（可展开的分组）、<strong>菜单</strong>（点进去是一个页面）、<strong>按钮</strong>（不进侧边栏，只提供一个权限码）。表单字段：上级菜单、名称、类型、权限码、路由路径、组件、图标、排序、显示、状态。删除有两条约束：<strong>请先删除子菜单</strong>、<strong>该菜单已被角色引用</strong>（先把角色里勾的勾去掉）。<strong>显示</strong> 设为「隐藏」只是不在侧边栏列出来，不影响权限判定。另外：内置的这 13 个模块是每次启动自动补齐的，<strong>删掉之后重启会重新长出来</strong> —— 想彻底停用一个模块，用「隐藏」，或者不给任何角色勾它。</p>
+<h3 id="34-部门管理systemdept">3.4 部门管理（system:dept）</h3>
+<p>一棵支持任意层级的部门树，每个节点可以 <strong>新增子部门</strong> 或编辑（上级部门、名称、排序、负责人、联系电话、状态）。删除约束：<strong>请先删除子部门</strong>、<strong>该部门下还有管理员</strong>；也不允许把部门挂到自己的子部门下。它只为数据范围提供坐标（第 4 章），不影响功能权限。组织调整时优先「改上级部门」挪分支，别删了重建——重建会换掉部门 ID，角色的「自定义」数据范围和已有管理员都会指空。批量建部门走 <strong>导入</strong>（上级部门按名称填、须已存在，见 <a href="#311-csv-导入管理员--部门--字典项">3.11</a>）。</p>
+<h3 id="35-字典管理systemdict">3.5 字典管理（system:dict）</h3>
+<p>左栏是 <strong>字典类型</strong>，右栏是选中类型的 <strong>字典项</strong>；没选类型时右栏是空的（会提示先在左侧选一个类型）。类型有 <strong>编码</strong>（就是取数用的键，只能小写字母、数字、下划线，2–64 位）、名称、状态；<strong>编码创建后不可修改</strong>（它是字典项的关联键），表单里会锁住并提示。字典项有 <strong>标签</strong>（下拉里显示的文字）、<strong>值</strong>（存库的值，同类型内不可重复）、排序、状态。删除字典类型会<strong>连同它下面所有字典项一起删</strong>（有二次确认），字典项也可以单独删。字典的用途是<strong>给页面上的下拉框当数据源</strong>：按类型编码取，只返回启用状态的项，改了立刻生效。需要说明的是：<strong>后台自带的这几个页面目前还没有用到字典下拉</strong>（菜单、角色这些下拉都是直接取树），这套数据源是留给业务页面用的——所以「建了字典但界面上没变化」是正常的。右栏的 <strong>导出</strong> 会把当前类型的字典项存成文件下载；同类型批量加项走 <strong>导入</strong>（见 <a href="#311-csv-导入管理员--部门--字典项">3.11</a>）。</p>
+<h3 id="36-定时任务systemjob">3.6 定时任务（system:job）</h3>
+<p>页面两个页签：<strong>任务列表</strong> 和 <strong>执行记录</strong>。任务列表顶部有句提示：「任务由代码注册（code 是注册键，库里只放调度与执行记录），这里只能改间隔与启停，不能新增或改名。」列表里能改 <strong>间隔（秒）</strong>、切换启停状态、点 <strong>触发一次</strong>。内置八个任务：<strong>日志清理</strong>（<code>log_retention</code>，按日志保留天数清理登录记录、操作日志、任务执行记录）、<strong>头像孤儿清理</strong>（<code>avatar_orphan_clean</code>，删掉已经没有任何管理员在用的头像文件）、<strong>附件孤儿清理</strong>（<code>attach_orphan_clean</code>，删掉附件中心里已经没有任何引用的文件，见 <a href="#314-附件中心systemattach">3.14</a>）、<strong>数据库备份</strong>（<code>db_backup</code>，跑 <code>mysqldump</code> 把整个库备份到磁盘、只留最近几份，见 <a href="faq.html#510-运维--数据库备份与恢复">5.10</a>）、<strong>导出任务执行</strong>（<code>export_run</code>，把导出中心里待处理的导出跑掉，见 <a href="#312-导出中心systemexport">3.12</a>）、<strong>导出文件清理</strong>（<code>export_clean</code>，删过期的导出记录与文件）、<strong>登录设备清理</strong>（<code>device_clean</code>，清「已踢且 <code>[auth] device_keep_days</code> 天没露面」的登录设备行；在用的行不碰，默认 30 天、0 = 永久保留，见 <a href="#13-个人中心">1.3</a>）和 <strong>Webhook 失败重投</strong>（<code>notify_retry</code>，把投递失败的 Webhook 按 1/5/15 分钟退避重投、最多 3 次，并清理 30 天前的投递账本，见 <a href="#313-通知设置systemnotify">3.13</a>），除导出任务执行是 60 秒（每分钟，导出发起后不用等一整天）、<strong>附件孤儿清理是 3600 秒</strong>（每小时，删除后尽快回收磁盘，见 <a href="#314-附件中心systemattach">3.14</a>）、<strong>Webhook 失败重投是 300 秒</strong>（每 5 分钟）外，其余默认 86400 秒（1 天，界面上按天/小时/分钟/秒自动换算）。间隔取的是<strong>库里那一行</strong>的值：升级不会覆盖<strong>已有的行</strong>（上面的默认值只用于新装、或新加进来的任务）。「触发一次」是<strong>后台执行</strong>：点完立即返回「已触发」，不占着页面等（数据库备份、大导出这类任务经常跑几分钟，等下去会撞上接口的 30 秒请求上限）。跑完列表的 <strong>上次运行 / 上次结果</strong> 会更新、<strong>执行记录</strong> 页签里多一条（含开始时间、耗时、结果、消息）—— 点完过一会儿刷新看，或到「执行记录」里等它出现。同一个任务<strong>正在跑时再点会被拒</strong>（提示「正在执行中，等这次跑完再触发」；接口回 409，且这一下<strong>一定没有开始执行</strong>），不会叠出第二份同时在跑。状态显示 <strong>停用</strong> 的任务不再被调度，但「触发一次」照样能用——这是给运维临时停掉自动执行、需要时手动补跑留的口子。从未运行过的任务（新装、刚加进来）在服务启动后的第一个检查周期（10 秒内）就会跑一次。任务之间是排队串行执行的，一个跑得久会顺延后面任务的检查时间。多实例部署时<strong>只在一台开调度</strong>（<code>[job] enabled = true</code>）—— 「正在跑就别再触发」的闸在进程内，不跨实例。</p>
+<h3 id="37-通知公告systemnotice">3.7 通知公告（system:notice）</h3>
+<p>新建的公告<strong>一律先存成草稿</strong>，界面提示「已保存为草稿，确认无误后再发布」；<strong>草稿对普通用户完全不可见</strong>（不会出现在任何人的未读里）。在列表里点 <strong>发布</strong>，它才会进入所有登录用户的顶栏铃铛；点 <strong>取消发布</strong> 会把它从大家的未读列表里撤掉（已读记录保留）。一个反直觉的细节：<strong>发布时间只在第一次发布时写入</strong>，之后取消发布再重新发布都不会刷新它 —— 所以一个草稿也可能已经有「发布时间」，看状态列为准。标题最长 128 字（表单里有提示），正文是纯文本，换行会原样保留。编辑弹窗里还有一栏 <strong>配图</strong>（上传即绑到这篇公告，新公告要先保存；权限与下载规则见 <a href="#314-附件中心systemattach">3.14</a>）。删除公告会<strong>连同所有人的已读记录、以及这篇公告的配图附件行一并删除</strong>（同一事务；磁盘文件不在这里删，交给附件孤儿清理），确认框里有提示。用户侧：顶栏铃铛显示未读数，点开是「未读公告（n）」，每条能 <strong>标记已读</strong>；同时未读很多时只列出最近 50 条，列表底部会提示「还有 n 条未读，这里只列出最近 50 条。」</p>
+<h3 id="38-登录记录systemloginlog">3.8 登录记录（system:loginlog）</h3>
+<p>每次登录尝试都会记一条（成功、失败都记），能看到 用户名、IP、时间、结果等，按条件筛选、<strong>导出</strong> 当前筛选结果（想后台跑、不占页面就用 <a href="#312-导出中心systemexport">3.12 导出中心</a>，那里也能按同样的几项筛）。<strong>清空</strong>：只会清掉<strong>当前筛选条件下</strong>的记录（确认框：「确认清空当前筛选条件下的登录记录？」），清完提示「已清空」；想全清就把筛选条件清空再点。这里的记录同样受数据权限约束：非超管只看得到自己数据范围内管理员的登录情况。</p>
+<h3 id="39-操作日志systemauditlog">3.9 操作日志（system:auditlog）</h3>
+<p>记录所有<strong>有副作用的操作</strong>（新增、修改、删除类请求），登录页的登录请求不算（登录单独记在「登录记录」里）。列表显示 时间、操作人、模块、动作、请求、IP，按 用户名、模块、时间 筛选，支持 <strong>导出</strong>（要后台跑、不占页面就用 <a href="#312-导出中心systemexport">3.12 导出中心</a>，那里也能按同样的几项筛）与 <strong>清空</strong>（同样只清当前筛选条件，且<strong>清空这个动作本身也会留下一条记录</strong>，方便追溯是谁清的）。「模块」下拉里有 管理员 / 角色 / 菜单 / 部门 / 字典 / 系统配置 / 数据导入 / 导出中心 / 登录记录 / 操作日志 / 附件 / 认证 / 其他；定时任务、公告相关的操作在模块列会原样显示 <code>job</code> / <code>notice</code>，但下拉里没有这两项 —— 找这类记录时用用户名或时间来筛。日志里还可能看到动作是 <strong>安全扫描命中</strong> 的记录，见 <a href="faq.html#58-操作日志里的安全扫描命中是什么">5.8</a>。</p>
+<p>列表还有一列 <strong>变更</strong>：<strong>编辑管理员 / 角色 / 部门 / 字典（类型与字典项）</strong>时记下「改了哪些字段、旧值→新值」（只列真的变了的字段，格式如 <code>昵称: 旧名 → 新名</code>，多项用分号连接；导出 CSV 里是同一份 JSON 原文）。两条边界要记住：① 管理员的<strong>邮箱 / 手机号是加密存储</strong>的，摘要里只显示「已变更」，不落明文也不落密文（否则等于把落库加密抵消掉）；② <strong>密码类接口</strong>（重置密码、修改个人密码）<strong>不产生摘要</strong> —— 口令任何时候都不进日志，这类操作看动作名与时间即可。其余编辑入口（系统配置、定时任务、公告）目前不记摘要，动作名与请求路径照旧。</p>
+<h3 id="310-系统配置systemconfig">3.10 系统配置（system:config）</h3>
+<p>键值对形式的全局配置，按<strong>分组</strong>分卡片展示（现状只有一个「站点」分组）。每一项有：<strong>配置键</strong>（小写字母、数字、下划线，可点号分段，如 <code>site.copyright</code>；建成后不可修改）、<strong>值</strong>、<strong>类型</strong>、<strong>分组</strong>、<strong>备注</strong>（作为该项的标题显示）和 <strong>公开</strong> 开关——只有<strong>公开</strong>的键才会被登录页与页脚读取。操作要点：</p>
+<ul>
+<li>每组右上角的 <strong>保存</strong> <strong>只提交你改过的项</strong>（一项都没改会提示「没有改动」），不会把整组重写一遍，也不影响别人同时改的其他项。</li>
+<li><strong>公开</strong> 开关和值走同一次保存：只拨开关、不改值也会提交（存 1 / 0），保存后刷新保持；改开关不会删掉配置行重建。</li>
+<li>内置四个公开键：<code>site.copyright</code>（页脚版权文字）、<code>site.repo_url</code>（页脚项目地址）、<code>site.footer_enabled</code>（页脚是否显示）、<code>site.login_subtitle</code>（登录页标题下方的副标题，留空 = 不显示）。改完<strong>登录页刷新即可见</strong>；把页脚开关关掉，登录页与侧边栏都不再显示那一行。</li>
+<li>前端<strong>读不到</strong>公开接口时（比如后端刚挂了）会回落内置默认值，页脚不会空着；页脚开关也只在<strong>明确配置为「关」</strong>时才隐藏，读不到不会误藏。</li>
+<li><strong>新增配置项</strong> 默认<strong>不公开</strong>（要公开得手动打开开关）——避免手滑把内部参数发到登录页。键重复、键名不合法、类型不在 <code>单行文本 / 多行文本 / 布尔开关</code> 之内都会当场报错。</li>
+<li>删除内置公开键后，对应位置回落内置默认值；<strong>重启服务</strong>时启动流程会把缺失的内置键补回来（已存在（含你改过的值）一律不动）。</li>
+<li>布尔类型的值用开关控件编辑，存库是 <code>true</code> / <code>false</code> 字符串，经公开接口发给前端时转成真正的布尔值。</li>
+<li>配好「通知设置」之后，这里会多出一个 <code>notify</code> 分组（见图 <a href="#313-通知设置systemnotify">3.13</a>）。其中 <strong>SMTP 口令与 Webhook 签名密钥两项在本页看不到</strong>：改它们、删它们都会被拒绝 —— 两个密钥只从「通知设置」页的输入框进、只进不出，能在这页改它们就等于把「加密存」变成摆设。</li>
+</ul>
+<h3 id="311-csv-导入管理员--部门--字典项">3.11 CSV 导入（管理员 / 部门 / 字典项）</h3>
+<p>管理员、部门、字典项三个页面的工具栏上都有 <strong>导入</strong> 按钮，流程一样：<strong>下载模板</strong> → 填好 → 上传 → 看逐行报告。三份模板表头各不相同，在哪个页面就用那个页面上的按钮下模板。</p>
+<ul>
+<li><strong>表头就是契约</strong>：第一行逐字不能改（增删列、改字都会被拒，并提示应以的表头）。</li>
+<li><strong>部门 / 上级部门 / 角色 / 类型编码按名称或编码填</strong>，且必须<strong>库里已经存在</strong> —— 导入不会顺手替你建。上级部门留空 = 顶层；角色多个用 <code>|</code> 分隔（如 <code>部门主管|人事专员</code>），留空 = 不分配。同一份文件里前面几行新建的部门<strong>不能</strong>当后面行的上级部门（先导入部门，再导入管理员）。</li>
+<li><strong>状态列</strong>：<code>1</code> / <code>启用</code> / <strong>留空</strong>都是启用（跟页面上新增时的默认一样：不填 = 启用），<code>0</code> / <code>禁用</code> 才是禁用。要批量导<strong>禁用</strong>的账号/部门/字典项，这一列就得明确写 <code>0</code>。用户名、密码的长度与字符要求跟页面上<strong>新增</strong>时是同一套校验。</li>
+<li><strong>全有或全无</strong>：只要有一行不合格，整批<strong>一行都不写库</strong>，弹窗里逐行列出「第 N 行 + 原因」；全部合格才在一个事务里一次落库。所以报告里出现红行时，这批数据在库里是找不到的 —— 改完文件整批重传即可。</li>
+<li><strong>不越权</strong>：每一行都过发起人自己的权限与数据范围（部门超出范围、角色比自己宽，都会被逐行拦下），导入不是绕开这些规则的后门。按钮本身按各模块的<strong>新增</strong>权限码（<code>system:admin:add</code> / <code>system:dept:add</code> / <code>system:dict:add</code>）显隐，没有新增权限码。</li>
+<li><strong>编码只认 UTF-8</strong>：Excel / WPS 另存时选「CSV UTF-8」（普通「CSV」是 GBK，会被拒并提示）。单次最多 5000 行；文件里只有表头、没有数据行时提示「没有可导入的数据」，不算失败。</li>
+<li><strong>长操作受 30 秒的请求上限约束</strong>：接口层对所有请求有 30 秒超时（超时回 <code>request timed out</code>），管的是<strong>返回响应之前必须算完</strong>的那一段。导入正是这种路径（解析 + 落库都在这段里：几千行通常在秒级，行数越多这一口气就得越长）—— 几十万行这个量级别硬导，用 <a href="#312-导出中心systemexport">3.12 导出中心</a>（后台跑，不受请求超时约束），或缩小筛选范围分次导。</li>
+</ul>
+<h3 id="312-导出中心systemexport">3.12 导出中心（system:export）</h3>
+<p>后台导出：适合<strong>数据量大、不想在页面等着</strong>的场景（同步导出是点一下当场下载，页面上一直转圈）。侧边栏 <strong>导出中心</strong> 里选类型 → <strong>发起导出</strong> → 列表里看状态（待处理 / 执行中 / 已完成 / 失败 / 已取消），<strong>已完成</strong>的行点 <strong>下载</strong> 取文件；<strong>待处理 / 执行中</strong>的行可以点 <strong>取消</strong>。</p>
+<ul>
+<li><strong>发起时可以按条件筛</strong>：选好类型后旁边的筛选框<strong>按类型给条件</strong> —— <strong>用户名</strong>两种类型都有，<strong>模块</strong>只有操作日志有，<strong>状态</strong>（成功 / 失败）与<strong>时间范围</strong>两种都有；留空的条件不设限，全留空就是<strong>全量</strong>。条件随这单存下来，之后什么时候跑都按同一份条件导；列表的「参数」列能看到这单带了什么条件（<code>{}</code> 显示成 <strong>全量</strong>）。要<strong>当场</strong>拿文件不排队，仍可去对应列表页点「导出」同步下载 —— 两边导出的<strong>内容格式完全一样</strong>（表头、转义、BOM 同一套代码），同一个 Excel 里打开没差别。</li>
+<li><strong>谁来跑</strong>：内置任务 <strong>导出任务执行</strong>（<code>export_run</code>，默认每分钟）把待处理的任务跑掉，<strong>一次最多同时跑 2 个</strong>（进程内共享一个并发闸，跨多次触发也不叠加；上限写死在代码里），多的排队等额度；它<strong>派发完就返回</strong> —— 大导出不再占住定时任务的执行队列，别的任务照常按点跑。列表在还有待处理 / 执行中的任务时<strong>自动刷新</strong>（3 秒一次），跑完自然停。急着要就去定时任务页对 <code>export_run</code> 点「触发一次」。<strong>发起后一直停在「待处理」</strong>多半是调度关了：<code>[job] enabled = false</code> 时 <code>export_run</code> 不会自动跑，手动触发它（或直接跑一次导出）照样能出文件。</li>
+<li><strong>取消</strong>：<strong>自己的</strong>待处理 / 执行中的行有 <strong>取消</strong> 按钮（列表本来就只显示自己发起的，别人的行不存在取消一说）。点完行变 <strong>已取消</strong>：<strong>不会产生成品</strong>，已经写了一半的 <code>.part</code> 半份会被清掉；万一取消和执行者「正好写完文件」撞在同一瞬间，执行者在回写完成态时会发现输给了取消，<strong>刚写好的成品也会被撤下</strong> —— 已取消的行<strong>手上一定不留文件</strong>。执行者每 5000 行一批、只在<strong>批与批之间</strong>探一次取消标记，所以点下去要等当前这批走完（通常在秒级）才看到状态变。<strong>已经结束的行（完成 / 失败 / 已取消）取消不了</strong>（接口回 409）—— 要清记录用 <strong>删除</strong>（<code>system:export:remove</code>）。</li>
+<li><strong>进度</strong>：执行中的行「进度」列显示<strong>已导到第几行</strong>（每批 5000 行回写一次，不是逐行实时）；<strong>已取消</strong>的行停在取消那一刻的部分值，其余状态显示 <code>-</code>。导出是分页取数的，<strong>总量事先不知道</strong>，所以只报行数、不给百分比。执行者每批还顺带回写<strong>心跳</strong>：跑很久的大单不会被误判成「进程崩过」而从头重跑 —— 判据统一为<strong>超过 10 分钟没有心跳</strong>才算死（服务重启、进程真挂了才会这样，那才会重跑），崩溃留下的半份 <code>.part</code> 同样按心跳判定才能被清理任务收走。</li>
+<li><strong>保留期与成品命名</strong>：<code>[export] retain_days</code>（默认 7 天）。成品按<strong>代次</strong>命名（<code>{任务id}.{认领时刻 20 位数字}.csv</code>，升级前的旧命名 <code>{任务id}.csv</code> 也认）：同一任务被重新认领时，新旧执行者各写各的代次，互不覆盖。过了期由 <strong>导出文件清理</strong>（<code>export_clean</code>，每天一次）连<strong>记录带文件</strong>一起删（<strong>已取消的行</strong>也照这个口径清，它本就不留文件；它同样依赖 <code>[job] enabled = true</code>，调度关了就去定时任务页手动触发 <code>export_clean</code>）；在过期前手动<strong>删除</strong>任务也会清掉该任务的<strong>全部代次成品</strong>（含输家代次、旧命名与行内 <code>file_path</code> 兜底），只有文件全部删成功才删记录，删不掉就保留记录下次重试。所以文件别当长期归档用，要留就及时下载走。</li>
+<li><strong>权限两条闸</strong>：能进导出中心要 <code>system:export:list</code>；发起某类型的导出还要有<strong>那类数据</strong>的查看码（操作日志要 <code>system:auditlog:list</code>，登录记录要 <code>system:loginlog:list</code>）—— <strong>没有查看码的类型不会出现在类型下拉里</strong>（前端按权限显隐，后端每单再按同一个码校验一次，绕不过去）；一个都没有时页面直接提示「没有可导出的类型」。<strong>导出中心是个人工作台</strong>：列表只显示<strong>自己发起</strong>的任务，别人的记录看不见、下不了、删不掉（超管也一样）；<code>system:export:remove</code> 控制删除按钮。</li>
+<li><strong>数据范围按发起时的当前角色算</strong>：任务真正执行时会用发起人<strong>当时</strong>的部门 / 角色数据范围重新算一遍（不是发起时的快照）——发起之后权限被收窄，还没跑完的任务也不会把已经看不到的数据导出去；发起人被删掉，任务直接失败并在消息列写明原因。</li>
+<li><strong>失败看得见</strong>：失败的行「消息」列写着原因（未知类型、筛选参数损坏、写文件失败等），记录不会自己消失，删掉即可。</li>
+</ul>
+<h3 id="313-通知设置systemnotify">3.13 通知设置（system:notify）</h3>
+<p>「通知设置」把系统<strong>对外发消息</strong>的两个口子配好：<strong>Webhook</strong>（给外部系统推事件）与 <strong>SMTP</strong>（发邮件）。配置存在系统配置的 <code>notify.*</code> 键上（见 <a href="#310-系统配置systemconfig">3.10</a>），<strong>改完立即生效、不用重启</strong>。</p>
+<ul>
+<li><strong>Webhook</strong>：打开开关、填一个 <code>http://</code> 或 <code>https://</code> 开头的地址。<strong>保存时按 URL 规范化后的 host 拒绝链路本地 / 未指定地址的 IP 字面量</strong>（<code>169.254.0.0/16</code>、<code>fe80::/10</code>、<code>0.0.0.0</code>、<code>::</code>；十进制/十六进制/八进制等写法会先归一）—— 云上元数据服务就在 <code>169.254.169.254</code>，别让 Webhook 变成打元数据服务的通道；<strong><code>127.0.0.1</code> 等回环地址放行</strong>（本机联调）。<strong>发送时还会再判一次，并解析域名</strong>：任一解析结果落在链路本地 / 未指定地址（含 <code>fe80::/10</code>、<code>0.0.0.0</code>、<code>::</code> 与 IPv4-mapped 形式）就<strong>不投递</strong>，记终态失败、不重投。所以保存时放行不代表发送时也放行 —— <strong>域名解析到链路本地 / 未指定地址会被拦</strong>；解析超时/失败、连接失败则按普通失败重投。<strong>RFC1918 私网与 IPv6 ULA（如 <code>10.0.0.0/8</code>、<code>192.168.0.0/16</code>、<code>fc00::/7</code>）不在拦截范围</strong>，公网域名指向内网时要靠部署侧网络策略兜底（DNS rebinding 同理）。
+  有两个事件会 POST 一份 JSON 过去：<strong>公告发布</strong>（<code>notice.published</code>，草稿改成「已发布」的那一次；取消发布不发、已发布的公告改正文也不再发）与 <strong>账号锁定</strong>（<code>account.locked</code>，登录连续失败触发限流那一下，见 <a href="faq.html#52-账号被锁了什么时候能再登">5.2</a>）。body 是 <code>{"event":"notice.published","at":1712345678,"data":{…}}</code>（<code>at</code> 是 Unix 秒）。
+  <strong>签名</strong>：填了「签名密钥」后，每次请求带 <code>X-BRA-Timestamp: &lt;unix 秒&gt;</code> 与 <code>X-BRA-Signature: sha256=&lt;hex(HMAC-SHA256(secret, "&lt;ts&gt;.&lt;原始 body 字节&gt;"))&gt;</code>；未配置就不带这两个头（兼容旧接收端）。接收端应校验时间窗防重放，并用<strong>原始请求体字节</strong>验签（先反序列化再序列化会对不上）。密钥与 SMTP 口令一样 AES-256-GCM 加密落库、接口只回「已设置/未设置」：留空 = 不改，填了 = 换新，<strong>清空签名密钥</strong>是单独一个动作。
+  <strong>不跟随重定向</strong>：接收端回 3xx（302/307 等）一律按投递失败处理（进重试），不会把请求跟到 <code>Location</code> 目标 —— 否则初始地址过了发送时封禁，一次 302 就能把请求带到链路本地地址。
+  <strong>失败重投</strong>：单次请求 <strong>5 秒超时</strong>，<strong>只把 2xx 当成功</strong>。失败（非 2xx / 超时 / 连接错 / 解析失败）落 <code>notify_delivery</code> 账本：首发记 1 次尝试、<strong>1 分钟后</strong>到期；内置任务 <strong>notify_retry</strong>（每 5 分钟一趟）重投，再失败按 <strong>5 / 15 分钟</strong>退避，<strong>最多重投 3 次</strong>（首发 + 3 次 = 4 次尝试），仍失败置 <code>failed</code>，成功置 <code>delivered</code>。账本保留 <strong>30 天</strong>，到期由同一任务清理。投递与重投都在<strong>后台异步</strong>做：对方服务器慢或者挂着，不会拖慢你发布公告、登录。</li>
+<li><strong>SMTP</strong>：服务器 / 端口 / 加密方式（<strong>STARTTLS</strong> 常用 587、<strong>SSL/TLS</strong> 常用 465、<strong>不加密</strong>只适合本机联调）/ 用户名 / 口令 / 发件人。<strong>口令加密存库</strong>（AES-256-GCM）：页面上只是一个密码框，<strong>留空 = 不改</strong>、填了 = 换新，接口从不回显；<strong>发件人留空就用用户名</strong>，用户名也留空 = 不认证（本机 relay 场景）。已经存过口令又想<strong>彻底清掉</strong>（不认证场景），点口令框下方的 <strong>清空口令</strong> 并二次确认 —— 它是单独一个动作，只清口令、不会顺手保存你还没提交的其它改动。服务器 / 用户名 / 发件人<strong>最长 255 个字符</strong>：超了输入框当场提示（后端同样会拒），不用等保存才知道。</li>
+<li><strong>发测试邮件到我邮箱</strong>：把测试信发到<strong>你自己账号的邮箱</strong>（先去个人中心把邮箱填对、并确认它能收信），用的是<strong>已保存</strong>的配置 —— 所以改完先点 <strong>保存</strong> 再点测试。成功提示收件地址，失败直接给原因（连不上 / 认证被拒 / 端口与加密方式不搭…），提示里不会出现口令。<strong>开关没打开也能测</strong>：先测通再打开是正常顺序。</li>
+<li><strong>公告邮件推送</strong>（页面下方的「公告邮件推送」开关）：打开后，每次<strong>发布公告</strong>都给「<strong>全部启用且填了邮箱</strong>的账号」各发一封邮件，<strong>发布者本人不收</strong>（哪怕他自己也填了邮箱）。收件人取自管理员账号的状态与邮箱（邮箱是密文列，发信前解密）；账号被禁用、没填邮箱、邮箱解不开的都会跳过。<strong>逐个投递</strong>：一人一封、单独一次 SMTP 会话，收件人之间互不抄送（不会让所有人从 <code>To:</code> 里看到彼此地址）。所以开销是 <strong>O(n) 次 SMTP 投递</strong>（n = 符合条件的账号数）：公告发布本身不等它（后台异步），但发给一万人就是一万次会话 —— 大团队先确认 SMTP 服务的发送配额/限速，别把它当群发平台。<strong>寄生于 SMTP</strong>：SMTP 总开关关着或没配服务器时这个开关即便打开也不发（服务端日志记一行）。<strong>best-effort</strong>：某一封失败只记服务端日志（只记账号 id，不记邮箱地址）并继续发下一封，不重投、不影响公告发布成功。</li>
+<li><strong>谁能用</strong>：能进这个页面要 <code>system:notify:list</code>；<strong>保存</strong> 与 <strong>发测试邮件</strong> 两个按钮要 <code>system:notify:edit</code>。</li>
+<li><strong>SMTP 口令与 Webhook 签名密钥到哪儿都只进不出</strong>：页面上不显示、审计只记「已变更」、日志与接口里都没有明文 —— 忘了就重填一把新的。</li>
+<li>两类投递都<strong>不是</strong>「一定能到」：Webhook 失败会落库重投（最多 3 次、账本留 30 天），但重投<strong>不保证顺序</strong>，接收端要做幂等；公告的<strong>邮件</strong>推送不落库、失败不重投（它只负责「提醒去看公告」，正文不随邮件走，收件人登录后台看全文）。要可靠投递请把接收端做成幂等 + 自己配监控抓服务日志。</li>
+</ul>
+<h3 id="314-附件中心systemattach">3.14 附件中心（system:attach）</h3>
+<p>通用的附件库。上传的文件先是<strong>未绑定</strong>的，之后可以<strong>关联</strong>到业务对象（v1 支持「公告配图」，见 <a href="#37-通知公告systemnotice">3.7</a>）。页面里：<strong>上传附件</strong> → 列表（名称 / 大小 / 上传人 / 绑定 / 时间）→ <strong>下载</strong> / <strong>关联</strong> / <strong>删除</strong>；顶部可按 名称 与 绑定对象（未绑定 / 公告配图）筛选。</p>
+<ul>
+<li><strong>上传限制</strong>（页面顶部有提示条）：单文件 <strong>10 MB</strong>，白名单里是 图片（png/jpg/gif/webp/bmp）、pdf、txt、csv、docx/xlsx/pptx、zip 共 13 种扩展名；<strong>每个人</strong>的总量受 <code>[attach] quota_mb</code> 约束（默认 200 MB，<code>0</code> 表示不限），超了会被拒绝并提示原因。配额是<strong>行级</strong>口径：删除立即释放配额，磁盘回收依赖清理任务（每小时）；单文件 10 MB 与每人配额不变。<strong>残余</strong>：保护期内已删的文件仍占磁盘，上传权限账号在回收前（最多约 1 小时）反复「传-删-传」可以让磁盘占用短暂超过配额对应的量 —— 上传与删除都有审计留痕，这里只做内部可信账号之间的资源公平，不逐字节精确计盘。</li>
+<li><strong>同一个文件只存一份</strong>：内容相同（按内容哈希 MD5 比）的文件重复上传不会在磁盘上再落一份，列表里是多行、盘上只有一份；<strong>删行不删文件</strong> —— 记录删掉后，没人引用的成品由「附件孤儿清理」按保护期收走（见下一条）。</li>
+<li><strong>谁能下载</strong>：绑到<strong>已发布公告</strong>的附件，任何登录用户都能下（公告配图，列表里标 <strong>公开</strong> 标签）；其余附件按<strong>上传人的数据权限</strong>判定 —— 上传人不在你的数据范围里，列表里看不到、也下不了。<strong>关联</strong> 与 <strong>删除</strong> 分别要 <code>system:attach:edit</code> / <code>system:attach:remove</code>；只有 <code>list</code> 的人能看能下，改不了关联、删不掉。列表里点 <strong>关联</strong> 打开弹窗选一篇公告即绑定（弹窗里<strong>清空选择 = 解绑</strong>）；下载入口在附件中心的 <strong>下载</strong> 按钮上，公告侧只能看到自己那几篇的配图。</li>
+<li><strong>在公告里配图</strong>：通知公告的编辑弹窗里点 <strong>上传配图</strong>，绑定的是这篇公告（<strong>新公告要先保存</strong>，有了 id 才能绑）；配图行里可以挨个下载或删除。配图本身仍然住在附件中心，两处看到的是同一份文件。</li>
+<li><strong>删公告 = 连带删配图行</strong>：删除一篇公告时，绑在它上面的附件记录会在<strong>同一事务</strong>里一起删掉（不会留下指向已删公告的悬空行）；<strong>文件不删</strong>，和手动删附件一样交给下面的孤儿清理按保护期收走。别的公告的配图、未绑定附件都不受影响。</li>
+<li>附件被删、或者业务对象被删之后<strong>没人引用</strong>的文件，由内置任务 <strong>附件孤儿清理</strong>（<code>attach_orphan_clean</code>，每小时一次；间隔取库里那一行，升级不覆盖已有行）删掉，和头像孤儿清理一个机制（任务本身见 <a href="#36-定时任务systemjob">3.6</a>）；目录里<strong>刚写下 5 分钟内</strong>的文件当保护期不碰（上传是「先落盘、后落库」，也顺带约束了删除后的回收时点）—— 刚删掉的文件不会当场消失，最迟下一轮（1 小时内）被收走。</li>
+</ul>
+<hr />
+<h2 id="4-数据权限五档语义与验证方法">4. 数据权限：五档语义与验证方法</h2>
+<h3 id="41-五档的确切含义">4.1 五档的确切含义</h3>
+<p>每个角色都要选一档 <strong>数据范围</strong>，界面上的名字就是下面这五个：</p>
+<table>
+<thead>
+<tr>
+<th>档位</th>
+<th>界面名称</th>
+<th>这个角色的管理员能看到的数据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>全部数据</td>
+<td>不加任何限制，所有部门、所有人的数据都看得见</td>
+</tr>
+<tr>
+<td>2</td>
+<td>本部门及以下</td>
+<td>自己所在的部门 <strong>加上它的所有下级部门</strong>（递归到底，含子部门的子部门），其它分支看不见</td>
+</tr>
+<tr>
+<td>3</td>
+<td>本部门</td>
+<td>只限自己所在的这一层部门，<strong>不含</strong>子部门</td>
+</tr>
+<tr>
+<td>4</td>
+<td>仅本人</td>
+<td>只看得见自己名下的数据</td>
+</tr>
+<tr>
+<td>5</td>
+<td>自定义</td>
+<td>手工勾选的若干部门，可以是任意分支、可以跨层（在权限抽屉里勾）</td>
+</tr>
+</tbody>
+</table>
+<p>「数据范围」目前作用在四处：<strong>管理员管理</strong>的列表（按人所属部门过滤）、<strong>登录记录</strong> 和 <strong>操作日志</strong>（按记录所属管理员的部门过滤）、<strong>附件中心</strong>的列表（按上传人过滤；已发布公告的配图另按公开规则可下载，见 <a href="#314-附件中心systemattach">3.14</a>）。菜单、角色、字典、公告属于全局配置，不按人分，能看到入口的人看到的是同一份。</p>
+<p>两个要记住的边界情况：</p>
+<ul>
+<li><strong>没有部门的管理员</strong>（部门选的是「（无）」）：选「本部门及以下」等于<strong>什么都看不到</strong>（「无部门」没有下级）；选「本部门」看到的也只是同样「无部门」的那部分人。要么给他挂个真实部门，要么用「全部数据」或「自定义」。</li>
+<li><strong>一个生效角色都没有</strong>（没挂角色，或挂的角色全被停用）：也是<strong>什么都看不到</strong>。不是「默认给全部」，也不是「默认给本部门」。</li>
+</ul>
+<h3 id="42-怎么亲手验证两角色两管理员对比列表条数">4.2 怎么亲手验证（两角色两管理员对比列表条数）</h3>
+<p>准备：在 部门管理 里建三个部门 —— <strong>甲部</strong>、<strong>甲部-一组</strong>（甲部的子部门）、<strong>乙部</strong>；在 管理员管理 里建三个测试账号：</p>
+<table>
+<thead>
+<tr>
+<th>账号</th>
+<th>所属部门</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>u1</code></td>
+<td>甲部</td>
+<td>验证对象</td>
+</tr>
+<tr>
+<td><code>u2</code></td>
+<td>甲部-一组</td>
+<td>甲部的下级</td>
+</tr>
+<tr>
+<td><code>u3</code></td>
+<td>乙部</td>
+<td>甲部之外的分支</td>
+</tr>
+</tbody>
+</table>
+<p>再建两个只用于对比的角色（各自只勾 <strong>管理员管理</strong> 的 <code>list</code>，别的都不勾，方便看差异）：</p>
+<ul>
+<li>角色「部门主管」：数据范围 = <strong>本部门及以下</strong>；</li>
+<li>角色「全局主管」：数据范围 = <strong>全部数据</strong>。</li>
+</ul>
+<p>然后：</p>
+<ol>
+<li>把「部门主管」挂到 <code>u1</code> 身上，用 <code>u1</code> 登录，进 <strong>管理员管理</strong>。列表里只有 <strong>甲部及其下级</strong> 的人（<code>u1</code>、<code>u2</code>，加上他自己）——<code>u3</code>、超管、以及其它部门的人都看不到。记下列表底部的总条数。</li>
+<li>用超管登录，把 <code>u1</code> 的角色改成「全局主管」，让 <code>u1</code> 刷新页面再看：条数变多，<code>u3</code> 出现了，超管也出现了。</li>
+<li>想验证 <strong>仅本人</strong>：再建一个角色，数据范围选「仅本人」（不需要勾菜单权限以外的任何东西），挂到 <code>u1</code> 身上，<code>u1</code> 刷新后列表里只剩他自己一条。</li>
+<li>想验证 <strong>自定义</strong>：建角色「甲乙主管」，数据范围 = <strong>自定义</strong>，在权限抽屉的部门树里<strong>只勾「乙部」</strong>，挂给 <code>u1</code>；<code>u1</code> 刷新后能看到乙部的 <code>u3</code>，但看不到甲部-一组的 <code>u2</code>。</li>
+</ol>
+<p>观察到的差异只在<strong>列表条数</strong>上，按钮和菜单不会变（功能权限和数据范围是两回事）。整个过程不需要重新登录，改完刷新页面即可；对比条数时注意筛选条件要一致（都留空）。</p>
+<h3 id="43-一个人有多个角色时怎么算">4.3 一个人有多个角色时怎么算</h3>
+<p>可以给一个人挂多个角色，两套东西都是<strong>取并集</strong>：</p>
+<ul>
+<li><strong>功能权限</strong>：所有<strong>启用</strong>角色勾过的权限码合在一起，能点的按钮就是这些码的并集。</li>
+<li><strong>数据范围</strong>：所有启用角色的部门范围合并去重；只要其中<strong>任意一个</strong>角色是「全部数据」，结果直接就是全部数据（最高优先级）；只要其中<strong>任意一个</strong>角色是「仅本人」，就在部门范围之外<strong>额外</strong>加上「只看自己」。最终效果 = 几个角色各自能看到的范围加起来，只多不少。</li>
+<li><strong>停用的角色完全不参与</strong>：既不给功能权限，也不给数据范围。</li>
+<li>所以「给他加个角色」永远是放宽；要收窄，得先把宽的角色摘掉。</li>
+</ul>
+<hr />
+<blockquote>
+<p><strong>第 5 章「常见问题与运维」已单独成册</strong>：<a href="faq.html">常见问题与运维</a> —— 忘记超管密码、账号被锁、
+头像传不上去、公告有人看不到、定时任务没跑、明文备份清理、数据库备份与恢复、通知发不出去等，都在那边。
+本册只讲「在界面上怎么把事做成」。</p>
+</blockquote>
+</article></div>
+</main>
+<footer class="site-footer" id="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <div class="footer-brand">
+          <img src="assets/img/pet/keeper-head.svg" alt="" width="52" height="52">
+          <div><b>BRA</b><small>BEE RUST ADMIN</small></div>
+        </div>
+        <p>Rust 服务端 + React 前端的 RBAC 管理后台。把权限守住，让后台开箱即用。</p>
+      </div>
+      <div>
+        <h3>项目</h3>
+        <ul class="footer-links">
+          <li><a href="index.html#intro">项目介绍</a></li>
+          <li><a href="index.html#features">功能设计</a></li>
+          <li><a href="index.html#architecture">架构设计</a></li>
+          <li><a href="index.html#timeline">功能迭代</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>文档</h3>
+        <ul class="footer-links">
+          <li><a href="install.html">安装说明</a></li>
+          <li><a href="usage.html">使用手册</a></li>
+          <li><a href="faq.html">常见问题</a></li>
+          <li><a href="releases.html">版本日志</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>链接</h3>
+        <ul class="footer-links">
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin" target="_blank" rel="noopener">GitHub 仓库 ↗</a></li>
+          <li><a href="https://erik.xyz" target="_blank" rel="noopener">艾瑞可erik ↗</a></li>
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin/blob/main/LICENSE" target="_blank" rel="noopener">代码许可 Apache-2.0 ↗</a></li>
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin/blob/main/ASSETS-LICENSE.md" target="_blank" rel="noopener">视觉资产授权 ↗</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© <span data-year>2026</span> erik · 代码 Apache-2.0</span>
+      <div class="footer-info" id="busuanzi">
+        <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+        <span id="busuanzi_container_page_pv"><span data-i18n="post.readA">阅读</span> <b id="busuanzi_value_page_pv">0</b> <span data-i18n="post.readB">次 👀</span></span>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<button class="to-top" id="to-top" type="button" aria-label="返回顶部">
+  <img src="assets/img/pet/keeper-onduty.svg" alt="" width="76" height="76">
+</button>
+
+<script src="assets/js/site.js" defer></script>
+</body>
+</html>

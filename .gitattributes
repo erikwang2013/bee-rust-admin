@@ -1,0 +1,3 @@
+# 项目站点不随 Release 的源码包（tag 的 Source code zip/tar.gz）分发。
+# site/ 仍保留在仓库 main 中，供站点独立部署；Release 资产本来就不包含它。
+/site/ export-ignore

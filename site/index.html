@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BRA · Bee Rust Admin — Rust + React 的 RBAC 管理后台</title>
+<meta name="description" content="BRA（Bee Rust Admin）：Rust 服务端 + React 前端的 RBAC 管理后台。菜单与按钮级权限、五档数据权限、TOTP、审计留痕、定时任务与通知，建库即用。">
+<meta name="theme-color" content="#fff9ec">
+<meta property="og:title" content="BRA · Bee Rust Admin">
+<meta property="og:description" content="把权限守住，让后台开箱即用。Rust 服务端 + React 前端的 RBAC 管理后台。">
+<meta property="og:type" content="website">
+<meta property="og:image" content="assets/img/og.png">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/css/base.css">
+<link rel="stylesheet" href="assets/css/components.css">
+</head>
+<body>
+<a class="skip-link" href="#main">跳到正文</a>
+
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="index.html" aria-label="BRA 首页">
+      <img src="assets/img/pet/keeper-head.svg" alt="" width="38" height="38">
+      <span>BRA<small>BEE RUST ADMIN</small></span>
+    </a>
+    <button class="nav-toggle" type="button" aria-controls="site-nav" aria-expanded="false" aria-label="打开导航"><span></span></button>
+    <nav class="nav" id="site-nav" aria-label="主导航">
+      <a href="index.html">首页</a>
+      <a href="#intro">介绍</a>
+      <a href="#features">功能</a>
+      <a href="#architecture">架构</a>
+      <a href="#timeline">迭代</a>
+      <a href="releases.html">版本日志</a>
+      <a href="install.html">安装</a>
+      <a href="usage.html">使用</a>
+      <a class="nav-ext" href="https://github.com/erikwang2013/bee-rust-admin" target="_blank" rel="noopener">GitHub ↗</a>
+      <a class="nav-ext" href="https://erik.xyz" target="_blank" rel="noopener">艾瑞可erik ↗</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero">
+    <canvas id="hive-canvas" aria-hidden="true"></canvas>
+    <div class="container">
+      <div class="hero-inner">
+        <div class="hero-copy">
+          <p class="eyebrow">Rust · RBAC · 开箱即用</p>
+          <h1>把权限守住，<br><em>让后台开箱即用。</em></h1>
+          <p class="lead">BRA（Bee Rust Admin）是一个开箱即用的后台管理系统：Rust 服务端 + React 18 + Ant Design 5 前端，权限细到按钮、数据看得到范围、登录与操作全程留痕。</p>
+          <div class="btn-row">
+            <a class="btn" href="install.html">快速开始 <span aria-hidden="true">→</span></a>
+            <a class="btn btn--ghost" href="https://github.com/erikwang2013/bee-rust-admin" target="_blank" rel="noopener">GitHub 仓库</a>
+          </div>
+          <ul class="badges">
+            <li class="badge badge--honey">Apache-2.0</li>
+            <li class="badge">Rust 1.99+</li>
+            <li class="badge">MySQL 8.4</li>
+            <li class="badge badge--cyan">JWT + TOTP</li>
+          </ul>
+          <p class="hero-note">服务启动时自动建表与种子 — 不需要手工执行 SQL 迁移。</p>
+        </div>
+        <div class="pet-stage">
+          <div class="pet-stage__platform" aria-hidden="true"></div>
+          <button class="pet-stage__pet" type="button" data-pet-cycle aria-label="点一下，让阿守换个表情">
+            <img src="assets/img/pet/keeper-onduty.svg" alt="阿守（Keeper），BRA 项目宠物，值守状态" width="512" height="512">
+          </button>
+          <span class="pet-chip pet-chip--1" aria-hidden="true">JWT</span>
+          <span class="pet-chip pet-chip--2" aria-hidden="true">RBAC</span>
+          <span class="pet-chip pet-chip--3" aria-hidden="true">TOTP</span>
+          <p class="pet-stage__hint">点一下阿守<br>换一种表情</p>
+        </div>
+      </div>
+      <div class="stats">
+        <div class="stat"><b>93</b><span>API 接口</span></div>
+        <div class="stat"><b>22</b><span>数据表</span></div>
+        <div class="stat"><b>8</b><span>内置任务</span></div>
+        <div class="stat"><b>12</b><span>阿守表情</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="intro">
+    <div class="container intro-grid">
+      <div class="intro-copy reveal">
+        <p class="eyebrow">项目介绍</p>
+        <h2>一个把权限当正事做的后台</h2>
+        <p>它解决的问题很实际：<strong>权限要细到按钮、数据要看得到范围、登录要留痕</strong>。前端隐藏只是体验，后端每个接口还会再校验一次；列表查询在数据层注入范围条件，参数化绑定，不拼接用户输入。</p>
+        <p>服务端用本仓库的 <a href="https://github.com/erikwang2013/bee-rust" target="_blank" rel="noopener">bee-rust</a> 框架写就（axum 路由 + 自研 ORM 执行层 + INI 配置），前端是 Vite + React 18 + Ant Design 5 单页应用，两者通过统一的 <code>{code, msg, data}</code> 契约对接。</p>
+        <p>启动即完成建表与种子：超管、菜单权限树、8 个内置任务自动就位；升级只加列，不删列、不改类型。</p>
+        <p><a href="usage.html">看使用手册</a> · <a href="install.html">看安装文档</a></p>
+      </div>
+      <ul class="fact-list">
+        <li class="fact reveal"><span class="fact__icon">01</span><div><h3>权限细到按钮</h3><p>角色勾到按钮级权限码，如 <code>system:admin:resetPwd</code>；前端渲染菜单，后端逐接口校验。</p></div></li>
+        <li class="fact reveal"><span class="fact__icon">02</span><div><h3>数据范围五档</h3><p>全部 / 本部门及以下 / 本部门 / 仅本人 / 自定义；多角色取并集，一个启用的角色都没有就什么都不给看。</p></div></li>
+        <li class="fact reveal"><span class="fact__icon">03</span><div><h3>会话可强制下线</h3><p>JWT 携带 <code>token_version</code>：改密、禁用、登出即失效旧令牌，不依赖黑名单。</p></div></li>
+        <li class="fact reveal"><span class="fact__icon">04</span><div><h3>全程留痕</h3><p>登录成功 / 失败 / 退出，以及所有有副作用的操作都入库；四类编辑额外记录字段变更摘要。</p></div></li>
+      </ul>
+    </div>
+    <div class="container" style="margin-top:40px">
+      <div class="tech-strip" aria-label="技术栈">
+        <span>Rust</span><span>axum</span><span>bee_orm</span><span>MySQL 8.4</span><span>React 18</span><span>Ant Design 5</span><span>Vite</span><span>JWT</span><span>Argon2id</span><span>RFC 6238 TOTP</span><span>Webhook HMAC</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--paper" id="features">
+    <div class="container">
+      <div class="section-head reveal">
+        <p class="eyebrow">功能设计</p>
+        <h2>该有的都有，安全不是附件</h2>
+        <p class="lead">从门岗到账本，从数据通道到通知出口。每个模块都带着自己的权限码与审计路径。</p>
+      </div>
+      <div class="features">
+        <article class="feature reveal"><span class="feature__num">01 / RBAC</span><h3>菜单 + 按钮两级权限</h3><p>管理员 ← 角色 ← 菜单与按钮；超管旁路权限码。前端隐藏只是体验，后端每次再校验。</p><div class="chips"><code>admin_role</code><code>role_menu</code><code>require()</code></div></article>
+        <article class="feature reveal"><span class="feature__num">02 / SCOPE</span><h3>五档数据权限</h3><p>列表查询层注入部门子树、本人或自定义部门条件；多角色取并集，不拼接用户输入。</p><div class="chips"><code>datascope</code><code>role_dept</code></div></article>
+        <article class="feature reveal"><span class="feature__num">03 / SESSION</span><h3>无状态会话，强制下线</h3><p>JWT 携带版本号；改密、禁用、登出即让旧令牌失效。退出其他设备一键生效。</p><div class="chips"><code>token_version</code><code>jwt-rust</code></div></article>
+        <article class="feature reveal"><span class="feature__num">04 / AUDIT</span><h3>审计与请求安全扫描</h3><p>登录记录、操作日志、变更摘要；32 个攻击特征检测器，默认只留痕，可切到拦截。</p><div class="chips"><code>login_log</code><code>audit_log</code><code>security-rust</code></div></article>
+        <article class="feature reveal"><span class="feature__num">05 / TOTP</span><h3>动态验证码与备用码</h3><p>密码验过之后才提示要码；10 枚一次性备用码只存哈希；密钥加密落库，设备列表可踢单台。</p><div class="chips"><code>RFC 6238</code><code>AES-256-GCM</code><code>backup_code</code></div></article>
+        <article class="feature reveal"><span class="feature__num">06 / JOBS</span><h3>定时任务与数据库备份</h3><p>8 个代码注册的内置任务：备份、附件清理、通知重投、导出执行；固定间隔调度，可手动补跑。</p><div class="chips"><code>job</code><code>job_log</code><code>db_backup</code></div></article>
+        <article class="feature reveal"><span class="feature__num">07 / DATA</span><h3>导入、导出与附件</h3><p>CSV 导入单事务全有或全无；导出中心异步执行、按代次命名；附件分片上传、内容去重、孤儿回收。</p><div class="chips"><code>import</code><code>export</code><code>attach</code></div></article>
+        <article class="feature reveal"><span class="feature__num">08 / NOTIFY</span><h3>Webhook 与 SMTP</h3><p>事件通知带 HMAC-SHA256 签名；失败退避重投、落账本；发送时再次封禁内网地址，不跟随重定向。</p><div class="chips"><code>notice.published</code><code>account.locked</code><code>SMTP</code></div></article>
+        <article class="feature reveal"><span class="feature__num">09 / I18N</span><h3>中英双语与公开配置</h3><p>界面两套文案、错误码查表；登录页与页脚的副标题、版权、项目地址读公开配置，刷新即变。</p><div class="chips"><code>i18n</code><code>configs/public</code></div></article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="architecture">
+    <div class="container">
+      <div class="section-head reveal">
+        <p class="eyebrow">架构设计</p>
+        <h2>五层链路，一条请求走到底</h2>
+        <p class="lead">浏览器 → nginx → bee_router → Auth 提取器 → handler → bee_orm → MySQL。401 与 403 在查库之前就短路。</p>
+      </div>
+      <div class="tabs reveal" role="tablist" aria-label="架构图切换">
+        <button class="tab" type="button" role="tab" id="tab-arch" aria-selected="true" aria-controls="diagram-arch" data-diagram="diagram-arch">架构设计</button>
+        <button class="tab" type="button" role="tab" id="tab-feat" aria-selected="false" aria-controls="diagram-feat" data-diagram="diagram-feat" tabindex="-1">功能设计</button>
+        <button class="tab" type="button" role="tab" id="tab-req" aria-selected="false" aria-controls="diagram-req" data-diagram="diagram-req" tabindex="-1">请求周期</button>
+        <button class="tab" type="button" role="tab" id="tab-life" aria-selected="false" aria-controls="diagram-life" data-diagram="diagram-life" tabindex="-1">服务生命周期</button>
+      </div>
+      <div class="diagram-panel is-active reveal" id="diagram-arch" role="tabpanel" aria-labelledby="tab-arch">
+        <div class="diagram-frame"><img src="assets/img/diagrams/architecture.svg" alt="BRA 五层架构图：客户端、接入层、应用层、框架层、数据层" width="980" height="700"></div>
+        <p class="diagram-caption">客户端 SPA · nginx :8081 · bee_admin · bee_orm / bee_config / bee_logs · MySQL 8.4（22 张表）。</p>
+      </div>
+      <div class="diagram-panel" id="diagram-feat" role="tabpanel" aria-labelledby="tab-feat">
+        <div class="diagram-frame"><img src="assets/img/diagrams/features.svg" alt="BRA 功能设计图：管理员、角色、菜单、部门的多对多权限模型" width="980" height="830" loading="lazy"></div>
+        <p class="diagram-caption">三段式权限模型：管理员 ← admin_role → 角色 ← role_menu → 菜单与按钮；角色 ← role_dept → 部门用于自定义数据范围。</p>
+      </div>
+      <div class="diagram-panel" id="diagram-req" role="tabpanel" aria-labelledby="tab-req">
+        <div class="diagram-frame"><img src="assets/img/diagrams/request-cycle.svg" alt="BRA 请求周期图：从浏览器到 MySQL 的 12 步链路" width="980" height="780" loading="lazy"></div>
+        <p class="diagram-caption">以 GET /api/v1/admins 为例的 12 步链路；校验签名、版本与账号状态后加载角色与权限码，再进入 handler。</p>
+      </div>
+      <div class="diagram-panel" id="diagram-life" role="tabpanel" aria-labelledby="tab-life">
+        <div class="diagram-frame"><img src="assets/img/diagrams/lifecycle.svg" alt="BRA 服务生命周期图：配置、连库、迁移、种子、监听与退出" width="980" height="700" loading="lazy"></div>
+        <p class="diagram-caption">配置强度校验 → 连接 MySQL → migrate::sync 只建表 / 加列 → 幂等补齐超管、菜单与任务 → 监听 127.0.0.1:8080 → SIGTERM 退出。</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--paper" id="timeline">
+    <div class="container">
+      <div class="section-head reveal">
+        <p class="eyebrow">功能迭代</p>
+        <h2>从第一行 RBAC 到 2.16</h2>
+        <p class="lead">2026 年 10 月的连续迭代：先守住门，再补数据通道，最后做工程化收口。</p>
+      </div>
+      <ol class="timeline">
+        <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v1.0.0</span><span class="tl-date">2026-10-05</span></div><h3>第一个版本</h3><p>完整 RBAC 后台、bee_orm 执行层、React SPA 与部署产物；建库即用。</p></li>
+        <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v1.2.0</span><span class="tl-date">2026-10-06</span></div><h3>审计与体验</h3><p>操作日志、导出、个人中心、登录锁定、暗色主题；配置与开关不再「骗人」。</p></li>
+        <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v1.3.0 – v1.4.0</span><span class="tl-date">2026-10-06</span></div><h3>安全加固</h3><p>登录限流、数据权限写路径、反自我提权、首屏减重 693 kB；错误边界不再白屏。</p></li>
+        <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v1.6.0 – v1.7.0</span><span class="tl-date">2026-10-06</span></div><h3>自动化与双语</h3><p>字典、定时任务、通知公告，以及完整的中英双语界面。</p></li>
+        <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v2.0.0</span><span class="tl-date">2026-10-07</span></div><h3>框架换代</h3><p>bee-rust 升级到 1.2.3，ORM 换实现；对外 HTTP 契约不变。</p></li>
+        <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v2.1.0 – v2.6.0</span><span class="tl-date">2026-10-07 ~ 10-08</span></div><h3>插件化拼图</h3><p>雪花 ID + hashids、jwt-rust、加密列、登录验证码、分片头像、安全扫描与接口文档站。</p></li>
+        <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v2.11.0 – v2.14.0</span><span class="tl-date">2026-10-15 ~ 10-16</span></div><h3>平台能力</h3><p>仪表盘、系统配置、备份 / 导入 / 导出、TOTP + 登录设备、通知渠道、附件中心、模块脚手架。</p></li>
+        <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v2.15.0 – v2.16.1</span><span class="tl-date">2026-10-17 ~ 10-18</span></div><h3>工程化收口</h3><p>500 行拆分、API 版本化目录、TOTP 备用码、Webhook 签名与重投、安全加固。</p></li>
+      </ol>
+      <div class="btn-row" style="margin-top:24px"><a class="btn btn--ghost" href="releases.html">查看全部版本日志 →</a></div>
+    </div>
+  </section>
+
+  <section class="section" id="pet">
+    <div class="container">
+      <div class="section-head reveal">
+        <p class="eyebrow">项目宠物 · 阿守</p>
+        <h2>门岗上，阿守当值</h2>
+        <p class="lead">蜂巢的值守蜂：查凭证、发钥匙、登记访客。五种状态跟着项目状态切换，十二种表情跟着你点。</p>
+      </div>
+      <div class="pet-states">
+        <div class="pet-state reveal"><img src="assets/img/pet/keeper-onduty.svg" alt="阿守值守状态" loading="lazy"><b>值守</b><code>(⌐■_■)</code><span>门岗正常，权限表与菜单树一致</span></div>
+        <div class="pet-state reveal"><img src="assets/img/pet/keeper-verifying.svg" alt="阿守查证状态" loading="lazy"><b>查证</b><code>(・_・)?</code><span>有变更待验证，凭证拿来</span></div>
+        <div class="pet-state reveal"><img src="assets/img/pet/keeper-superuser.svg" alt="阿守超管状态" loading="lazy"><b>超管</b><code>(＾▽＾)</code><span>超管入场，旁路所有权限码</span></div>
+        <div class="pet-state reveal"><img src="assets/img/pet/keeper-dozing.svg" alt="阿守打盹状态" loading="lazy"><b>打盹</b><code>(-_-)zZ</code><span>深夜，无人来访</span></div>
+        <div class="pet-state reveal"><img src="assets/img/pet/keeper-alarmed.svg" alt="阿守竖针状态" loading="lazy"><b>竖针</b><code>(#°益°)</code><span>仓库里检出密钥文件</span></div>
+      </div>
+      <div class="mood-layout">
+        <div class="mood-stage reveal">
+          <img data-mood-img src="assets/img/pet/expressions/smile.svg" alt="阿守的笑表情" width="512" height="512">
+          <p class="mood-name">当前形态：<b data-mood-name>笑</b></p>
+        </div>
+        <div class="reveal">
+          <p>点选一种表情，阿守会立刻换给你看。每个 SVG 自带表情、情绪特效与整体动效，并遵循 <code>prefers-reduced-motion</code>。</p>
+          <div class="expression-grid">
+            <button class="expression" type="button" data-mood="smile" data-mood-name="笑" aria-pressed="true"><img src="assets/img/pet/expressions/smile.svg" alt="" loading="lazy" width="88" height="88"><b>笑</b><code>:emoji-smile:</code></button>
+            <button class="expression" type="button" data-mood="joy" data-mood-name="欢乐" aria-pressed="false"><img src="assets/img/pet/expressions/joy.svg" alt="" loading="lazy" width="88" height="88"><b>欢乐</b><code>:emoji-joy:</code></button>
+            <button class="expression" type="button" data-mood="cry" data-mood-name="哭" aria-pressed="false"><img src="assets/img/pet/expressions/cry.svg" alt="" loading="lazy" width="88" height="88"><b>哭</b><code>:emoji-cry:</code></button>
+            <button class="expression" type="button" data-mood="depressed" data-mood-name="沮丧" aria-pressed="false"><img src="assets/img/pet/expressions/depressed.svg" alt="" loading="lazy" width="88" height="88"><b>沮丧</b><code>:emoji-depressed:</code></button>
+            <button class="expression" type="button" data-mood="terrified" data-mood-name="惊恐" aria-pressed="false"><img src="assets/img/pet/expressions/terrified.svg" alt="" loading="lazy" width="88" height="88"><b>惊恐</b><code>:emoji-terrified:</code></button>
+            <button class="expression" type="button" data-mood="angry" data-mood-name="愤怒" aria-pressed="false"><img src="assets/img/pet/expressions/angry.svg" alt="" loading="lazy" width="88" height="88"><b>愤怒</b><code>:emoji-angry:</code></button>
+            <button class="expression" type="button" data-mood="coquettish" data-mood-name="撒娇" aria-pressed="false"><img src="assets/img/pet/expressions/coquettish.svg" alt="" loading="lazy" width="88" height="88"><b>撒娇</b><code>:emoji-coquettish:</code></button>
+            <button class="expression" type="button" data-mood="cute" data-mood-name="卖萌" aria-pressed="false"><img src="assets/img/pet/expressions/cute.svg" alt="" loading="lazy" width="88" height="88"><b>卖萌</b><code>:emoji-cute:</code></button>
+            <button class="expression" type="button" data-mood="pleasing" data-mood-name="讨好" aria-pressed="false"><img src="assets/img/pet/expressions/pleasing.svg" alt="" loading="lazy" width="88" height="88"><b>讨好</b><code>:emoji-pleasing:</code></button>
+            <button class="expression" type="button" data-mood="knocking" data-mood-name="敲打" aria-pressed="false"><img src="assets/img/pet/expressions/knocking.svg" alt="" loading="lazy" width="88" height="88"><b>敲打</b><code>:emoji-knocking:</code></button>
+            <button class="expression" type="button" data-mood="facepalm" data-mood-name="捂脸" aria-pressed="false"><img src="assets/img/pet/expressions/facepalm.svg" alt="" loading="lazy" width="88" height="88"><b>捂脸</b><code>:emoji-facepalm:</code></button>
+            <button class="expression" type="button" data-mood="tongue" data-mood-name="吐舌头" aria-pressed="false"><img src="assets/img/pet/expressions/tongue.svg" alt="" loading="lazy" width="88" height="88"><b>吐舌头</b><code>:emoji-tongue:</code></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--paper" id="quickstart">
+    <div class="container">
+      <div class="section-head reveal">
+        <p class="eyebrow">快速开始</p>
+        <h2>三条命令，或者交给脚本</h2>
+        <p class="lead">预编译产物需要 glibc ≥ 2.38；老机器用源码构建或 Docker，脚本会在写盘前检测并给出替代命令。</p>
+      </div>
+      <div class="quick-grid">
+        <div class="quick-card quick-card--steps reveal">
+          <h3>手动路径</h3>
+          <ol class="steps">
+            <li><div><b>克隆仓库</b><br><code>git clone --depth 1 https://github.com/erikwang2013/bee-rust-admin.git</code></div></li>
+            <li><div><b>生成配置</b><br>填好 <code>[db] dsn</code>、<code>[jwt] secret</code> 与 <code>[app] encrypt_key</code>（后者不可更换）。</div></li>
+            <li><div><b>起服务与前端</b><br><code>cargo run -p bee_admin</code>，再 <code>cd admin/web && pnpm i && pnpm dev</code>。</div></li>
+          </ol>
+          <div class="quick-links"><a class="btn" href="install.html">完整安装文档</a><a class="btn btn--ghost" href="usage.html">使用说明</a></div>
+        </div>
+        <div class="quick-card quick-card--term reveal">
+          <h3>一键安装</h3>
+          <p>脚本会拉发布产物或源码构建，生成配置、建库、装 systemd + nginx，并跑自检。</p>
+          <pre class="terminal"><span class="c"># 交互式；--help 看全部参数</span>
+git clone --depth 1 \
+  https://github.com/erikwang2013/bee-rust-admin.git
+cd bee-rust-admin
+less install.sh &amp;&amp; bash install.sh</pre>
+          <p>老机器：<code>bash install.sh --mode build</code>；容器：<code>./compose-up.sh --build</code>。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer" id="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <div class="footer-brand">
+          <img src="assets/img/pet/keeper-head.svg" alt="" width="52" height="52">
+          <div><b>BRA</b><small>BEE RUST ADMIN</small></div>
+        </div>
+        <p>Rust 服务端 + React 前端的 RBAC 管理后台。把权限守住，让后台开箱即用。</p>
+      </div>
+      <div>
+        <h3>项目</h3>
+        <ul class="footer-links">
+          <li><a href="index.html#intro">项目介绍</a></li>
+          <li><a href="index.html#features">功能设计</a></li>
+          <li><a href="index.html#architecture">架构设计</a></li>
+          <li><a href="index.html#timeline">功能迭代</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>文档</h3>
+        <ul class="footer-links">
+          <li><a href="install.html">安装说明</a></li>
+          <li><a href="usage.html">使用手册</a></li>
+          <li><a href="faq.html">常见问题</a></li>
+          <li><a href="releases.html">版本日志</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>链接</h3>
+        <ul class="footer-links">
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin" target="_blank" rel="noopener">GitHub 仓库 ↗</a></li>
+          <li><a href="https://erik.xyz" target="_blank" rel="noopener">艾瑞可erik ↗</a></li>
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin/blob/main/LICENSE" target="_blank" rel="noopener">代码许可 Apache-2.0 ↗</a></li>
+          <li><a href="https://github.com/erikwang2013/bee-rust-admin/blob/main/ASSETS-LICENSE.md" target="_blank" rel="noopener">视觉资产授权 ↗</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© <span data-year>2026</span> erik · 代码 Apache-2.0</span>
+      <div class="footer-info" id="busuanzi">
+        <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+        <span id="busuanzi_container_page_pv"><span data-i18n="post.readA">阅读</span> <b id="busuanzi_value_page_pv">0</b> <span data-i18n="post.readB">次 👀</span></span>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<button class="to-top" id="to-top" type="button" aria-label="返回顶部">
+  <img src="assets/img/pet/keeper-onduty.svg" alt="" width="76" height="76">
+</button>
+
+<script src="assets/js/site.js" defer></script>
+<script type="module" src="assets/js/three-bg.js"></script>
+</body>
+</html>
