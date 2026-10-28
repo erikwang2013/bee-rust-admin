@@ -280,10 +280,6 @@ code, pre, kbd { font-family: var(--mono); }
 .pet-stage__pet {
   position: relative;
   width: min(78%, 390px);
-  border: 0;
-  padding: 0;
-  background: none;
-  cursor: pointer;
   animation: pet-bob 5.5s ease-in-out infinite;
   filter: drop-shadow(0 14px 18px rgba(58, 42, 26, 0.18));
 }
@@ -299,11 +295,16 @@ code, pre, kbd { font-family: var(--mono); }
   border-radius: 14px 14px 14px 2px;
   background: var(--card);
   box-shadow: var(--shadow-sm);
+  font: inherit;
   font-size: 12px;
+  font-weight: 600;
   line-height: 1.45;
   color: var(--ink-soft);
+  cursor: pointer;
+  white-space: nowrap;
   transform: rotate(2deg);
 }
+.pet-stage__hint:hover { background: var(--honey-soft); color: var(--ink); }
 .pet-chip {
   position: absolute;
   padding: 5px 10px;
@@ -387,7 +388,8 @@ code, pre, kbd { font-family: var(--mono); }
   .pet-stage { min-height: clamp(150px, 18vh, 200px); max-width: 300px; margin-inline: auto; width: 100%; }
   .pet-stage__pet { width: min(70%, 170px); }
   .pet-stage__platform { width: min(80%, 220px); }
-  .pet-stage__hint, .pet-chip { display: none; }
+  .pet-chip { display: none; }
+  .pet-stage__hint { top: 0; right: 0; bottom: auto; padding: 5px 9px; font-size: 11px; }
   .stats { grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 20px; }
   .stat { padding: 8px 10px; }
   .stat b { font-size: 20px; }

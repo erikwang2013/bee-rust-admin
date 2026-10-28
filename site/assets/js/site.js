@@ -92,9 +92,9 @@
     });
   });
 
-  /* 阿守表情：点一下换一个 */
-  var heroPet = document.querySelector("[data-pet-cycle]");
-  var petImg = heroPet && heroPet.querySelector("img");
+  /* 阿守表情：点「换一种表情」切换；点图片放大 */
+  var petNext = document.querySelector("[data-pet-next]");
+  var petImg = document.querySelector(".pet-stage__pet img");
   var moods = Array.prototype.slice.call(document.querySelectorAll(".expression[data-mood]"));
   var moodStageImg = document.querySelector("[data-mood-img]");
   var moodName = document.querySelector("[data-mood-name]");
@@ -119,14 +119,14 @@
     window.setTimeout(function () { el.classList.remove("is-popping"); }, 220);
   }
 
-  if (heroPet && petImg) {
-    heroPet.addEventListener("click", function () {
-      faceIndex = (faceIndex + 1) % faces.length;
-      petImg.src = expressionPath(faces[faceIndex][0]);
-      petImg.alt = "阿守的" + faces[faceIndex][1] + "表情";
-      pop(petImg);
-    });
+  function cyclePet() {
+    if (!petImg) return;
+    faceIndex = (faceIndex + 1) % faces.length;
+    petImg.src = expressionPath(faces[faceIndex][0]);
+    petImg.alt = "阿守的" + faces[faceIndex][1] + "表情";
+    pop(petImg);
   }
+  if (petNext) petNext.addEventListener("click", cyclePet);
 
   moods.forEach(function (btn) {
     btn.addEventListener("click", function () {
@@ -178,7 +178,7 @@
   }
 
   /* 图片点击放大 */
-  var zoomables = document.querySelectorAll(".diagram-frame img, .pet-state img, .mood-stage img, .nf-pet, .doc img");
+  var zoomables = document.querySelectorAll(".diagram-frame img, .pet-state img, .mood-stage img, .nf-pet, .doc img, .pet-stage__pet img, .expression img");
   if (zoomables.length && "HTMLDialogElement" in window) {
     var dlg = document.createElement("dialog");
     dlg.className = "lightbox";
@@ -194,10 +194,21 @@
       document.body.classList.remove("lightbox-open");
     }
 
+    function labelFor(img) {
+      if (img.alt) return img.alt;
+      var btn = img.closest("button");
+      if (btn) {
+        if (btn.dataset.moodName) return "阿守的" + btn.dataset.moodName + "表情";
+        return btn.textContent.trim().replace(/\s+/g, " ");
+      }
+      return "";
+    }
+
     function openLightbox(img) {
+      var label = labelFor(img);
       dlgImg.src = img.currentSrc || img.src;
-      dlgImg.alt = img.alt || "";
-      dlgCap.textContent = img.alt || "";
+      dlgImg.alt = label;
+      dlgCap.textContent = label;
       dlg.showModal();
       document.body.classList.add("lightbox-open");
       closeBtn.focus();
@@ -205,15 +216,22 @@
 
     zoomables.forEach(function (img) {
       img.classList.add("zoomable");
-      img.tabIndex = 0;
-      img.setAttribute("role", "button");
-      img.setAttribute("aria-label", "放大查看：" + (img.alt || "图片"));
-      img.addEventListener("click", function () { openLightbox(img); });
-      img.addEventListener("keydown", function (e) {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          openLightbox(img);
-        }
+      var nested = img.closest("button, a");
+      if (!nested) {
+        img.tabIndex = 0;
+        img.setAttribute("role", "button");
+        img.setAttribute("aria-label", "放大查看：" + (labelFor(img) || "图片"));
+        img.addEventListener("keydown", function (e) {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            openLightbox(img);
+          }
+        });
+      }
+      img.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        openLightbox(img);
       });
     });
 
