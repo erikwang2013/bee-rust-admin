@@ -2,6 +2,8 @@
 
 基于 bee-rust 框架的 RBAC 管理后台 —— Rust 服务端 + React 前端，建库即用。
 
+> 项目站点：[https://package.erik.xyz/bra/](https://package.erik.xyz/bra/)
+
 `JWT 登录` · `管理员 / 角色 / 菜单 / 部门 / 字典 / 定时任务 / 通知公告 / 登录记录 / 操作日志` · `菜单 + 按钮级权限` · `部门数据权限` · `中英双语` · `Docker 一键部署`
 
 ---
