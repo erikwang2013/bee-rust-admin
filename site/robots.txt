@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /bra/
+Disallow: /bra/404.html
+
+Sitemap: https://package.erik.xyz/bra/sitemap.xml

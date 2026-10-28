@@ -178,7 +178,7 @@
   }
 
   /* 图片点击放大 */
-  var zoomables = document.querySelectorAll(".diagram-frame img, .pet-state img, .mood-stage img, .nf-pet, .doc img, .pet-stage__pet img, .expression img");
+  var zoomables = document.querySelectorAll(".diagram-frame img, .pet-state img, .mood-stage img, .nf-pet, .doc img, .pet-stage__pet img, .expression img, .donate-card img");
   if (zoomables.length && "HTMLDialogElement" in window) {
     var dlg = document.createElement("dialog");
     dlg.className = "lightbox";

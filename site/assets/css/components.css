@@ -326,6 +326,33 @@
 .release-item .rel-summary { margin: 0; font-size: 14px; color: var(--ink-soft); max-width: 84ch; }
 .release-item .gh-link { display: inline-block; margin-top: 10px; font-family: var(--mono); font-size: 12px; }
 
+/* 打赏 */
+.donate-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 220px)); gap: 20px; justify-content: center; }
+.donate-card {
+  margin: 0;
+  padding: 16px;
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+  text-align: center;
+}
+.donate-card img {
+  display: block;
+  width: 100%;
+  max-width: 190px;
+  margin-inline: auto;
+  border: 2px solid rgba(58, 42, 26, 0.22);
+  border-radius: 12px;
+  background: var(--white);
+}
+.donate-card figcaption { margin-top: 10px; }
+.donate-card figcaption b { display: block; font-size: 16px; }
+.donate-card figcaption span { font-size: 12px; color: var(--ink-soft); }
+.donate-card--wechat figcaption b { color: #128a2b; }
+.donate-card--alipay figcaption b { color: #1677ff; }
+.donate-note { margin: 18px 0 0; text-align: center; font-size: 12px; color: var(--ink-soft); }
+
 /* 图片放大预览 */
 .zoomable { cursor: zoom-in; }
 body.lightbox-open { overflow: hidden; }
@@ -467,5 +494,7 @@ body.lightbox-open { overflow: hidden; }
   .footer-grid { grid-template-columns: 1fr; }
   .doc { font-size: 15px; }
   .release-item { padding: 14px; }
+  .donate-grid { gap: 10px; }
+  .donate-card { padding: 10px; }
   .diagram-frame img { min-width: 520px; }
 }
