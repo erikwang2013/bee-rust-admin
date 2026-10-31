@@ -1,6 +1,14 @@
 # 后端镜像构建上下文：只留编译需要的
 .git
 .github
+# Agent worktrees / local tool state can contain node_modules and multi-GB caches;
+# never send them to the Docker daemon (release builds run inside the repo).
+.claude
+.claude-flow
+.swarm
+.agents
+.superpowers
+ruvector.db
 target
 # …唯一例外：deploy/Dockerfile.prebuilt 打的就是发布脚本放在这里的 strip 产物
 # （`!` 对里层的重新包含要连父目录一起写，legacy builder 才会走下去）
