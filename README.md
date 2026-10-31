@@ -127,7 +127,7 @@ INI 配置），前端是 Vite 8 + React 19 + Ant Design 6 单页应用，两者
 
 | 模块 | 能力 |
 |---|---|
-| **登录鉴权** | 账号密码登录（argon2id）、JWT 签发与校验、登出、个人中心改密（改后强制重新登录） |
+| **登录鉴权** | 账号密码登录（argon2id；用户名 3–64 字符、密码 8–1024 字符，超长在限流/查库/哈希前拒绝）、JWT 签发与校验、登出、个人中心改密（改后强制重新登录） |
 | **动态验证码与登录设备** | 可选的第二步验证（TOTP，RFC 6238，6 位 / 30 秒 / 容前后各一步）：绑定要现码确认、密钥 AES-256-GCM 加密落库（导出与日志里都没有明文）、解绑连密钥与备用码一起清；登录时**密码验过之后**才提示要码（先亮框等于泄露「该账号开了验证码」）。**备用码**：个人中心凭当前 TOTP 生成 10 枚（10 位、剔除易混字符），明文只回一次、库里只存 SHA-256(pepper‖code) 哈希，每枚只能用一次，重新生成旧码全部作废；登录输入 6 位纯数字走 TOTP、其余走备用码，未命中同样计入失败次数。个人中心可看**登录设备**列表（按 UA 归组、标出当前这台）并**踢掉单台**；**生成备用码 / 解绑**要当场输入当前码确认，连续输错 5 次后 5 分钟内一律 429（进程内 per-admin 限流，多实例不共享）。验证器与备用码都丢了由有库权限的运维清 totp 列（`UPDATE admin SET totp_secret='', totp_enabled=0, totp_last_step=NULL WHERE id=<id>;`，并删备用码 `DELETE FROM admin_backup_code WHERE admin_id=<id>;`）后重新登录再绑，或恢复备份（重置密码不解除绑定） |
 | **通知渠道** | 出站通知两种：**Webhook**（事件 `notice.published` 公告发布 / `account.locked` 账号锁定 → POST JSON `{event,at,data}`；可选 **HMAC-SHA256 签名**，头 `X-BRA-Timestamp` + `X-BRA-Signature: sha256=…`；保存时拒绝链路本地 / 未指定 IP 字面量，**发送时解析域名并再次封禁**，回环 `127.0.0.1` 放行；**不跟随重定向**（3xx 按投递失败处理，防止 302/307 绕过封禁）；失败落 `notify_delivery` 账本，`notify_retry` 每 5 分钟按 1/5/15 分钟退避重投、最多 3 次，账本留 30 天）与 **SMTP**（配置页可发一封测试邮件到**自己**的邮箱，失败回原因；另可开启**公告邮件推送**：发布公告时给全部启用且填了邮箱的账号各发一封，**发布者本人除外**，默认关）。投递异步（业务响应不等它），配置存系统配置的 `notify.*` 键（一律不公开、改完不用重启）；SMTP 口令与 Webhook 签名密钥加密存、接口只回「是否已设置」，整个 `notify.*` 命名空间由通知设置页维护 —— 通用配置页不列、不增、不改、不删 |
 | **仪表盘** | 首页四类计数（管理员 / 角色 / 部门 / 公告）+ 近 7 天登录与失败登录趋势（手绘 SVG 迷你柱状图，无图表库），登录即可、不挂权限码；无数据的日期补 0，全 0 显示空态 |
@@ -238,7 +238,7 @@ docker-compose.tls.yml  HTTPS 叠加（certs/ + TLS nginx 模板）
 |---|---|
 | Rust | 1.99+（edition 2024） |
 | MySQL | 8.0+（开发于 8.4，utf8mb4） |
-| Node / pnpm | Node 20+ / pnpm 9+ |
+| Node / pnpm | Node 22.12+ / pnpm 10+ |
 | nginx | 任意近期版本（仅生产部署需要） |
 
 > ⚠️ **用预编译产物（`install.sh` 的默认模式）需要 glibc ≥ 2.38**（Debian 13 / Ubuntu 24.04+）。
@@ -411,6 +411,8 @@ curl -G --data-urlencode "token=$TOKEN" http://127.0.0.1:8080/apidoc/api.json
   `/home/uploads`）；MySQL 数据在命名卷 `mysql-data`（宿主机 Docker 数据目录）
 - **备份开箱可用**：运行时镜像包含 `mariadb-client` 的 `mysqldump`，内置 `db_backup`
   可直接跑；裸机/systemd 部署要自行安装 MySQL 客户端
+- **临时文件会回收**：上传中断留下的 `_header/`、`.part` 与中断备份的
+  `backup_*.sql.part` 超过 24 小时由内置清理任务收走；不会无限堆在 `data/bra/`
 - **日志/缓存不撑大容器**：所有服务用 `json-file` 日志驱动并轮转（10m × 5）；后端
   `/tmp` 与 nginx 的 `/var/cache/nginx`、`/var/run` 用 tmpfs，退出即释放
 - **密钥托管在本地**：`compose-up.sh` 把缺失的 MySQL root/应用口令、JWT secret、
@@ -428,6 +430,8 @@ curl -G --data-urlencode "token=$TOKEN" http://127.0.0.1:8080/apidoc/api.json
   的属主改成该 uid；要换用户就在 `.env` 显式改 `APP_UID/APP_GID`
 - 升级已有 compose 部署：先把旧容器里的 `/home/uploads` 拷到 `data/bra/`（旧容器重建后
   容器层会丢），再跑 `./compose-up.sh`；旧 `.env`/app.conf 里的密钥会自动迁移到 `secrets/`
+  （包括只存在于旧 `[db] dsn` 里的外部 MySQL 口令）。旧版 TLS 模式残留的
+  `HTTP_PORT=80` 会在 `--http` 启动时复位为 8081；root 只在属主不一致时才递归 chown `data/bra/`
 - 想接已有的 MySQL：删掉 compose 里的 `mysql`/`mysql-init` 与依赖，改 `.env` 的
   `MYSQL_*` 与 `.env` 里渲染出的 DSN（或直接改 app.conf 的 `[db] dsn`）
 - 本机已有 `bra-backend`/`bra-web` 镜像时（比如离线包 `docker load` 进来的）不用

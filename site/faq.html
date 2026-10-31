@@ -194,7 +194,8 @@
 <li><strong>落在哪</strong>：<code>[backup] dir</code> 指定的目录；不配就落在 <code>{upload_dir}/backups/</code>（默认即 <code>uploads/backups/</code>）。Docker 单机部署下实际落在宿主机 <code>data/bra/backups/</code>，容器重建不会丢。文件名形如 <code>backup_20261016_030000.sql</code>，<strong>权限 0600</strong>（dump 里是全库数据，包括口令哈希，别改成同机可读）。</li>
 <li><strong>留几份</strong>：<code>[backup] keep</code>，默认 7 份；每跑完一次就删掉多余的<strong>最旧</strong>备份。<code>keep</code> 必须是 ≥ 1 的整数，配成 0 或负数服务会<strong>拒绝启动</strong>（等于每跑一次就把备份全删了）。</li>
 <li><strong>怎么立刻备一份</strong>：定时任务页里对 <strong>数据库备份</strong> 点 <strong>触发一次</strong>（立即受理、<strong>后台执行</strong>，不占着页面等），到 <strong>执行记录</strong> 页签里看这次跑的耗时与消息（含文件名和字节数）。</li>
-<li><strong>任务失败不算接口失败</strong>：跟其它任务一样，结果看执行记录里的 <code>status</code> 与 <code>msg</code>（常见原因：<code>mysqldump</code> 没装、DNS 里的账号密码不对、磁盘满）。</li>
+<li><strong>任务失败不算接口失败</strong>：跟其它任务一样，结果看执行记录里的 <code>status</code> 与 <code>msg</code>。Docker Compose 镜像已经带 <code>mariadb-client</code> 的 <code>mysqldump</code>；裸机/systemd 部署要自己装 MySQL 客户端。其它常见原因：DSN 里的账号密码不对、磁盘满。</li>
+<li><strong>中断残留</strong>：dump 被 kill 留下的 <code>backup_*.sql.part</code> 超过 24 小时会在下一次备份前清掉；进行中的 <code>.part</code> 和手工文件不碰。</li>
 <li><strong>恢复是手工动作</strong>（不做自动恢复，避免误触发覆盖现网）：先在库里确认要恢复的 dump 文件，然后</li>
 </ul>
 <p><code>bash

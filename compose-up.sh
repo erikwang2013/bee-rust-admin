@@ -334,12 +334,14 @@ if [ "$USE_TLS" = 1 ]; then
   info "TLS：$SERVER_NAME（80→443）"
 else
   HTTP_PORT=$(env_get HTTP_PORT); HTTP_PORT=${HTTP_PORT:-8081}
-  # 旧版 TLS 模式会把 80 写进 .env；HTTP 模式下 SERVER_NAME 已配但证书不可用，
-  # 只可能是那个旧自动值（显式要 HTTP:80 的部署不会配 SERVER_NAME）。
-  # 只在证据明确时自动改回 8081，并告诉用户想保留 80 该怎么改。
+  # 旧版 TLS 模式会把 80 写进 .env；普通用户不会在 `.env` 里为 HTTP 显式写 80，
+  # 再同时配 SERVER_NAME。以下两种情况都按旧自动值处理并改回 8081：
+  #   1) 用户显式 `--http`（证书可能还在，旧脚本写下的 80 仍会残留）；
+  #   2) 证书已不可用，脚本自然回落到 HTTP。
+  # 确实要 HTTP:80 的部署看警告里的手动改法。
   if [ "$HTTP_PORT" = 80 ] && [ -n "$SERVER_NAME" ] && ! placeholder "$SERVER_NAME" \
-     && { [ ! -s "$CERTS/fullchain.pem" ] || [ ! -s "$CERTS/privkey.pem" ]; }; then
-    warn "检测到旧版 TLS 模式残留的 HTTP_PORT=80（SERVER_NAME 已配但证书不可用，本次按 HTTP 启动）；已改回 8081。确需 HTTP 监听 80 时，手动把 $ENV_FILE 里的 HTTP_PORT 改成 80 再跑。"
+     && { [ "$FORCE_HTTP" = 1 ] || [ ! -s "$CERTS/fullchain.pem" ] || [ ! -s "$CERTS/privkey.pem" ]; }; then
+    warn "检测到旧版 TLS 模式残留的 HTTP_PORT=80（本次按 HTTP 启动；需要 HTTP:80 请手动把 $ENV_FILE 里的 HTTP_PORT 改为 80 再跑）；已改回 8081。"
     HTTP_PORT=8081
   fi
   env_set HTTP_PORT "$HTTP_PORT"

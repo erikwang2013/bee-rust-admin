@@ -32,7 +32,8 @@ pnpm analyze      # ANALYZE=1 vite build + 按 chunk 列出每个模块的体积
   **新增首屏组件（布局 / 登录页 / 错误页用到的）要补进这个数组**；列表页才用的
   重组件（Table / DatePicker / Tree / Modal…）**不要**列进去 —— 列进去就会跟着上首屏。
 - 别把 `@ant-design/icons` 整包装进 `codeSplitting.groups`（会把整棵图标树拖进首屏）；
-  源码里已改为逐个 `@ant-design/icons/es/icons/*` 深路径导入，原因见 vite.config.ts 注释。
+  映射内图标走逐个 `@ant-design/icons/es/icons/*` 深路径导入，映射外名字走
+  `import.meta.glob` 的逐图标懒加载（每个图标独立 chunk），原因见 `src/icons.ts` 注释。
 
 ## 部署
 

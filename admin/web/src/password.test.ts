@@ -21,4 +21,9 @@ describe('isStrongPassword', () => {
     expect(isStrongPassword('汉字汉字汉字汉字汉字汉字汉字汉字')).toBe(false); // 8 个汉字，单类
     expect(isStrongPassword('汉字汉字汉字汉字汉字汉字汉字汉字1')).toBe(true); // 汉字算「其它」+ 数字
   });
+
+  it('超过 1024 字符不通过', () => {
+    expect(isStrongPassword('Aa1' + 'a'.repeat(1021))).toBe(true); // 1024
+    expect(isStrongPassword('Aa1' + 'a'.repeat(1022))).toBe(false); // 1025
+  });
 });

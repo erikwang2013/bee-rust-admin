@@ -200,7 +200,7 @@ The default prefix is <code>/opt/bee-admin</code>, exposed on <code>8081</code>.
 <li>Tables and the superadmin are created automatically on <strong>first start</strong>; no manual SQL import.</li>
 </ul>
 <p>Common variants (see <code>install.sh --help</code>):</p>
-<pre><code class="language-bash"># Older machines (glibc &lt; 2.38): build from source (needs rust 1.99+ / node 20+ / pnpm 9+)
+<pre><code class="language-bash"># Older machines (glibc &lt; 2.38): build from source (needs rust 1.99+ / node 22.12+ / pnpm 10+)
 bash install.sh --mode build
 
 # Install a second instance (separate directory, service name, ports and snowflake node)
@@ -247,11 +247,16 @@ containers) and <code>compose-up.sh</code>. The script generates missing passwor
   <code>certs/privkey.pem</code> in place and set <code>SERVER_NAME</code> in <code>.env</code>. With both present,
   compose-up automatically adds <code>docker-compose.tls.yml</code> and serves 80→443; otherwise it runs HTTP on
   <code>:8081</code>.</li>
-<li>The backend runs as <code>APP_UID/APP_GID</code> from <code>.env</code> (current user/1000 by default); change
-  them if your host uid differs, otherwise it cannot read the 600 app.conf or write <code>data/bra</code>.</li>
+<li>The backend runs as <code>APP_UID/APP_GID</code> from <code>.env</code>; a fresh <code>.env</code> uses the
+  current user (existing explicit values are kept), and root only chowns app.conf/<code>data/bra</code> when the
+  owner differs. Change them explicitly if your host uid differs.</li>
 <li>Upgrading an old compose deployment: copy the old container’s <code>/home/uploads</code> into
   <code>data/bra/</code> first (the container layer is lost on recreate); old <code>.env</code>/app.conf secrets
-  are migrated into <code>secrets/</code> automatically.</li>
+  are migrated into <code>secrets/</code> automatically, including an external MySQL password that only lived in
+  the old <code>[db] dsn</code>. A legacy TLS <code>HTTP_PORT=80</code> is reset to 8081 by <code>--http</code>.</li>
+<li>Stale <code>_header/</code> / <code>.part</code> upload files and <code>backup_*.sql.part</code> older than
+  24 hours are reclaimed by the built-in cleanup jobs; nginx streams both requests and responses instead of
+  buffering them into the 32MB tmpfs.</li>
 <li><strong>Offline packages</strong>: each Release ships <code>bra-images-vX.Y.Z.tar.gz</code> and
   <code>bra-compose-vX.Y.Z.tar.gz</code>; unpack, <code>docker load -i</code>, run <code>./compose-up.sh</code>,
   and place the domain certificate as described in <code>certs/README.md</code>.</li>

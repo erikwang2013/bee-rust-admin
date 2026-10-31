@@ -132,7 +132,7 @@ bash install.sh          # 交互式：会问数据库口令
 常用变体（参数名照 `install.sh --help`）：
 
 ```bash
-# 老机器（glibc < 2.38）：从源码构建（需要 rust 1.99+ / node 20+ / pnpm 9+）
+# 老机器（glibc < 2.38）：从源码构建（需要 rust 1.99+ / node 22.12+ / pnpm 10+）
 bash install.sh --mode build
 
 # 装第二套实例（目录、服务名、端口、雪花节点全错开）
@@ -174,17 +174,21 @@ bash install.sh --no-systemd --no-nginx
   `./compose-up.sh --regen <name>`（`all` 全部），旧值在 `secrets/backups/`。
   注意 `encrypt_key` 更换后库里 email/phone 解不开，MySQL 口令重新生成后已有库需手动改库
 - **数据和日志不在容器层**：业务数据在宿主机 `data/bra/`（挂后端 `/home/uploads`），
-  MySQL 数据在命名卷；日志用 Docker json-file 轮转（10m×5），后端 /tmp、nginx 缓存用 tmpfs
+  MySQL 数据在命名卷；日志用 Docker json-file 轮转（10m×5），后端 /tmp、nginx 缓存用 tmpfs；
+  nginx 对 `/api/` 的请求与响应都不做缓冲，导入/导出直接流式转发，不会撑满 32MB tmpfs
 - **域名证书唯一手工配置**：`certs/fullchain.pem` + `certs/privkey.pem`，`.env` 配
   `SERVER_NAME`；证书齐全时 `./compose-up.sh` 自动加 `docker-compose.tls.yml` 走 80/443，
   否则 HTTP `:8081`
 - 后端以 `.env` 的 `APP_UID/APP_GID` 运行；新建 `.env` 时自动取当前用户（旧 `.env`
-  的显式值保留），root 会把 app.conf 与 `data/bra` 的属主改成该 uid。要换用户就在
+  的显式值保留），root 只在属主不一致时把 app.conf 与 `data/bra` 改成该 uid。要换用户就在
   `.env` 显式改，否则读不到 600 的 app.conf、也写不了 `data/bra`
 - Docker 镜像包含 `mariadb-client` 的 `mysqldump`，内置 `db_backup` 开箱可用；裸机部署
   需要自己安装 MySQL 客户端
+- 上传中断留下的 `_header/`、`.part` 与中断备份的 `backup_*.sql.part` 超过 24 小时会由
+  内置清理任务回收，不会一直堆在 `data/bra/`
 - 升级旧 compose 部署：先把旧容器 `/home/uploads` 拷到 `data/bra/`（重建后容器层会丢），
-  旧 `.env`/app.conf 的密钥会自动迁移到 `secrets/`
+  旧 `.env`/app.conf 的密钥会自动迁移到 `secrets/`，包括只存在于旧 `[db] dsn` 里的外部
+  MySQL 口令；旧版 TLS 残留的 `HTTP_PORT=80` 在 `--http` 启动时会复位为 8081
 - 离线包：Release 附带 `bra-images-vX.Y.Z.tar.gz` 与 `bra-compose-vX.Y.Z.tar.gz`；解包、
   `docker load -i`、`./compose-up.sh` 即可，证书按 `certs/README.md` 放好
 

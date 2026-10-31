@@ -123,7 +123,7 @@ multipart uploads are not scanned. Referer/Origin are scanned only after <code>s
 Never expose database dumps or the <code>admin</code> table to untrusted users. Back up <code>app.conf</code> securely: losing <code>encrypt_key</code> makes encrypted columns permanently unreadable.</p>
 <h3 id="510-operations-database-backup-and-restore">5.10 Operations: database backup and restore</h3>
 <ul>
-<li>The built-in <code>db_backup</code> job runs <code>mysqldump</code> to disk (files mode 0600, configurable directory and retention, default 7 copies); run history is in <code>job_log</code>.</li>
+<li>The built-in <code>db_backup</code> job runs <code>mysqldump</code> to disk (files mode 0600, configurable directory and retention, default 7 copies); run history is in <code>job_log</code>. Compose images include <code>mariadb-client</code>; bare-metal installs need their own MySQL client. Stale <code>backup_*.sql.part</code> files older than 24 hours are reclaimed before the next backup; active partials are left alone.</li>
 <li>Restore is manual: stop the service, import the dump (<code>mysql &lt; dump</code>), then start the service. Test restores regularly.</li>
 <li>Back up <code>admin/conf/app.conf</code> separately; <code>encrypt_key</code> and <code>hashids_salt</code> cannot be regenerated without data loss.</li>
 <li>The <code>notify_retry</code> ledger and other retention jobs are configured in System Config / jobs.</li>

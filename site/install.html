@@ -204,7 +204,7 @@ bash install.sh          # 交互式：会问数据库口令
 <li>表结构与超管账号由服务<strong>首次启动时自动创建</strong>，不需要手工导 SQL</li>
 </ul>
 <p>常用变体（参数名照 <code>install.sh --help</code>）：</p>
-<pre><code class="language-bash"># 老机器（glibc &lt; 2.38）：从源码构建（需要 rust 1.99+ / node 20+ / pnpm 9+）
+<pre><code class="language-bash"># 老机器（glibc &lt; 2.38）：从源码构建（需要 rust 1.99+ / node 22.12+ / pnpm 10+）
 bash install.sh --mode build
 
 # 装第二套实例（目录、服务名、端口、雪花节点全错开）
@@ -248,10 +248,14 @@ bash install.sh --no-systemd --no-nginx
 <li><strong>域名证书唯一手工配置</strong>：放 <code>certs/fullchain.pem</code>、<code>certs/privkey.pem</code>，
   <code>.env</code> 填 <code>SERVER_NAME</code>；证书齐全时自动叠加 <code>docker-compose.tls.yml</code> 走 80/443，
   否则默认 HTTP <code>:8081</code></li>
-<li>后端以 <code>.env</code> 的 <code>APP_UID/APP_GID</code> 运行（默认当前用户/1000）；宿主 uid 不同就改，
+<li>后端以 <code>.env</code> 的 <code>APP_UID/APP_GID</code> 运行；新建 <code>.env</code> 时自动取当前用户
+  （旧显式值保留），root 只在属主不一致时调整 app.conf 与 <code>data/bra</code>。宿主 uid 不同就显式改，
   否则读不到 600 的 app.conf、也写不了 <code>data/bra</code></li>
 <li>升级旧 compose 部署：先把旧容器 <code>/home/uploads</code> 拷到 <code>data/bra/</code>（重建后容器层会丢），
-  旧 <code>.env</code>/app.conf 的密钥会自动迁移到 <code>secrets/</code></li>
+  旧 <code>.env</code>/app.conf 的密钥会自动迁移到 <code>secrets/</code>（含只存在于旧 <code>[db] dsn</code>
+  的外部 MySQL 口令）；旧 TLS 残留的 <code>HTTP_PORT=80</code> 在 <code>--http</code> 时会复位为 8081</li>
+<li>上传中断的 <code>_header/</code>、<code>.part</code> 与备份残留 <code>backup_*.sql.part</code> 超过
+  24 小时由内置清理任务回收；nginx 的请求与响应都流式转发，不落 32MB tmpfs</li>
 <li><strong>离线包</strong>：Release 附带 <code>bra-images-vX.Y.Z.tar.gz</code> 与
   <code>bra-compose-vX.Y.Z.tar.gz</code>；解包、<code>docker load -i</code>、<code>./compose-up.sh</code>
   即可，证书按 <code>certs/README.md</code> 放好</li>

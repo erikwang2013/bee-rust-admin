@@ -55,7 +55,7 @@
 | 执行引擎 | sqlx（mysql 先行） | 连接池/预编译/行映射/多库白送，删三个未实现的 optional 依赖 |
 | 鉴权 | JWT（HS256）+ `token_version` 强制下线 | 用户选择；不用黑名单表 |
 | 权限粒度 | 菜单 + 按钮 + 数据权限 | 用户选择；需部门表 |
-| 前端 | Vite + React + TS + Ant Design 5 | 用户选择 |
+| 前端 | Vite 8 + React 19 + TS + Ant Design 6 | 用户选择 |
 | 部署 | systemd(127.0.0.1:8080) + nginx(端口 8081) | 用户选择端口方式 |
 
 ## 4. 子项目 A：bee_orm 执行层
@@ -403,7 +403,7 @@ initial_admin_password = change-me-please-1   # 仅首次 seed 超管时使用�
 
 ## 6. 前端（admin/web）
 
-Vite + React 18 + TS + antd 5 + react-router 7 + axios。状态仅 `AuthContext`
+Vite 8 + React 19 + TS + antd 6 + react-router 7 + axios。状态仅 `AuthContext`
 （user/perms/menus）+ localStorage 的 token，不引 zustand/redux。
 
 ```

@@ -35,7 +35,7 @@
   "description": "RBAC admin built on bee-rust: Rust backend + React frontend, button-level permissions, five data-scope levels, TOTP and audit trails.",
   "applicationCategory": "BusinessApplication",
   "operatingSystem": "Linux",
-  "softwareVersion": "2.17.0",
+  "softwareVersion": "2.18.0",
   "inLanguage": "en",
   "license": "https://github.com/erikwang2013/bee-rust-admin/blob/main/LICENSE",
   "codeRepository": "https://github.com/erikwang2013/bee-rust-admin",
@@ -135,7 +135,7 @@
   </div>
   <div class="container" style="margin-top:40px">
     <div class="tech-strip" aria-label="Technology stack">
-      <span>Rust</span><span>axum</span><span>bee_orm</span><span>MySQL 8.4</span><span>React 19</span><span>Ant Design 6</span><span>Vite</span><span>JWT</span><span>Argon2id</span><span>RFC 6238 TOTP</span><span>Webhook HMAC</span>
+      <span>Rust</span><span>axum</span><span>bee_orm</span><span>MySQL 8.4</span><span>React 19</span><span>Ant Design 6</span><span>Vite 8</span><span>JWT</span><span>Argon2id</span><span>RFC 6238 TOTP</span><span>Webhook HMAC</span>
     </div>
   </div>
 </section>
@@ -197,8 +197,8 @@
   <div class="container">
     <div class="section-head reveal">
       <p class="eyebrow">Timeline</p>
-      <h2>From the first RBAC line to 2.17</h2>
-      <p class="lead">A continuous run of iterations in October 2026: guard the door, add data channels, then finish the engineering.</p>
+      <h2>From the first RBAC line to 2.18</h2>
+      <p class="lead">A continuous run of iterations in October–November 2026: guard the door, add data channels, then finish the engineering and the framework upgrade.</p>
     </div>
     <ol class="timeline">
       <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v1.0.0</span><span class="tl-date">2026-10-05</span></div><h3>First release</h3><p>Complete RBAC admin, bee_orm execution layer, React SPA and deployment artifacts; create the database and go.</p></li>
@@ -210,6 +210,7 @@
       <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v2.11.0 – v2.14.0</span><span class="tl-date">2026-10-15 ~ 10-16</span></div><h3>Platform capabilities</h3><p>Dashboard, system config, backup/import/export, TOTP and login devices, notification channels, attachments and module scaffolding.</p></li>
       <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v2.15.0 – v2.16.2</span><span class="tl-date">2026-10-17 ~ 10-28</span></div><h3>Engineering finish + site</h3><p>500-line split, versioned API directory, TOTP backup codes, Webhook signing and retry, hardening, and the project static site.</p></li>
       <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v2.17.0</span><span class="tl-date">2026-10-31</span></div><h3>Single-host deploy + security finish</h3><p>Single-host Compose (separate services, local secrets with regeneration/backups, external data/logs, optional TLS), stale-write/authorization fixes, import/export and log performance.</p></li>
+      <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v2.18.0</span><span class="tl-date">2026-11-01</span></div><h3>Framework upgrade + login hardening</h3><p>React 19 + Ant Design 6 + Vite 8; login/password bounds, Argon2 concurrency gate, avatar ETag, temp-file cleanup, nginx streaming and Compose legacy migration.</p></li>
     </ol>
     <div class="btn-row" style="margin-top:24px"><a class="btn btn--ghost" href="releases.html">View the full release log →</a></div>
   </div>

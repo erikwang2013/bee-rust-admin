@@ -135,6 +135,7 @@ mysqldump bee_admin admin_email_phone_backup > admin_email_phone_backup.sql
 - **留几份**：`[backup] keep`，默认 7 份；每跑完一次就删掉多余的**最旧**备份。`keep` 必须是 ≥ 1 的整数，配成 0 或负数服务会**拒绝启动**（等于每跑一次就把备份全删了）。
 - **怎么立刻备一份**：定时任务页里对 **数据库备份** 点 **触发一次**（立即受理、**后台执行**，不占着页面等），到 **执行记录** 页签里看这次跑的耗时与消息（含文件名和字节数）。
 - **任务失败不算接口失败**：跟其它任务一样，结果看执行记录里的 `status` 与 `msg`。Docker Compose 镜像已经带 `mariadb-client` 的 `mysqldump`；裸机/systemd 部署要自己装 MySQL 客户端。其它常见原因：DSN 里的账号密码不对、磁盘满。
+- **中断残留**：dump 被 kill 留下的 `backup_*.sql.part` 超过 24 小时会在下一次备份前清掉；进行中的 `.part` 和手工文件不碰。
 - **恢复是手工动作**（不做自动恢复，避免误触发覆盖现网）：先在库里确认要恢复的 dump 文件，然后
 
   ```bash

@@ -38,7 +38,7 @@
   "description": "基于 bee-rust 框架的 RBAC 管理后台，Rust 服务端 + React 前端，菜单与按钮级权限、五档数据权限、TOTP、审计留痕、定时任务与通知。",
   "applicationCategory": "BusinessApplication",
   "operatingSystem": "Linux",
-  "softwareVersion": "2.17.0",
+  "softwareVersion": "2.18.0",
   "inLanguage": "zh-CN",
   "license": "https://github.com/erikwang2013/bee-rust-admin/blob/main/LICENSE",
   "codeRepository": "https://github.com/erikwang2013/bee-rust-admin",
@@ -147,7 +147,7 @@
     </div>
     <div class="container" style="margin-top:40px">
       <div class="tech-strip" aria-label="技术栈">
-        <span>Rust</span><span>axum</span><span>bee_orm</span><span>MySQL 8.4</span><span>React 19</span><span>Ant Design 6</span><span>Vite</span><span>JWT</span><span>Argon2id</span><span>RFC 6238 TOTP</span><span>Webhook HMAC</span>
+        <span>Rust</span><span>axum</span><span>bee_orm</span><span>MySQL 8.4</span><span>React 19</span><span>Ant Design 6</span><span>Vite 8</span><span>JWT</span><span>Argon2id</span><span>RFC 6238 TOTP</span><span>Webhook HMAC</span>
       </div>
     </div>
   </section>
@@ -209,8 +209,8 @@
     <div class="container">
       <div class="section-head reveal">
         <p class="eyebrow">功能迭代</p>
-        <h2>从第一行 RBAC 到 2.17</h2>
-        <p class="lead">2026 年 10 月的连续迭代：先守住门，再补数据通道，最后做工程化收口。</p>
+        <h2>从第一行 RBAC 到 2.18</h2>
+        <p class="lead">2026 年 10-11 月的连续迭代：先守住门，再补数据通道，最后做工程化收口与框架换代。</p>
       </div>
       <ol class="timeline">
         <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v1.0.0</span><span class="tl-date">2026-10-05</span></div><h3>第一个版本</h3><p>完整 RBAC 后台、bee_orm 执行层、React SPA 与部署产物；建库即用。</p></li>
@@ -222,6 +222,7 @@
         <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v2.11.0 – v2.14.0</span><span class="tl-date">2026-10-15 ~ 10-16</span></div><h3>平台能力</h3><p>仪表盘、系统配置、备份 / 导入 / 导出、TOTP + 登录设备、通知渠道、附件中心、模块脚手架。</p></li>
         <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v2.15.0 – v2.16.2</span><span class="tl-date">2026-10-17 ~ 10-28</span></div><h3>工程化收口与站点</h3><p>500 行拆分、API 版本化目录、TOTP 备用码、Webhook 签名与重投、安全加固，以及项目静态站点。</p></li>
         <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v2.17.0</span><span class="tl-date">2026-10-31</span></div><h3>单机部署与安全收口</h3><p>单机 Compose（服务分开、secrets 本地托管+重生成备份、数据/日志外置、可选 TLS）、鉴权并发与权限边界修复、导入导出与日志性能。</p></li>
+        <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v2.18.0</span><span class="tl-date">2026-11-01</span></div><h3>框架换代与登录加固</h3><p>React 19 + Ant Design 6 + Vite 8 前端升级；登录/密码长度上限、Argon2 并发闸、头像 ETag、临时文件回收、nginx 流式转发与 Compose 旧配置迁移。</p></li>
       </ol>
       <div class="btn-row" style="margin-top:24px"><a class="btn btn--ghost" href="releases.html">查看全部版本日志 →</a></div>
     </div>
