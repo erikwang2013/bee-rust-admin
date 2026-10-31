@@ -134,7 +134,7 @@ mysqldump bee_admin admin_email_phone_backup > admin_email_phone_backup.sql
 - **落在哪**：`[backup] dir` 指定的目录；不配就落在 `{upload_dir}/backups/`（默认即 `uploads/backups/`）。文件名形如 `backup_20261016_030000.sql`，**权限 0600**（dump 里是全库数据，包括口令哈希，别改成同机可读）。Docker 单机部署下 `upload_dir` 是容器内 `/home/uploads`，实际落在宿主机 **`data/bra/backups/`**；不要只留在容器层，容器重建会丢。
 - **留几份**：`[backup] keep`，默认 7 份；每跑完一次就删掉多余的**最旧**备份。`keep` 必须是 ≥ 1 的整数，配成 0 或负数服务会**拒绝启动**（等于每跑一次就把备份全删了）。
 - **怎么立刻备一份**：定时任务页里对 **数据库备份** 点 **触发一次**（立即受理、**后台执行**，不占着页面等），到 **执行记录** 页签里看这次跑的耗时与消息（含文件名和字节数）。
-- **任务失败不算接口失败**：跟其它任务一样，结果看执行记录里的 `status` 与 `msg`（常见原因：`mysqldump` 没装、DNS 里的账号密码不对、磁盘满）。
+- **任务失败不算接口失败**：跟其它任务一样，结果看执行记录里的 `status` 与 `msg`。Docker Compose 镜像已经带 `mariadb-client` 的 `mysqldump`；裸机/systemd 部署要自己装 MySQL 客户端。其它常见原因：DSN 里的账号密码不对、磁盘满。
 - **恢复是手工动作**（不做自动恢复，避免误触发覆盖现网）：先在库里确认要恢复的 dump 文件，然后
 
   ```bash

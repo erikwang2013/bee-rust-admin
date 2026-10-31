@@ -178,8 +178,11 @@ bash install.sh --no-systemd --no-nginx
 - **域名证书唯一手工配置**：`certs/fullchain.pem` + `certs/privkey.pem`，`.env` 配
   `SERVER_NAME`；证书齐全时 `./compose-up.sh` 自动加 `docker-compose.tls.yml` 走 80/443，
   否则 HTTP `:8081`
-- 后端以 `.env` 的 `APP_UID/APP_GID` 运行（默认当前用户/1000）；宿主 uid 不同就改，
-  否则读不到 600 的 app.conf、也写不了 `data/bra`
+- 后端以 `.env` 的 `APP_UID/APP_GID` 运行；新建 `.env` 时自动取当前用户（旧 `.env`
+  的显式值保留），root 会把 app.conf 与 `data/bra` 的属主改成该 uid。要换用户就在
+  `.env` 显式改，否则读不到 600 的 app.conf、也写不了 `data/bra`
+- Docker 镜像包含 `mariadb-client` 的 `mysqldump`，内置 `db_backup` 开箱可用；裸机部署
+  需要自己安装 MySQL 客户端
 - 升级旧 compose 部署：先把旧容器 `/home/uploads` 拷到 `data/bra/`（重建后容器层会丢），
   旧 `.env`/app.conf 的密钥会自动迁移到 `secrets/`
 - 离线包：Release 附带 `bra-images-vX.Y.Z.tar.gz` 与 `bra-compose-vX.Y.Z.tar.gz`；解包、

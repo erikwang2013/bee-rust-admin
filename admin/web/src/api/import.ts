@@ -9,7 +9,8 @@ export const importApi = {
   upload: (kind: ImportKind, file: File) => {
     const form = new FormData();
     form.append('file', file);
-    // 逐行校验可能超过全局 15s；导入专用长超时，别让大 CSV 传到一半被前端掐断
-    return http.post<ImportReport>(`/imports?kind=${kind}`, form, { timeout: 120000 });
+    // 逐行校验可能超过全局 15s；导入专用长超时（与后端 180s / nginx 180s 对齐），
+    // 别让大 CSV 在服务端还在处理时被前端先掐断
+    return http.post<ImportReport>(`/imports?kind=${kind}`, form, { timeout: 180000 });
   },
 };
