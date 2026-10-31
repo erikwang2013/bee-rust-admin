@@ -84,6 +84,21 @@ pub fn backup_dir(upload_dir: &str, dir: &str) -> PathBuf {
     }
 }
 
+/// 遗留临时文件的统一年龄线（上传断点/半成品与中断的备份共用这条线）：24 小时。
+/// 一次上传、一次 mysqldump 都是分钟级，24 小时远大于任何活动窗口；反过来清理任务
+/// 绝不能碰最近的工作 —— 这条线就是两者的分界。
+pub(crate) const TEMP_MAX_AGE_SECS: u64 = 24 * 3600;
+
+/// 超过年龄线才算残留。读不到 mtime、mtime 在「未来」（时钟回拨）一律当新 ——
+/// 宁可多留一轮，不可删错（与 `jobs::retention::too_fresh` 同口径）。
+pub(crate) fn is_stale(path: &Path) -> bool {
+    std::fs::metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|mtime| mtime.elapsed().ok())
+        .is_some_and(|age| age.as_secs() >= TEMP_MAX_AGE_SECS)
+}
+
 /// 任务体：dump → 落盘 → 清理旧份。返回写进 `job_log.msg` 的摘要。
 /// 收 `AppState`（与 `jobs::JOBS` 里其他任务体同签名；内部都是 Arc，克隆廉价）。
 pub async fn run(state: AppState) -> Result<String, String> {
@@ -93,6 +108,8 @@ pub async fn run(state: AppState) -> Result<String, String> {
     tokio::fs::create_dir_all(&dir)
         .await
         .map_err(|e| format!("建备份目录 {} 失败: {e}", dir.display()))?;
+    // 先收中断 dump 的残留：清理失败只告警，不阻断本次备份
+    let stale_parts = clean_stale_parts(&dir);
 
     let name = format!("backup_{}.sql", chrono::Local::now().format("%Y%m%d_%H%M%S"));
     let final_path = dir.join(&name);
@@ -146,7 +163,9 @@ pub async fn run(state: AppState) -> Result<String, String> {
     }
     let removed = prune(&dir, cfg.backup_keep.max(0) as usize)
         .map_err(|e| format!("清理旧备份失败（本次备份已成功）: {e}"))?;
-    Ok(format!("备份 {name}（{size} 字节）；清理旧备份 {removed} 份"))
+    Ok(format!(
+        "备份 {name}（{size} 字节）；清理旧备份 {removed} 份、残留临时文件 {stale_parts} 个"
+    ))
 }
 
 /// 删最旧的备份，保最新 `keep` 份。文件名里时间戳（`YYYYmmdd_HHMMSS`）在前，
@@ -176,6 +195,38 @@ fn prune(dir: &Path, keep: usize) -> Result<usize, String> {
         }
     }
     Ok(removed)
+}
+
+/// 删备份目录里中断 dump 的残留（`backup_*.sql.part`），只收超过 24 小时的
+/// （[`TEMP_MAX_AGE_SECS`]）：正在跑的 dump 是分钟级，清理不能碰；只认这个命名，
+/// 成品 `.sql`、手工文件及其它 `.part` 一律不碰。读/删失败告警后继续。
+fn clean_stale_parts(dir: &Path) -> usize {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(e) => {
+            tracing::warn!("读备份目录 {} 失败（跳过临时文件清理）: {e}", dir.display());
+            return 0;
+        }
+    };
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() || !is_backup_part(&path) || !is_stale(&path) {
+            continue;
+        }
+        match std::fs::remove_file(&path) {
+            Ok(_) => removed += 1,
+            Err(e) => tracing::warn!("删残留备份 {} 失败: {e}", path.display()),
+        }
+    }
+    removed
+}
+
+/// 中断 dump 的临时命名：`backup_<时间戳>.sql.part`（见 [`run`]）。
+fn is_backup_part(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.starts_with("backup_") && n.ends_with(".sql.part"))
 }
 
 /// stderr 的尾巴：整段进 msg 会被截到 255 字符（job_log 列宽），留结尾更有用。
@@ -281,6 +332,44 @@ mod tests {
         // keep=0：清光 .sql（配置层拒绝了 0，这里钉住函数语义：不删非 .sql）
         assert_eq!(prune(&dir, 0).unwrap(), 3);
         assert!(dir.join("notes.txt").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 残留 `.part`：只收超过 24 小时的 `backup_*.sql.part`；新 dump、成品、手工文件、
+    /// 其它 `.part` 都不碰。
+    #[test]
+    fn cleanup_stale_parts_only_removes_old_backup_parts() {
+        let dir = std::env::temp_dir().join(format!("bee_bk_parts_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mk = |n: &str| std::fs::write(dir.join(n), "x").unwrap();
+        mk("backup_20260106_000000.sql.part"); // 中断残留：超龄 → 删
+        mk("backup_20260107_000000.sql.part"); // 进行中的 dump：新 → 留
+        mk("backup_20260108_000000.sql"); // 成品
+        mk("manual.sql.part"); // 手工文件
+        mk("backup_20260109_000000.sql.part.bak"); // 命名不匹配
+        let aged =
+            std::time::SystemTime::now() - std::time::Duration::from_secs(TEMP_MAX_AGE_SECS + 60);
+        for n in [
+            "backup_20260106_000000.sql.part",
+            "backup_20260108_000000.sql",
+            "manual.sql.part",
+            "backup_20260109_000000.sql.part.bak",
+        ] {
+            std::fs::File::options()
+                .write(true)
+                .open(dir.join(n))
+                .unwrap()
+                .set_modified(aged)
+                .unwrap();
+        }
+
+        assert_eq!(clean_stale_parts(&dir), 1, "只删超龄的 backup_*.sql.part");
+        assert!(!dir.join("backup_20260106_000000.sql.part").exists());
+        assert!(dir.join("backup_20260107_000000.sql.part").exists(), "新的 .part 是进行中的 dump");
+        assert!(dir.join("backup_20260108_000000.sql").exists());
+        assert!(dir.join("manual.sql.part").exists());
+        assert!(dir.join("backup_20260109_000000.sql.part.bak").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -2,6 +2,7 @@
 //! 日志保留与孤儿文件清理任务体。
 
 use super::*;
+use crate::backup::is_stale;
 
 /// 日志保留：清 `login_log` / `audit_log` / `job_log` 里超过 `[log] retain_days` 的行。
 /// 沿用 A4 的实现；`retain_days = 0`（永久保留）时什么都不做。
@@ -22,8 +23,9 @@ pub(super) async fn log_retention(state: AppState) -> Result<String, String> {
 ///
 /// **护栏：只删扩展名在 png/jpg 白名单里的文件，其他一律不碰。**
 /// 看起来像可以删掉的啰嗦，其实是在防误删 —— 目录里除了成品头像还有：
-/// 插件写到一半的临时文件（`<临时名>.png.part`，扩展名是 `part`）、运维/用户手放的
-/// 文件（备份、说明、别人家的上传）。这些没有引用关系可依赖，只能靠白名单划界。
+/// 插件写到一半的临时文件（`<临时名>.png.part`，扩展名是 `part`；没有引用关系，
+/// 只能按年龄收，见 [`clean_upload_temps`]）、运维/用户手放的文件（备份、说明、
+/// 别人家的上传；这些没有引用关系可依赖，一律不碰）。
 /// 反过来说：白名单内、又没人引用、且过了保护期（`too_fresh`）的 png/jpg 就是孤儿
 /// （包括用户手放的），该删。留着的代价只是占点磁盘，删错的代价是丢数据 —— 划界就按这条。
 pub(super) async fn avatar_orphan_clean(state: AppState) -> Result<String, String> {
@@ -81,12 +83,16 @@ pub(super) async fn avatar_orphan_clean(state: AppState) -> Result<String, Strin
             Err(e) => tracing::warn!("删孤儿头像 {} 失败: {e}", path.display()),
         }
     }
-    Ok(format!("头像 {seen} 个，删除孤儿 {removed} 个，保护期内跳过 {fresh} 个"))
+    let temps = clean_upload_temps(&state.cfg.upload_dir, crate::api::avatar::AVATAR_GROUP);
+    Ok(format!(
+        "头像 {seen} 个，删除孤儿 {removed} 个，保护期内跳过 {fresh} 个，清理临时文件 {temps} 个"
+    ))
 }
 
 /// 附件孤儿清理：删附件组目录（`{upload_dir}/attach/`）下**不再被任何 `attachment` 行
 /// 引用**的文件。护栏与头像同一条：只删白名单扩展名里的文件 —— 目录里除了成品还有
-/// 插件写到一半的临时文件（`<临时名>.png.part`）与运维手放的东西，那些不碰。
+/// 插件写到一半的临时文件（`<临时名>.png.part`；按年龄单独收，见 [`clean_upload_temps`]）
+/// 与运维手放的东西，那些不碰。
 ///
 /// 与头像的差别：附件的引用集合只有一个来源（`attachment.stored_path`，没有历史 URL 形态），
 /// 所以这里简单得多。上传成品落盘成功、INSERT 失败的那条缝（以及被人手删的行）只有它兜得住。
@@ -140,7 +146,11 @@ pub(super) async fn attach_orphan_clean(state: AppState) -> Result<String, Strin
             Err(e) => tracing::warn!("删孤儿附件 {} 失败: {e}", path.display()),
         }
     }
-    Ok(format!("附件 {seen} 个，删除孤儿 {removed} 个，保护期内跳过 {fresh} 个"))
+    // 每小时顺带收一次临时文件（头像任务每天一趟）：两个任务都扫 `_header` 无害
+    let temps = clean_upload_temps(&state.cfg.upload_dir, crate::api::attach::ATTACH_GROUP);
+    Ok(format!(
+        "附件 {seen} 个，删除孤儿 {removed} 个，保护期内跳过 {fresh} 个，清理临时文件 {temps} 个"
+    ))
 }
 
 /// 递归收集目录下的所有文件（用显式栈：用户手放的深层目录不该让清理任务爆栈）。
@@ -153,7 +163,7 @@ fn collect_files(root: &std::path::Path) -> std::io::Result<Vec<std::path::PathB
             Ok(entries) => entries,
             Err(e) if dir == root => return Err(e),
             Err(e) => {
-                tracing::warn!("读头像子目录 {} 失败: {e}", dir.display());
+                tracing::warn!("读上传子目录 {} 失败: {e}", dir.display());
                 continue;
             }
         };
@@ -167,6 +177,45 @@ fn collect_files(root: &std::path::Path) -> std::io::Result<Vec<std::path::PathB
         }
     }
     Ok(out)
+}
+
+/// 回收上传遗留的临时文件：`_header/` 断点文件（插件独占的目录，整目录都是它的）
+/// 与分组目录下的 `*.part` 半成品 —— 两种都不在成品白名单里，孤儿清理不会碰。
+/// 头像/附件两个任务都调（`_header` 重复扫无害），残留最多多留一轮。
+fn clean_upload_temps(upload_dir: &str, group: &str) -> u64 {
+    let root = std::path::Path::new(upload_dir);
+    clean_temp_files(&root.join("_header"), |_| true)
+        + clean_temp_files(&root.join(group), is_part_file)
+}
+
+/// 分组目录里的半成品命名：`<临时名>.<扩展名>.part`（插件 `PartialResource`）。
+fn is_part_file(path: &std::path::Path) -> bool {
+    path.extension().and_then(|e| e.to_str()) == Some("part")
+}
+
+/// 删 `dir` 下（递归）超过年龄线（[`crate::backup::TEMP_MAX_AGE_SECS`]）的临时文件；
+/// 目录不存在不算错，读/删失败告警后继续 —— 卫生任务不因一个坏目录整轮翻车
+/// （与孤儿清理同一条护栏）。
+fn clean_temp_files(dir: &std::path::Path, is_temp: fn(&std::path::Path) -> bool) -> u64 {
+    let files = match collect_files(dir) {
+        Ok(files) => files,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return 0,
+        Err(e) => {
+            tracing::warn!("读临时目录 {} 失败: {e}", dir.display());
+            return 0;
+        }
+    };
+    let mut removed = 0;
+    for path in files {
+        if !is_temp(&path) || !is_stale(&path) {
+            continue;
+        }
+        match std::fs::remove_file(&path) {
+            Ok(_) => removed += 1,
+            Err(e) => tracing::warn!("删临时文件 {} 失败: {e}", path.display()),
+        }
+    }
+    removed
 }
 
 /// 删掉成品文件后，把它的秒传索引一起清掉。
@@ -191,7 +240,8 @@ fn purge_instant(state: &AppState, group: &str, rel: &std::path::Path) {
 }
 
 /// 扩展名白名单守卫（理由见 `avatar_orphan_clean` 的注释）：只有 png/jpg 才可能是
-/// 成品头像；`.part`、`.bak`、无扩展名的一律留给人工处理。
+/// 成品头像；`.part` 交给 [`clean_upload_temps`] 按年龄收，`.bak`、无扩展名的一律
+/// 留给人工处理。
 fn is_avatar_file(path: &std::path::Path) -> bool {
     in_ext_whitelist(path, &crate::api::avatar::AVATAR_EXTS)
 }
