@@ -64,14 +64,14 @@
   <text class="band-label" x="24" y="186">Gateway</text>
   <rect class="band" x="110" y="160" width="820" height="72" rx="8"/>
   <rect class="box-external" x="270" y="168" width="440" height="56" rx="6"/>
-  <text class="t-name" x="490" y="191" text-anchor="middle">nginx · :8081</text>
+  <text class="t-name" x="490" y="191" text-anchor="middle">nginx · :8081 / :443</text>
   <text class="t-sub"  x="490" y="208" text-anchor="middle">Static files (admin/web/dist) + /api reverse proxy, X-Real-IP</text>
 
   
   <text class="band-label" x="24" y="296">Application</text>
   <rect class="band" x="110" y="268" width="672" height="152" rx="8"/>
   <rect class="box-backend" x="130" y="286" width="640" height="116" rx="7"/>
-  <text class="t-name" x="146" y="306">bee_admin (Rust binary, systemd)</text>
+  <text class="t-name" x="146" y="306">bee_admin (Rust binary, systemd / Docker)</text>
   <rect class="box-inner" x="146" y="318" width="146" height="34" rx="5"/>
   <text class="t-inner" x="219" y="339" text-anchor="middle">bee_router（axum）</text>
   <rect class="box-inner" x="304" y="318" width="150" height="34" rx="5"/>

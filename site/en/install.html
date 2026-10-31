@@ -226,32 +226,35 @@ makes encrypted email/phone columns permanently unreadable. To overwrite, pass <
 <p><strong>Exit codes</strong>: <code>0</code> success · <code>1</code> argument/build failure · <code>2</code> preflight failure (nothing written) · <code>3</code> ready except root commands ·
 <code>4</code> database needs manual creation · <code>5</code> self-check failed · <code>6</code> existing configuration found without <code>--force</code>.</p>
 <h3 id="b-docker-compose">(b) Docker Compose</h3>
-<p>The repository includes <code>docker-compose.yml</code> (MySQL + backend + frontend, exposed on <code>8081</code>) and the helper
-<code>compose-up.sh</code> (generates missing passwords/secrets and writes them to <code>.env</code> and <code>admin/conf/app.conf</code>):</p>
-<pre><code class="language-bash">./compose-up.sh --build     # generates missing passwords/secrets and prints the initial password; drop --build when images exist
-# Open http://localhost:8081 (account admin; initial password is in admin/conf/app.conf under [seed] initial_admin_password)
-
-# Fill it yourself (or avoid the helper):
-cp .env.example .env &amp;&amp; cp admin/conf/app.conf.example admin/conf/app.conf
-vi .env admin/conf/app.conf    # set MySQL root password, jwt secret, encrypt_key
-docker compose up -d --build
+<p>The repository includes a single-host compose stack (MySQL + one-shot init + backend + frontend nginx, separate
+containers) and <code>compose-up.sh</code>. The script generates missing passwords/secrets into local
+<code>secrets/</code> (0600), then renders <code>.env</code> and <code>admin/conf/app.conf</code>:</p>
+<pre><code class="language-bash">./compose-up.sh --build     # build from source and start; drop --build when images exist
+# HTTP: http://localhost:8081 (account admin)
+# Initial password: secrets/initial_admin_password (also rendered into app.conf)
 </code></pre>
 <ul>
-<li>The container database address is injected via <code>BEE_ADMIN_DB_DSN</code> (pointing at the compose <code>mysql</code> service);
-  the config file is mounted from the host <code>admin/conf/app.conf</code>, and JWT secret / initial password are read from it.</li>
-<li>The backend container runs as <strong>the owner of the host config file</strong> (<code>APP_UID</code>/<code>APP_GID</code> in <code>.env</code>, default <code>1000:1000</code>):
-  <code>app.conf</code> is usually mode 600, so the image’s default non-root user cannot read it and the service fails to start.
-  Change <code>APP_UID</code>/<code>APP_GID</code> if your host uid/gid is not 1000 (<code>id -u</code> / <code>id -g</code>).</li>
-<li>Uploaded avatars go to <code>/home/uploads</code> inside the container (the image sets WORKDIR to <code>/home</code> and pre-creates this writable directory:
-  <code>upload_dir=uploads</code> is relative to WORKDIR, while <code>/app</code> is owned by root and cannot be written as <code>APP_UID</code>);
-  <strong>they are lost when the container is recreated</strong>.</li>
-<li><code>compose-up.sh</code> only fills empty/placeholder values (existing values are left alone; rerunning does not regenerate them); generated values
-  live in the two local files, <strong>back up <code>admin/conf/app.conf</code></strong> (losing <code>encrypt_key</code> makes encrypted email/phone permanently unreadable).</li>
-<li>To use an existing MySQL: remove the compose <code>mysql</code> service and <code>depends_on</code>, then change <code>BEE_ADMIN_DB_DSN</code>.</li>
-<li><strong>Do not want to build locally</strong> (no Rust/Node toolchain): every Release also ships <code>bra-images-vX.Y.Z.tar.gz</code>
-  and <code>bra-compose-vX.Y.Z.tar.gz</code> offline packages (images are built on the maintainer’s machine; <code>docker load -i</code> imports them;
-  the compose package contains the compose file, a prefilled <code>.env</code> and a one-page README) — unpack and run <code>docker compose up -d</code>
-  (<strong>without <code>--build</code></strong>). See the Docker section in the root README for details.</li>
+<li><strong>Secrets stay local</strong>: MySQL root/app passwords, JWT secret, <code>encrypt_key</code>,
+  <code>hashids_salt</code> and the initial admin password live in <code>secrets/</code>; missing values are generated
+  once and never overwritten. <code>./compose-up.sh --regen &lt;name&gt;</code> regenerates one (or <code>all</code>) with
+  the old value backed up under <code>secrets/backups/</code>. Changing <code>encrypt_key</code> makes encrypted
+  email/phone unreadable; changing a MySQL password requires updating an existing database manually
+  (see <code>docs/faq.md</code>).</li>
+<li><strong>Data and logs outside the container layer</strong>: uploads/attachments/exports/backups live in host
+  <code>data/bra/</code>; MySQL data uses a named volume; all logs use json-file rotation (10m × 5); the backend
+  /tmp and nginx caches are tmpfs. Containers do not grow over time.</li>
+<li><strong>The domain certificate is the only manual input</strong>: put <code>certs/fullchain.pem</code> and
+  <code>certs/privkey.pem</code> in place and set <code>SERVER_NAME</code> in <code>.env</code>. With both present,
+  compose-up automatically adds <code>docker-compose.tls.yml</code> and serves 80→443; otherwise it runs HTTP on
+  <code>:8081</code>.</li>
+<li>The backend runs as <code>APP_UID/APP_GID</code> from <code>.env</code> (current user/1000 by default); change
+  them if your host uid differs, otherwise it cannot read the 600 app.conf or write <code>data/bra</code>.</li>
+<li>Upgrading an old compose deployment: copy the old container’s <code>/home/uploads</code> into
+  <code>data/bra/</code> first (the container layer is lost on recreate); old <code>.env</code>/app.conf secrets
+  are migrated into <code>secrets/</code> automatically.</li>
+<li><strong>Offline packages</strong>: each Release ships <code>bra-images-vX.Y.Z.tar.gz</code> and
+  <code>bra-compose-vX.Y.Z.tar.gz</code>; unpack, <code>docker load -i</code>, run <code>./compose-up.sh</code>,
+  and place the domain certificate as described in <code>certs/README.md</code>.</li>
 </ul>
 <h3 id="c-manual-deployment">(c) Manual deployment</h3>
 <p>systemd runs the backend (listening on <code>127.0.0.1:8080</code>); nginx exposes <code>8081</code>:</p>

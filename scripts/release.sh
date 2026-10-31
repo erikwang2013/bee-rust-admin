@@ -316,73 +316,90 @@ else
   mkdir -p "$pkg/admin/conf"
   # 全部从 $BUILD_ROOT 取：--commit 时是 REF 的 worktree（不能混入当前工作树的文件）
   cp "$BUILD_ROOT/docker-compose.yml" "$pkg/docker-compose.yml"
+  cp "$BUILD_ROOT/docker-compose.tls.yml" "$pkg/docker-compose.tls.yml"
   cp "$BUILD_ROOT/admin/conf/app.conf.example" "$pkg/admin/conf/app.conf.example"
   cp "$BUILD_ROOT/compose-up.sh" "$pkg/compose-up.sh"
   cp "$BUILD_ROOT/.env.example" "$pkg/.env.example"
+  mkdir -p "$pkg/deploy" "$pkg/certs"
+  cp "$BUILD_ROOT/deploy/nginx-tls.conf.template" "$pkg/deploy/nginx-tls.conf.template"
+  cp "$BUILD_ROOT/certs/README.md" "$pkg/certs/README.md"
   # .env 与 README 用「引号 heredoc + @TAG@ 占位」生成：内容里全是 markdown 反引号，
   # 不引号的 heredoc 会把它们当命令替换执行掉
   cat > "$pkg/.env" <<'EOF'
-# docker compose 用的环境变量（离线包已预填）
+# docker compose 用的环境变量（离线包已预填；密钥由 compose-up.sh 生成到 secrets/）
 
-# compose 内置 MySQL 的 root 密码（必填）。留着这个占位符也行：跑 ./compose-up.sh 会
-# 自动生成随机口令并写回本文件；想自己定就先改掉（脚本只补「没填的」）。
 MYSQL_ROOT_PASSWORD=change-me-please
-
-# 镜像 tag：compose 里的 bra-backend / bra-web 就取这个 tag，= 本包 docker load 进来的
-# 那个 tag（已预填成 @TAG@，不用改）
+MYSQL_DATABASE=bee_admin
+MYSQL_USER=bra
+MYSQL_PASSWORD=change-me-please
 BRA_VERSION=@TAG@
-
-# 后端容器以什么身份运行：默认取宿主 uid/gid 1000（即大多数桌面 Linux 的第一个用户），
-# 这样它才读得到 600 权限的 admin/conf/app.conf。用 `id -u` / `id -g` 查自己的值。
-# APP_UID=1000
-# APP_GID=1000
+APP_UID=1000
+APP_GID=1000
+TZ=Asia/Shanghai
+HTTP_PORT=8081
+HTTPS_PORT=443
+SERVER_NAME=
 EOF
   cat > "$pkg/README.md" <<'EOF'
 # BRA 离线部署包 @TAG@
 
-compose 起栈：MySQL + 后端 + 前端（对外 8081）。不用 Rust / Node 工具链，不联网拉源码。
+compose 单机起栈：MySQL + 后端 + 前端 nginx，各服务独立容器。不用 Rust / Node 工具链，不联网拉源码。
 
 ## 起栈
 
 ```bash
-# 1) 先载入镜像 —— compose 不带 --build 就用这两个 tag
-#    （镜像不在本机时 compose 会想现场 build，而本包没有源码，所以必须先 load）
+# 1) 载入镜像（本包没有源码，必须先 load；不要加 --build）
 docker load -i bra-images-@TAG@.tar.gz
 
-# 2) 起栈：缺的口令 / 密钥自动生成，写回本地 .env 与 admin/conf/app.conf
+# 2) 起栈：缺失的密码/密钥/账户自动生成到本地 secrets/，再渲染 .env 与 app.conf
 ./compose-up.sh
 
-# 打开 http://localhost:8081（初始账号 admin）
-# 初始口令：脚本生成时会打印在屏幕上，也在 admin/conf/app.conf 的 [seed] initial_admin_password
+# HTTP: http://localhost:8081  初始账号 admin
+# 初始口令：secrets/initial_admin_password（也在 admin/conf/app.conf 的初始口令项）
 ```
 
-- 想自己指定口令 / 密钥：先 `cp admin/conf/app.conf.example admin/conf/app.conf` 改好
-  （MySQL root 在 `.env` 里改）再跑 `./compose-up.sh` —— 脚本只补「空 / 占位符」的值，
-  填过的不动，重复跑不会重新生成
-- 脚本生成的值就落在本目录的这两个文件里：**记得备份 `admin/conf/app.conf`** ——
-  `encrypt_key` 丢了（或换了），库里已加密的 email/phone 永久解不开
+## 域名证书（唯一手工配置）
 
-## 两个坑
+```bash
+mkdir -p certs
+cp /path/to/fullchain.pem certs/fullchain.pem
+cp /path/to/privkey.pem   certs/privkey.pem
+# .env 里把 SERVER_NAME 改成证书域名，然后：
+./compose-up.sh --tls
+```
 
-- **`app.conf` 是 600 权限时**：容器要以「配置文件属主」的身份跑才读得到它，对应
-  `.env` 里的 `APP_UID`/`APP_GID`（默认 `1000:1000`）；宿主 uid 不是 1000（`id -u` 查）
-  就填上，否则后端起来就报读不到配置。
-- **想从源码构建**：加 `--build`（`docker compose up -d --build`）—— 要 Rust/Node
-  工具链、慢得多，且构建出的镜像会覆盖同名 tag；这件事要在 git 仓库那份 compose 上做，
-  本包不含源码，只能走已 load 的镜像。
+证书齐全且 SERVER_NAME 配好时，compose-up.sh 会自动切到 80/443；也可手动
+`docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d`。
 
-## 其它
+## 数据 / 日志 / 密钥
 
-- 数据在 `mysql-data` 卷里：`docker compose down` 不删数据，`docker compose down -v` 才删
-- `mysql:8.4` 由 compose 首次 `up` 时从 Docker Hub 拉；完全离线的环境要自己把这个
-  基础镜像弄进来（本包只带 BRA 自己的两个镜像）
-- 镜像 build 自本仓库 `@TAG@` 那个提交（`--commit` 时即该 REF；后端 = 发布口径 strip 过的
-  二进制，前端 = 该提交的 `admin/web` 源码）
+- 业务数据（头像、附件、导出成品、数据库备份）在宿主机 `data/bra/`，挂到后端 `/home/uploads`
+- MySQL 数据在命名卷 `mysql-data`（宿主机 Docker 数据目录，不在容器层）
+- 所有服务日志走 json-file 轮转（每服务 10m × 5），不写容器层
+- 实际密钥在 `secrets/`（0600）：`./compose-up.sh --regen <name>` 可重新生成，旧值备份到
+  `secrets/backups/`；`--regen all` 全部重生成（注意 MySQL/encrypt_key 的警告）
+- 不要删除 `secrets/`：`encrypt_key` 丢了，库里已加密的 email/phone 永久解不开
+
+## 常用
+
+```bash
+docker compose ps
+docker compose logs -f bee-admin
+docker compose down          # 不删数据卷
+docker compose down -v       # 连 MySQL 数据一起删（谨慎）
+```
+
+## 坑
+
+- `app.conf` 是 600：后端以 `.env` 的 `APP_UID/GID` 运行；宿主 uid 不是 1000 就在 `.env` 改。
+- `mysql:8.4` 基础镜像需自行拉取/导入；本包只带 BRA 的两个镜像。
+- 从源码构建要在 git 仓库里做（本包不含源码）。
 EOF
   sed -i "s/@TAG@/$TAG/g" "$pkg/.env" "$pkg/README.md"
   tar czf "$ASSETS/bra-compose-$TAG.tar.gz" -C "$compose_pkg" "bra-compose-$TAG" \
     || die "组 compose 包失败"
-  for f in docker-compose.yml .env .env.example compose-up.sh README.md admin/conf/app.conf.example; do
+  for f in docker-compose.yml docker-compose.tls.yml .env .env.example compose-up.sh README.md \
+           admin/conf/app.conf.example deploy/nginx-tls.conf.template certs/README.md; do
     tar tzf "$ASSETS/bra-compose-$TAG.tar.gz" | grep -qx "bra-compose-$TAG/$f" \
       || die "compose 包里没有 $f"
   done

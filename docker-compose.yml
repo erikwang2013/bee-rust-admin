@@ -1,22 +1,23 @@
-# BRA 一键起栈：MySQL + 后端 + 前端
+# BRA 单机部署：MySQL + 后端 + 前端 nginx，各服务独立容器。
 #
-# 用法：
-#   cp .env.example .env && vi .env                 # 填 MySQL root 密码
-#   cp admin/conf/app.conf.example admin/conf/app.conf
-#   vi admin/conf/app.conf                          # 填 [jwt] secret（≥32 字符）等
-#   docker compose up -d --build
-#   浏览器打开 http://localhost:8081  （初始账号 admin / 配置里的 initial_admin_password）
+# 持久化与「容器不要变大」的口径：
+#   - 业务数据（上传/附件/导出/备份）在宿主机 ./data/bra，挂到后端 /home/uploads；
+#   - MySQL 数据在命名卷 mysql-data（宿主机 Docker 数据目录，不在容器层）；
+#   - 所有服务日志走 json-file 驱动并轮转（max-size/max-file），不写容器层；
+#   - 后端 /tmp 用 tmpfs，退出即释放。
 #
-# 两种起法（每个服务的 image + build 两个键都留着，就是为这个）：
-#   docker compose up -d          不重建：本机已有 bra-backend/bra-web 镜像就直接用
-#                                 （离线包 `docker load` 进来的镜像走这条路，不再编译）
-#   docker compose up -d --build  现场从源码构建（要 Rust/Node 工具链，慢）
-#   镜像 tag 取 .env 里的 BRA_VERSION（默认 latest）；离线包里的 .env 预填了 vX.Y.Z。
+# 密钥/口令不写进 compose：由 ./compose-up.sh 生成到 ./secrets（0600），再渲染到
+# .env 与 admin/conf/app.conf；证书只接受宿主机 ./certs 里配置好的域名证书。
 #
-# 说明：
-#   - 后端容器的数据库地址由 BEE_ADMIN_DB_DSN 覆盖，指向 compose 内的 mysql 服务
-#   - 首次启动自动建表并写入超管与菜单权限种子
-#   - 想接外部已有的 MySQL：删掉 mysql 服务与 depends_on，改 .env 里的 DSN 即可
+# 默认 HTTP（8081）。证书齐全且 SERVER_NAME 配好时，compose-up.sh 会自动叠加
+# docker-compose.tls.yml 走 80/443。
+name: bra
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
 
 services:
   mysql:
@@ -25,37 +26,84 @@ services:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_0900_ai_ci
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请在 .env 里设置 MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: bee_admin
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请在 .env / secrets 里生成 MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-bee_admin}
+      # 后端专用的普通账号（不是 root）；首次初始化时由官方镜像建好并授权
+      MYSQL_USER: ${MYSQL_USER:-bra}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?请在 .env / secrets 里生成 MYSQL_PASSWORD}
+      # 让 root 能从同网络的其他容器连（仅 compose 内网；宿主机不 publish 3306）
+      MYSQL_ROOT_HOST: "%"
+      TZ: ${TZ:-Asia/Shanghai}
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p$$MYSQL_ROOT_PASSWORD"]
+      # CMD-SHELL 才会展开容器里的 $MYSQL_ROOT_PASSWORD；$$ 是 Compose 的转义
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
       interval: 5s
       timeout: 5s
       retries: 30
+    logging: *default-logging
     restart: unless-stopped
+
+  # 一次性初始化：保证后端专用账号存在、密码与 secrets 一致。
+  # 新库由官方镜像的 MYSQL_USER/MYSQL_PASSWORD 建；旧库升级时靠这里补建/纠正。
+  mysql-init:
+    image: mysql:8.4
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-bee_admin}
+      MYSQL_USER: ${MYSQL_USER:-bra}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?}
+      TZ: ${TZ:-Asia/Shanghai}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        mysql -h mysql -uroot -p"$$MYSQL_ROOT_PASSWORD" -e "
+          CREATE DATABASE IF NOT EXISTS \`$$MYSQL_DATABASE\` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+          CREATE USER IF NOT EXISTS '$$MYSQL_USER'@'%' IDENTIFIED BY '$$MYSQL_PASSWORD';
+          ALTER USER '$$MYSQL_USER'@'%' IDENTIFIED BY '$$MYSQL_PASSWORD';
+          GRANT ALL PRIVILEGES ON \`$$MYSQL_DATABASE\`.* TO '$$MYSQL_USER'@'%';
+          FLUSH PRIVILEGES;"
+    restart: "no"
+    logging: *default-logging
 
   bee-admin:
     image: bra-backend:${BRA_VERSION:-latest}
     build:
       context: .
       dockerfile: Dockerfile
-    # 以「宿主机配置文件属主」的身份运行：app.conf 常是 600（只有属主可读），
-    # 若用镜像默认的非 root 用户（uid 10001）会读不到配置而启动失败。
-    # 宿主 uid/gid 不是 1000 时，在 .env 里设 APP_UID / APP_GID。
+    # 以宿主机配置文件属主身份运行：app.conf 是 600，默认非 root 用户读不到
     user: "${APP_UID:-1000}:${APP_GID:-1000}"
     environment:
-      BEE_ADMIN_DB_DSN: mysql://root:${MYSQL_ROOT_PASSWORD}@mysql:3306/bee_admin
-      # 必须绑 0.0.0.0：容器各有自己的网络命名空间，绑 127.0.0.1 的话
-      # 同网络的 nginx 容器连不上（反过来也解释了为什么本机直接跑用 127.0.0.1 就行）
+      BEE_ADMIN_DB_DSN: mysql://${MYSQL_USER:-bra}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE:-bee_admin}
       BEE_ADMIN_HTTP_ADDR: 0.0.0.0:8080
+      TZ: ${TZ:-Asia/Shanghai}
     volumes:
-      # 配置文件必须挂载：[jwt] secret 与 [seed] initial_admin_password 从这里读
+      # 配置文件必须挂载：[jwt] secret / [seed] 初始口令 / [app] encrypt_key 从这里读
       - ./admin/conf/app.conf:/app/conf/app.conf:ro
+      # 上传、附件、导出成品、数据库备份都在这个宿主目录下
+      - ./data/bra:/home/uploads
+    tmpfs:
+      - /tmp:size=64m,mode=1777
     depends_on:
       mysql:
         condition: service_healthy
+      mysql-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/127.0.0.1/8080'"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    init: true
+    logging: *default-logging
     restart: unless-stopped
 
   bee-admin-web:
@@ -65,10 +113,23 @@ services:
       dockerfile: Dockerfile
     environment:
       BACKEND_UPSTREAM: bee-admin:8080
+      SERVER_NAME: ${SERVER_NAME:-_}
     ports:
-      - "8081:80"
+      - "${HTTP_PORT:-8081}:80"
+    tmpfs:
+      - /var/cache/nginx:size=32m
+      - /var/run:size=8m
     depends_on:
-      - bee-admin
+      bee-admin:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
     restart: unless-stopped
 
 volumes:

@@ -94,7 +94,7 @@ The initial language follows the browser, the theme follows the system.</p>
 <h3 id="54-avatar-upload-fails">5.4 Avatar upload fails</h3>
 <ul>
 <li>Only PNG/JPEG, max 512 KB. The browser compresses larger images; if compression still exceeds 512 KB, pick a smaller file.</li>
-<li>Check <code>upload_dir</code> and its permissions; in Docker the upload directory is <code>/home/uploads</code> and is lost when the container is recreated.</li>
+<li>Check <code>upload_dir</code> and its permissions; in the single-host Docker deploy it is host <code>data/bra/</code> (mounted to <code>/home/uploads</code>), so it survives container recreation.</li>
 <li>If you upgraded only the backend or only the frontend, upgrade both: the old base64 avatar endpoint was removed.</li>
 </ul>
 <h3 id="55-a-published-notice-is-not-visible-to-some-users">5.5 A published notice is not visible to some users</h3>

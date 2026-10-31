@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Releases · BRA</title>
-<meta name="description" content="BRA release log: from v1.0.0 to v2.16.2, features, security fixes and deployment changes.">
+<meta name="description" content="BRA release log: from v1.0.0 to v2.17.0, features, security fixes and deployment changes.">
 <meta name="keywords" content="BRA, Bee Rust Admin, Rust admin, RBAC, permissions, data scope, audit logs">
 <meta name="theme-color" content="#fff9ec">
 <link rel="canonical" href="https://package.erik.xyz/bra/en/releases.html">
@@ -23,7 +23,7 @@
 <meta property="og:image:alt" content="BRA · Bee Rust Admin preview">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Releases · BRA">
-<meta name="twitter:description" content="BRA release log: from v1.0.0 to v2.16.2, features, security fixes and deployment changes.">
+<meta name="twitter:description" content="BRA release log: from v1.0.0 to v2.17.0, features, security fixes and deployment changes.">
 <meta name="twitter:image" content="https://package.erik.xyz/bra/en/assets/img/en/og.png">
 
 <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
@@ -61,19 +61,25 @@
 <section class="release-hero">
   <div class="container">
     <p class="eyebrow">Releases</p>
-    <h1>37 releases, one continuous line</h1>
+    <h1>38 releases, one continuous line</h1>
     <p class="lead">From the first complete RBAC admin to the latest engineering finish. Every version says what changed and whether an upgrade is needed. Full notes are in Chinese on GitHub.</p>
     <div class="release-meta">
-      <span class="badge badge--honey">Latest v2.16.2</span>
-      <span class="badge">2026-10-28</span>
-      <span class="badge badge--cyan">37 releases</span>
+      <span class="badge badge--honey">Latest v2.17.0</span>
+      <span class="badge">2026-10-31</span>
+      <span class="badge badge--cyan">38 releases</span>
       <a class="badge" href="https://github.com/erikwang2013/bee-rust-admin/releases" target="_blank" rel="noopener">GitHub Releases ↗</a>
     </div>
   </div>
 </section>
 <div class="container"><div class="release-list">
 <article class="release-item">
-  <div class="release-head"><span class="ver">v2.16.2</span><time class="date" datetime="2026-10-28">2026-10-28</time> <span class="latest">LATEST</span></div>
+  <div class="release-head"><span class="ver">v2.17.0</span><time class="date" datetime="2026-10-31">2026-10-31</time> <span class="latest">LATEST</span></div>
+  <h2 class="rel-title">Security finish + single-host Compose</h2>
+  <p class="rel-summary">Fixes stale full-row writes, department/menu authorization bypasses and login-lockout bypass; reduces import hashing, export N+1 and log memory/index costs; adds single-host Compose with separate services, local secrets (regeneration + backups), external data/logs and optional TLS. Upgrade notes: admin CSV import is capped at 300 rows; migrate old container /home/uploads to data/bra first.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.17.0" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+<article class="release-item">
+  <div class="release-head"><span class="ver">v2.16.2</span><time class="date" datetime="2026-10-28">2026-10-28</time></div>
   <h2 class="rel-title">Docs &amp; site</h2>
   <p class="rel-summary">Docs and site only; no runtime code changes. Adds the project static site and removes HTML from the README.</p>
   <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.16.2" target="_blank" rel="noopener">Full release notes on GitHub →</a>

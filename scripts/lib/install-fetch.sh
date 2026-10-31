@@ -69,8 +69,7 @@ if [ "$MODE" = download ] && [ -f "$BIN_NEW" ]; then
 $(printf '%s\n' "$ldd_out" | grep 'not found' | sed 's/^/    /')
 
   改用源码构建：  bash $PROG --mode build
-  或用 Docker：   cp .env.example .env && cp admin/conf/app.conf.example admin/conf/app.conf \\
-                  && vi .env admin/conf/app.conf && docker compose up -d --build
+  或用 Docker：   ./compose-up.sh --build   # 缺失的密钥/口令自动生成到 secrets/
 EOF
 )"
     ;; esac
@@ -94,8 +93,7 @@ $(printf '%s\n' "${probe_out:-<什么都没输出，进程直接挂了>}" | sed 
   本机 glibc：$host_glibc —— 预编译产物需要 **2.38**（Debian 13 / Ubuntu 24.04+）。
   两条路（都不动磁盘，随便挑）：
     1) 从源码构建：  bash $PROG --mode build
-    2) 用 Docker：   cp .env.example .env && cp admin/conf/app.conf.example admin/conf/app.conf \\
-                     && vi .env admin/conf/app.conf && docker compose up -d --build
+    2) 用 Docker：   ./compose-up.sh --build   # 缺失的密钥/口令自动生成到 secrets/
 EOF
 )"
       ;;

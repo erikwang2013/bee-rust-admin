@@ -160,34 +160,30 @@ bash install.sh --no-systemd --no-nginx
 
 ### (b) Docker compose
 
-仓库里已备好 `docker-compose.yml`（MySQL + 后端 + 前端三件套，对外 `8081`）与一键脚本
-`compose-up.sh`（缺的口令 / 密钥自动生成，写回 `.env` 与 `admin/conf/app.conf`）：
+仓库里已备好单机 compose 部署（MySQL + 一次性初始化 + 后端 + 前端 nginx，各服务独立
+容器）。`compose-up.sh` 负责生成/迁移密钥、渲染 `.env` 与 `admin/conf/app.conf`，再起栈：
 
 ```bash
-./compose-up.sh --build     # 缺的口令/密钥自动生成并打印初始口令；已有镜像时去掉 --build
-# 打开 http://localhost:8081（初始账号 admin；初始口令在 admin/conf/app.conf 的 [seed] initial_admin_password）
-
-# 想自己填（或不想用脚本）：
-cp .env.example .env && cp admin/conf/app.conf.example admin/conf/app.conf
-vi .env admin/conf/app.conf    # 填 MySQL root 密码、jwt secret、encrypt_key
-docker compose up -d --build
+./compose-up.sh --build     # 从源码构建并起栈；已有镜像时去掉 --build
+# 默认 HTTP: http://localhost:8081；初始账号 admin
+# 初始口令在 secrets/initial_admin_password（也渲染进 app.conf 的初始口令项）
 ```
 
-- 容器内的数据库地址由 `BEE_ADMIN_DB_DSN` 注入（指向 compose 里的 `mysql` 服务）；
-  配置文件仍从宿主机 `admin/conf/app.conf` 挂载进去，JWT secret 与初始口令从那儿读
-- 后端容器以**「宿主机配置文件属主」的身份**运行（`.env` 里的 `APP_UID`/`APP_GID`，
-  默认 `1000:1000`）：`app.conf` 常是 600 权限，用镜像默认的非 root 用户会读不到配置而启动失败。
-  你的宿主 uid/gid 不是 1000 就得在 `.env` 里改（`id -u` / `id -g` 查）
-- 上传的头像落在容器内 `/home/uploads`（镜像把 WORKDIR 指到 `/home`，并预置了这个可写目录：
-  `upload_dir=uploads` 是相对 WORKDIR 的路径，而 `/app` 属 root，以 `APP_UID` 跑写不进去）；
-  **容器重建即丢**
-- `compose-up.sh` 只补「空 / 占位符」的值（填过的不动，重复跑不会重新生成）；生成的值就在本地
-  两个文件里，**记得备份 `admin/conf/app.conf`**（`encrypt_key` 丢了，库里已加密的 email/phone 永久解不开）
-- 想接已有的 MySQL：删掉 compose 里的 `mysql` 服务与 `depends_on`，改 `BEE_ADMIN_DB_DSN` 即可
-- **不想在本机编译**（省掉 Rust/Node 工具链）：每个 Release 还附带 `bra-images-vX.Y.Z.tar.gz`
-  与 `bra-compose-vX.Y.Z.tar.gz` 两个离线包（镜像是本机构建好的，`docker load -i` 即导入；
-  compose 包里有 compose 文件、预填 `.env` 与一页说明）—— 解包后 `docker compose up -d`
-  （**不加 `--build`**）就能起栈，细节见根 README 的 Docker 一节
+- **密钥在本地**：`secrets/`（0600）保存 MySQL root/应用口令、JWT secret、`encrypt_key`、
+  `hashids_salt`、初始管理员口令；首次缺失自动生成，已存在不覆盖。重生成用
+  `./compose-up.sh --regen <name>`（`all` 全部），旧值在 `secrets/backups/`。
+  注意 `encrypt_key` 更换后库里 email/phone 解不开，MySQL 口令重新生成后已有库需手动改库
+- **数据和日志不在容器层**：业务数据在宿主机 `data/bra/`（挂后端 `/home/uploads`），
+  MySQL 数据在命名卷；日志用 Docker json-file 轮转（10m×5），后端 /tmp、nginx 缓存用 tmpfs
+- **域名证书唯一手工配置**：`certs/fullchain.pem` + `certs/privkey.pem`，`.env` 配
+  `SERVER_NAME`；证书齐全时 `./compose-up.sh` 自动加 `docker-compose.tls.yml` 走 80/443，
+  否则 HTTP `:8081`
+- 后端以 `.env` 的 `APP_UID/APP_GID` 运行（默认当前用户/1000）；宿主 uid 不同就改，
+  否则读不到 600 的 app.conf、也写不了 `data/bra`
+- 升级旧 compose 部署：先把旧容器 `/home/uploads` 拷到 `data/bra/`（重建后容器层会丢），
+  旧 `.env`/app.conf 的密钥会自动迁移到 `secrets/`
+- 离线包：Release 附带 `bra-images-vX.Y.Z.tar.gz` 与 `bra-compose-vX.Y.Z.tar.gz`；解包、
+  `docker load -i`、`./compose-up.sh` 即可，证书按 `certs/README.md` 放好
 
 ### (c) 手工部署
 

@@ -14,6 +14,14 @@ target
 # docker compose 环境变量（含数据库密码）
 .env
 
+# Docker 单机部署的本地密钥、证书、数据；目录由 compose-up.sh 生成
+secrets/
+data/
+logs/
+certs/*
+!certs/README.md
+admin/conf/app.conf
+
 # 头像/上传文件（服务运行目录下生成）
 uploads/
 

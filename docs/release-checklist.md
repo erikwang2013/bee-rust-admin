@@ -4,10 +4,10 @@
 
 ## 升级前
 
-- [ ] `admin/conf/app.conf` 与示例对一遍（`admin/conf/app.conf.example`；Docker 部署的库口令另在
-      `.env.example`），这 5 个键一个不能少：`[app] encrypt_key`（**必填**，缺了 / 留占位符拒绝启动）、
-      `hashids_salt`、`hashids_min_len`、`snowflake_worker`、`snowflake_dc`
-      （后两个**多实例部署时每个进程必须不同**，否则撞号）
+- [ ] `admin/conf/app.conf` 与示例对一遍（`admin/conf/app.conf.example`；Docker 单机部署的密钥/口令在
+      `secrets/`，由 `compose-up.sh` 渲染），这 5 个键一个不能少：`[app] encrypt_key`（**必填**，
+      缺了 / 留占位符拒绝启动）、`hashids_salt`、`hashids_min_len`、`snowflake_worker`、
+      `snowflake_dc`（后两个**多实例部署时每个进程必须不同**，否则撞号）
 - [ ] 升级时 `encrypt_key` / `hashids_salt` 保持**原值**——`encrypt_key` 换了 = 库里已加密的
       email / phone 全部解不开；`hashids_salt` 换了 = 已发出去的短串 id 全部作废
 - [ ] **前后端同版本换**：自 v2.5 起头像走分片上传（`POST /api/v1/auth/avatar` 已删），

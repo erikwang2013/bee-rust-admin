@@ -208,7 +208,8 @@ scripts/
   publish.sh            逐个发布工作区内未上传到 crates.io 的 crate
   smoke-install.sh      install.sh 冒烟验证（/tmp 里装一套 scratch 实例 + 升级一次 + 清理）
 Dockerfile              后端镜像（多阶段构建）
-docker-compose.yml      MySQL + 后端 + 前端一键起栈
+docker-compose.yml      单机 MySQL + 初始化 + 后端 + 前端一键起栈
+docker-compose.tls.yml  HTTPS 叠加（certs/ + TLS nginx 模板）
 ```
 
 > `install.sql` 在仓库根目录，但**与本项目无关** —— 那是另一个工具的记忆库 schema，
@@ -385,45 +386,54 @@ curl -G --data-urlencode "token=$TOKEN" http://127.0.0.1:8080/apidoc/api.json
 |---|---|
 | `Dockerfile` | 后端镜像：多阶段构建（Rust 编译 → Debian 运行），非 root 用户运行 |
 | `admin/web/Dockerfile` | 前端镜像：pnpm 构建 → nginx，`/api/` 上游由环境变量 `BACKEND_UPSTREAM` 注入 |
-| `docker-compose.yml` | MySQL + 后端 + 前端一键起栈，对外 `8081` |
-| `compose-up.sh` | compose 一键起栈：缺的口令 / 密钥自动生成并写回本地文件（见下） |
+| `docker-compose.yml` | 单机 MySQL + 初始化 + 后端 + 前端一键起栈，默认 HTTP `8081` |
+| `docker-compose.tls.yml` | HTTPS 叠加：挂载 `certs/` 与 TLS nginx 模板，80→443 |
+| `compose-up.sh` | 生成/迁移密钥到 `secrets/`，渲染 `.env`/app.conf，自动选 HTTP/HTTPS 并起栈 |
+| `deploy/nginx-tls.conf.template` | TLS 站点模板（证书、跳转、反代、安全头） |
+| `certs/README.md` | 域名证书放置说明（唯一手工配置项） |
 | `deploy/Dockerfile.prebuilt` | 后端镜像的**预编译版**：打 `target/release-assets/bee_admin`，不发版时用不到（见下） |
 
 ```bash
-./compose-up.sh --build     # 缺的口令/密钥（MySQL root、encrypt_key、jwt secret、初始口令）
-                            # 自动生成并写回 .env 与 admin/conf/app.conf；已有镜像时去掉 --build
-# 打开 http://localhost:8081（初始账号 admin；初始口令生成时会打印在屏幕上，
-# 也在 admin/conf/app.conf 的 [seed] initial_admin_password）
-
-# 想自己填（或不想用脚本）：cp .env.example .env && cp admin/conf/app.conf.example admin/conf/app.conf
-# 填好 MySQL root 密码、[jwt] secret、[app] encrypt_key（示例值会被拒绝启动）再 docker compose up -d --build
+./compose-up.sh --build     # 从源码构建并起栈；已有镜像时去掉 --build
+# 默认 HTTP http://localhost:8081；初始账号 admin
+# 初始口令在 secrets/initial_admin_password（也渲染进 app.conf 的初始口令项）
+#
+# 域名证书（唯一手工配置）：certs/fullchain.pem + certs/privkey.pem，
+#   .env 里填 SERVER_NAME，再 ./compose-up.sh --tls
+#
+# 所有缺失的密码/密钥自动生成到 secrets/（0600）；不要手动复制占位符。
+# 重新生成：./compose-up.sh --regen <name>（all 全部），旧值在 secrets/backups/。
 ```
 
-- 容器内的数据库地址由 `BEE_ADMIN_DB_DSN` 注入（指向 compose 里的 `mysql` 服务）；
-  配置文件仍挂载自 `admin/conf/app.conf`，JWT secret 与初始密码从那里读
-- 后端容器以**宿主机配置文件属主**的身份运行（`APP_UID`/`APP_GID`，默认 `1000:1000`）：
-  `app.conf` 通常是 600 权限，用镜像默认的非 root 用户会读不到配置而启动失败；
-  宿主 uid 不是 1000 时在 `.env` 里改
-- 上传的头像落在容器内 `/home/uploads`（镜像把 WORKDIR 指到 `/home`，并预置了这个可写目录：
-  `upload_dir=uploads` 是相对 WORKDIR 的路径，而 `/app` 属 root，以 `APP_UID` 跑写不进去）；
-  **容器重建即丢**
-- `compose-up.sh` 只补「空 / 占位符」的密钥口令，填过的一律不动（重复跑不会重新生成）；
-  生成的值落在 `.env` 与 `admin/conf/app.conf` 里 —— **记得备份 `admin/conf/app.conf`**：
-  `encrypt_key` 丢了（或换了），库里已加密的 email/phone 永久解不开
-- 想接已有的 MySQL：删掉 compose 里的 `mysql` 服务与 `depends_on`，直接改 `BEE_ADMIN_DB_DSN`
-- 本机已有 `bra-backend`/`bra-web` 镜像时（比如下面离线包 `docker load` 进来的）
-  不用 `--build`：`docker compose up -d` 直接用现有镜像，`--build` 才现场构建
-- 只构建镜像（不启动）：`docker build -t bra-backend .`（后端）与
-  `docker build -t bra-web admin/web`（前端）；发布脚本走的是预编译版
-  `docker build -f deploy/Dockerfile.prebuilt -t bra-backend:<tag> .` —— 直接打
-  `target/release-assets/bee_admin`（发布口径 strip 过的那个），不重编译，~30 秒
-- **发布产物里的离线包**：每次 release 附带 `bra-images-vX.Y.Z.tar.gz`（后端 + 前端
-  镜像，`docker load -i` 直接导进来）与 `bra-compose-vX.Y.Z.tar.gz`（compose 文件 +
-  预填 `.env` + `app.conf.example` + 一页说明）—— 解包、`docker load`、按说明改两处
-  口令，再 `docker compose up -d` 即可起栈（离线部署用那套，见 `docs/release.md`）
-- 镜像只在本机构建、离线分发（`docker save`/`load`，或 `docker tag` + `docker push`
-  推到自己的仓库），**不经过 GitHub CI 发布**；发版时由 `scripts/release.sh` 把两个镜像
-  打进上面的离线包一起发（本机没有 docker daemon 时用 `--skip-images` 跳过）
+- **服务分开**：`mysql` + 一次性 `mysql-init` + `bee-admin` 后端 + `bee-admin-web` nginx；
+  MySQL 不 publish 端口，后端用专用账号 `bra`（不是 root），root 只在初始化时使用
+- **数据不在容器层**：上传/附件/导出成品/数据库备份在宿主机 `data/bra/`（挂到后端
+  `/home/uploads`）；MySQL 数据在命名卷 `mysql-data`（宿主机 Docker 数据目录）
+- **日志/缓存不撑大容器**：所有服务用 `json-file` 日志驱动并轮转（10m × 5）；后端
+  `/tmp` 与 nginx 的 `/var/cache/nginx`、`/var/run` 用 tmpfs，退出即释放
+- **密钥托管在本地**：`compose-up.sh` 把缺失的 MySQL root/应用口令、JWT secret、
+  `encrypt_key`、`hashids_salt`、初始管理员口令生成到 `secrets/`（0600），再渲染
+  `.env`（0600）与 `admin/conf/app.conf`（0600）；已存在的值永不覆盖
+  - 重新生成：`./compose-up.sh --regen <name>`；`all` 为全部；旧值自动备份到
+    `secrets/backups/`。MySQL 口令只改文件，已有库要按 `docs/faq.md` 手动改库
+  - **`encrypt_key` 换了，库里已加密的 email/phone 永久解不开**；`hashids_salt` 换了，
+    已发出的短 id 全部作废 —— 备份在 `secrets/backups/`，别丢 `secrets/`
+- **域名证书是唯一手工配置项**：放 `certs/fullchain.pem` 与 `certs/privkey.pem`，
+  在 `.env` 填 `SERVER_NAME`；证书齐全时 `compose-up.sh` 自动叠加
+  `docker-compose.tls.yml` 走 80→443，否则默认 HTTP `:8081`
+- 后端以宿主机 `APP_UID/APP_GID` 运行（默认当前用户/1000），才能读 600 的 app.conf、
+  写 `data/bra`；宿主 uid 不同就在 `.env` 改
+- 升级已有 compose 部署：先把旧容器里的 `/home/uploads` 拷到 `data/bra/`（旧容器重建后
+  容器层会丢），再跑 `./compose-up.sh`；旧 `.env`/app.conf 里的密钥会自动迁移到 `secrets/`
+- 想接已有的 MySQL：删掉 compose 里的 `mysql`/`mysql-init` 与依赖，改 `.env` 的
+  `MYSQL_*` 与 `.env` 里渲染出的 DSN（或直接改 app.conf 的 `[db] dsn`）
+- 本机已有 `bra-backend`/`bra-web` 镜像时（比如离线包 `docker load` 进来的）不用
+  `--build`；只构建镜像：`docker build -t bra-backend .` 与
+  `docker build -t bra-web admin/web`；发布脚本用预编译版
+  `deploy/Dockerfile.prebuilt`，直接打 strip 过的二进制
+- **离线包**：Release 附带 `bra-images-vX.Y.Z.tar.gz` 与 `bra-compose-vX.Y.Z.tar.gz`
+  （compose + compose-up + TLS 模板 + `.env` + 证书说明）；解包、`docker load`、跑
+  `./compose-up.sh` 即可，域名证书按 `certs/README.md` 放好
 
 ### 测试
 

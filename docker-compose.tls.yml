@@ -1,0 +1,18 @@
+# 单机 HTTPS 叠加文件：docker-compose.yml + 本文件。
+#
+# 前提（compose-up.sh 会自动检查）：
+#   - ./certs/fullchain.pem 与 ./certs/privkey.pem 已放好（域名证书，手动配置）；
+#   - .env 里的 SERVER_NAME 是真实域名（不是占位符）；
+#   - 80 端口留给 HTTP→HTTPS 跳转，443 提供 TLS。
+#
+# compose-up.sh 在证书齐全时会自动加 -f docker-compose.tls.yml，并把 HTTP_PORT
+# 设为 80；也可以手动：
+#   docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d
+services:
+  bee-admin-web:
+    ports:
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      # 覆盖镜像里的 HTTP 站点模板；官方 entrypoint 仍会做 envsubst
+      - ./deploy/nginx-tls.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./certs:/etc/nginx/certs:ro

@@ -54,7 +54,7 @@
   <rect class="head-frontend" x="70" y="64" width="120" height="34" rx="6"/>
   <text class="t-head" x="130" y="86" text-anchor="middle">Browser SPA</text>
   <rect class="head-external" x="198" y="64" width="120" height="34" rx="6"/>
-  <text class="t-head" x="258" y="86" text-anchor="middle">nginx :8081</text>
+  <text class="t-head" x="258" y="86" text-anchor="middle">nginx :8081 / :443</text>
   <rect class="head-backend" x="326" y="64" width="120" height="34" rx="6"/>
   <text class="t-head" x="386" y="86" text-anchor="middle">bee_router</text>
   <rect class="head-security" x="454" y="64" width="120" height="34" rx="6"/>

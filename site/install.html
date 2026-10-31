@@ -230,32 +230,31 @@ bash install.sh --no-systemd --no-nginx
 <p><strong>退出码</strong>：<code>0</code> 成功 · <code>1</code> 参数错误 / 构建失败等其它失败 · <code>2</code> 预检失败（什么都没写）· <code>3</code> 已就绪、只差 root 执行打印的命令 ·
 <code>4</code> 需要人工建库 · <code>5</code> 自检失败 · <code>6</code> 检测到已有配置且未给 <code>--force</code>。</p>
 <h3 id="b-docker-compose">(b) Docker compose</h3>
-<p>仓库里已备好 <code>docker-compose.yml</code>（MySQL + 后端 + 前端三件套，对外 <code>8081</code>）与一键脚本
-<code>compose-up.sh</code>（缺的口令 / 密钥自动生成，写回 <code>.env</code> 与 <code>admin/conf/app.conf</code>）：</p>
-<pre><code class="language-bash">./compose-up.sh --build     # 缺的口令/密钥自动生成并打印初始口令；已有镜像时去掉 --build
-# 打开 http://localhost:8081（初始账号 admin；初始口令在 admin/conf/app.conf 的 [seed] initial_admin_password）
-
-# 想自己填（或不想用脚本）：
-cp .env.example .env &amp;&amp; cp admin/conf/app.conf.example admin/conf/app.conf
-vi .env admin/conf/app.conf    # 填 MySQL root 密码、jwt secret、encrypt_key
-docker compose up -d --build
+<p>仓库里已备好单机 compose（MySQL + 一次性初始化 + 后端 + 前端 nginx，各服务独立容器）与
+<code>compose-up.sh</code>。脚本把缺失的密码/密钥生成到本地 <code>secrets/</code>（0600），再渲染
+<code>.env</code> 与 <code>admin/conf/app.conf</code>：</p>
+<pre><code class="language-bash">./compose-up.sh --build     # 从源码构建并起栈；已有镜像时去掉 --build
+# HTTP: http://localhost:8081（初始账号 admin）
+# 初始口令在 secrets/initial_admin_password（也渲染进 app.conf 的初始口令项）
 </code></pre>
 <ul>
-<li>容器内的数据库地址由 <code>BEE_ADMIN_DB_DSN</code> 注入（指向 compose 里的 <code>mysql</code> 服务）；
-  配置文件仍从宿主机 <code>admin/conf/app.conf</code> 挂载进去，JWT secret 与初始口令从那儿读</li>
-<li>后端容器以<strong>「宿主机配置文件属主」的身份</strong>运行（<code>.env</code> 里的 <code>APP_UID</code>/<code>APP_GID</code>，
-  默认 <code>1000:1000</code>）：<code>app.conf</code> 常是 600 权限，用镜像默认的非 root 用户会读不到配置而启动失败。
-  你的宿主 uid/gid 不是 1000 就得在 <code>.env</code> 里改（<code>id -u</code> / <code>id -g</code> 查）</li>
-<li>上传的头像落在容器内 <code>/home/uploads</code>（镜像把 WORKDIR 指到 <code>/home</code>，并预置了这个可写目录：
-  <code>upload_dir=uploads</code> 是相对 WORKDIR 的路径，而 <code>/app</code> 属 root，以 <code>APP_UID</code> 跑写不进去）；
-  <strong>容器重建即丢</strong></li>
-<li><code>compose-up.sh</code> 只补「空 / 占位符」的值（填过的不动，重复跑不会重新生成）；生成的值就在本地
-  两个文件里，<strong>记得备份 <code>admin/conf/app.conf</code></strong>（<code>encrypt_key</code> 丢了，库里已加密的 email/phone 永久解不开）</li>
-<li>想接已有的 MySQL：删掉 compose 里的 <code>mysql</code> 服务与 <code>depends_on</code>，改 <code>BEE_ADMIN_DB_DSN</code> 即可</li>
-<li><strong>不想在本机编译</strong>（省掉 Rust/Node 工具链）：每个 Release 还附带 <code>bra-images-vX.Y.Z.tar.gz</code>
-  与 <code>bra-compose-vX.Y.Z.tar.gz</code> 两个离线包（镜像是本机构建好的，<code>docker load -i</code> 即导入；
-  compose 包里有 compose 文件、预填 <code>.env</code> 与一页说明）—— 解包后 <code>docker compose up -d</code>
-  （<strong>不加 <code>--build</code></strong>）就能起栈，细节见根 README 的 Docker 一节</li>
+<li><strong>密钥在本地</strong>：MySQL root/应用账号、JWT secret、<code>encrypt_key</code>、
+  <code>hashids_salt</code>、初始管理员口令都在 <code>secrets/</code>；首次缺失自动生成，已存在不覆盖。
+  <code>./compose-up.sh --regen &lt;name&gt;</code> 可重新生成（<code>all</code> 全部），旧值备份到
+  <code>secrets/backups/</code>。换了 <code>encrypt_key</code> 库里 email/phone 解不开；MySQL 口令重生成后
+  已有库要按 <code>docs/faq.md</code> 手动改库</li>
+<li><strong>数据和日志不在容器层</strong>：上传/附件/导出/备份在宿主机 <code>data/bra/</code>；MySQL 数据在
+  命名卷；日志用 json-file 轮转（10m×5），后端 /tmp 与 nginx 缓存用 tmpfs，容器不会越跑越大</li>
+<li><strong>域名证书唯一手工配置</strong>：放 <code>certs/fullchain.pem</code>、<code>certs/privkey.pem</code>，
+  <code>.env</code> 填 <code>SERVER_NAME</code>；证书齐全时自动叠加 <code>docker-compose.tls.yml</code> 走 80/443，
+  否则默认 HTTP <code>:8081</code></li>
+<li>后端以 <code>.env</code> 的 <code>APP_UID/APP_GID</code> 运行（默认当前用户/1000）；宿主 uid 不同就改，
+  否则读不到 600 的 app.conf、也写不了 <code>data/bra</code></li>
+<li>升级旧 compose 部署：先把旧容器 <code>/home/uploads</code> 拷到 <code>data/bra/</code>（重建后容器层会丢），
+  旧 <code>.env</code>/app.conf 的密钥会自动迁移到 <code>secrets/</code></li>
+<li><strong>离线包</strong>：Release 附带 <code>bra-images-vX.Y.Z.tar.gz</code> 与
+  <code>bra-compose-vX.Y.Z.tar.gz</code>；解包、<code>docker load -i</code>、<code>./compose-up.sh</code>
+  即可，证书按 <code>certs/README.md</code> 放好</li>
 </ul>
 <h3 id="c-手工部署">(c) 手工部署</h3>
 <p>systemd 托管后端（监听 <code>127.0.0.1:8080</code>）+ nginx 对外 <code>8081</code>：</p>

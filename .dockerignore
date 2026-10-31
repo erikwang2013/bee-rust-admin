@@ -11,4 +11,15 @@ admin/web
 admin/deploy
 admin/tests
 admin/conf/app.conf
+secrets
+data
+logs
+certs
+uploads
+site
+.env
+.env.*
+docker-compose.tls.yml
+docker-compose.yml
+compose-up.sh
 *.md

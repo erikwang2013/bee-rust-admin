@@ -390,8 +390,8 @@ The <code>notify</code> group appears after notification settings are configured
 <li>Status: <code>1</code>, <code>enabled</code> or empty means enabled; <code>0</code>/<code>disabled</code> means disabled. Username/password validation matches the create form.</li>
 <li><strong>All or nothing</strong>: one invalid row means no rows are written; the dialog lists row number and reason. Valid files commit in one transaction.</li>
 <li>Permissions and data scope are enforced per row. Import does not bypass them.</li>
-<li>UTF-8 only; at most 5000 rows per import. Empty data (header only) is reported as “no data”, not a failure.</li>
-<li>Long imports are subject to the 30-second request timeout; split very large imports or use the Export center for big data.</li>
+<li>UTF-8 only; departments/dictionary items allow at most 5000 rows per import, administrators at most 300 (each row costs one argon2 password hash). Empty data (header only) is reported as “no data”, not a failure.</li>
+<li>Long imports are subject to the 30-second request timeout (it returns the <code>{code:408,msg:"request timed out",data:null}</code> envelope); split very large imports or use the Export center for big data.</li>
 </ul>
 <h3 id="312-export-center-systemexport">3.12 Export center (system:export)</h3>
 <p>Choose a type → <strong>Start export</strong> → watch status (pending/running/completed/failed/cancelled) → <strong>Download</strong> completed rows; cancel pending/running rows.

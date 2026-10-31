@@ -69,12 +69,12 @@ bash scripts/release.sh v0.0.1-drycommit --notes-file /tmp/notes.md --commit 925
 | `bee_admin` | 后端 ELF，**`strip` 过** |
 | `bee-admin-web-dist.tar.gz` | 前端 dist，tar 根下是 `./index.html` 与 `./assets/` |
 | `bra-images-vX.Y.Z.tar.gz` | 后端 + 前端镜像（`bra-backend:$TAG`/`bra-web:$TAG` 的 `docker save`；`docker load -i` 即导入） |
-| `bra-compose-vX.Y.Z.tar.gz` | 离线 compose 包：`docker-compose.yml` + `compose-up.sh`（缺的口令/密钥自动生成）+ 预填 `.env`（+ `.env.example`）+ `app.conf.example` + 一页说明 |
+| `bra-compose-vX.Y.Z.tar.gz` | 离线单机 compose 包：`docker-compose.yml` + `docker-compose.tls.yml` + `compose-up.sh`（自动生成/迁移 `secrets/`，旧值备份）+ 预填 `.env`（+ `.env.example`）+ `app.conf.example` + TLS nginx 模板 + `certs/README.md` + 一页说明 |
 
 - **前两个给二进制安装**（`install.sh` 的 download 模式按名拉），**后两个给 Docker / compose
   部署**（镜像只在本机构建、离线分发，随 release 附带，不推任何镜像仓库）。包里的 README
-  写清了解包 → `docker load` → `./compose-up.sh`（缺的口令/密钥自动生成并写回，不加
-  `--build`）这条路。
+  写清了解包 → `docker load` → `./compose-up.sh`（缺的口令/密钥自动生成到本地 `secrets/`，
+  数据在 `data/bra/`，日志轮转；域名证书放 `certs/` 后 `--tls`，不加 `--build`）这条路。
 - **`--skip-images`**：本机没有 docker daemon 时用它，只发前两个产物（镜像与 compose 包
   那一节整个跳过，`gh` 资产列表也只剩两个）。
 - **一定要 strip**：不 strip 的二进制 22MB，strip 掉符号表后 ~16.6MB。这是发布口径的一部分，不是可选优化。
