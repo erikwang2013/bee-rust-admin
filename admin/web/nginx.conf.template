@@ -38,6 +38,13 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        # 导入/导出是长耗时请求：前端给 /api/v1/imports 120s、后端放宽到 180s，
+        # nginx 默认 proxy_read_timeout 60s 会先断开，这里按 180s 留足余量。
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+        # 大导出/附件不落响应缓冲：Compose 里 /var/cache/nginx 是 32MB tmpfs，
+        # 缓冲写满 proxy_temp 会直接失败；只关响应缓冲，请求缓冲保持默认。
+        proxy_buffering off;
     }
 
     # 带 hash 的静态资源长缓存；index.html 不缓存
