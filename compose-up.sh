@@ -83,9 +83,13 @@ chmod 600 "$ENV_FILE" "$CONF"
 env_get() {
   sed -n "s/^$1[[:space:]]*=[[:space:]]*//p" "$ENV_FILE" | head -1 || true
 }
+# sed 替换串里 \ & # 都是元字符（# 是下面两个函数的分隔符）
+sed_escape() { printf '%s' "$1" | sed -e 's/[\\&#]/\\&/g'; }
 env_set() { # key value
+  local esc
   if grep -q "^$1[[:space:]]*=" "$ENV_FILE"; then
-    sed -i "s#^$1[[:space:]]*=.*#$1=$2#" "$ENV_FILE"
+    esc=$(sed_escape "$2")
+    sed -i "s#^$1[[:space:]]*=.*#$1=$esc#" "$ENV_FILE"
   else
     printf '%s=%s\n' "$1" "$2" >> "$ENV_FILE"
   fi
@@ -94,8 +98,10 @@ ini_get() {
   sed -n "s/^$1[[:space:]]*=[[:space:]]*//p" "$CONF" | head -1 || true
 }
 ini_set() { # key value section
+  local esc
   if grep -q "^$1[[:space:]]*=" "$CONF"; then
-    sed -i "s#^$1[[:space:]]*=.*#$1 = $2#" "$CONF"
+    esc=$(sed_escape "$2")
+    sed -i "s#^$1[[:space:]]*=.*#$1 = $esc#" "$CONF"
   else
     sed -i "/^\[$3\][[:space:]]*$/a $1 = $2" "$CONF"
   fi
@@ -103,7 +109,8 @@ ini_set() { # key value section
 
 placeholder() {
   case "${1:-}" in
-    ''|*change-me*|*changeme*|*change_me*|*CHANGE_ME*) return 0;;
+    # password = app.conf.example 里 DSN 的示例口令，不是真口令
+    ''|password|*change-me*|*changeme*|*change_me*|*CHANGE_ME*) return 0;;
     *) return 1;;
   esac
 }
@@ -122,10 +129,57 @@ generate_secret() { # name → stdout
   esac
 }
 
+# DSN 口令的百分号编解码，契约同 install.sh 的 urlenc/urldec：字面 % @ : / # ? & + 必须编码
+urlenc() {
+  local s=$1
+  s=${s//%/%25}; s=${s//@/%40}; s=${s//:/%3A}; s=${s//\//%2F}
+  s=${s//#/%23}; s=${s//\?/%3F}; s=${s//&/%26}; s=${s//+/%2B}
+  printf '%s' "$s"
+}
+pct_decode() { # %XX → 字节；非法 % 序列或 %00（bash 变量存不了 NUL）返回 1
+  local s=$1 out= hex ch i
+  for ((i = 0; i < ${#s}; i++)); do
+    ch=${s:i:1}
+    if [ "$ch" != % ]; then out+=$ch; continue; fi
+    hex=${s:i+1:2}
+    [[ $hex =~ ^[0-9A-Fa-f]{2}$ ]] || return 1
+    [ "$hex" = 00 ] && return 1
+    printf -v ch "\\x$hex"
+    out+=$ch
+    ((i += 2))
+  done
+  printf '%s' "$out"
+}
+# 旧 app.conf 的 [db] dsn 口令：解析口径同 admin/src/backup.rs（去 ?查询、按最后一个 @ 切凭据）
+dsn_password() {
+  local dsn rest userinfo pw
+  dsn=$(ini_get dsn || true)
+  case "$dsn" in mysql://*) ;; *) return 0;; esac
+  rest=${dsn#mysql://}
+  rest=${rest%%\?*}
+  case "$rest" in *@*) ;; *) return 0;; esac
+  userinfo=${rest%@*}
+  case "$userinfo" in *:*) ;; *) return 0;; esac
+  pw=${userinfo#*:}
+  [ -n "$pw" ] || return 0
+  if ! pw=$(pct_decode "$pw"); then
+    warn "旧 $CONF 的 dsn 口令含非法百分号转义或 %00，无法迁移；将生成新口令"
+    return 0
+  fi
+  placeholder "$pw" && return 0
+  printf '%s' "$pw"
+}
+legacy_mysql_password() { # .env 优先，其次旧 app.conf 的 dsn 口令，都没有就留空去生成
+  local v
+  v=$(env_get MYSQL_PASSWORD || true)
+  if ! placeholder "$v"; then printf '%s' "$v"; return 0; fi
+  dsn_password
+}
+
 legacy_value() { # name → old value from .env/app.conf
   case "$1" in
     mysql_root_password) env_get MYSQL_ROOT_PASSWORD;;
-    mysql_password)      env_get MYSQL_PASSWORD;;
+    mysql_password)      legacy_mysql_password;;
     jwt_secret)          ini_get secret;;
     encrypt_key)         ini_get encrypt_key;;
     hashids_salt)        ini_get hashids_salt;;
@@ -229,7 +283,7 @@ TZ_VAL=$(env_get TZ); TZ_VAL=${TZ_VAL:-Asia/Shanghai}
 env_set TZ "$TZ_VAL"
 
 # ── 渲染 app.conf ─────────────────────────────────────────────────────────
-ini_set dsn "mysql://$MYSQL_USER:$(secret_value mysql_password)@mysql:3306/$MYSQL_DATABASE" db
+ini_set dsn "mysql://$MYSQL_USER:$(urlenc "$(secret_value mysql_password)")@mysql:3306/$MYSQL_DATABASE" db
 ini_set encrypt_key "$(secret_value encrypt_key)" app
 ini_set hashids_salt "$(secret_value hashids_salt)" app
 ini_set secret "$(secret_value jwt_secret)" jwt
@@ -241,8 +295,13 @@ chmod 600 "$ENV_FILE" "$CONF"
 # ── 归属 ─────────────────────────────────────────────────────────────────
 # root 跑时把渲染出的 app.conf 与 data/ 交给后端 uid；secrets/.env 保持 root:root 0600
 if [ "$(id -u)" = 0 ]; then
-  chown -R "$APP_UID:$APP_GID" "$DATA"
-  chown "$APP_UID:$APP_GID" "$CONF"
+  # 只在顶层属主不对时才递归 chown：data/ 有几十 GB 上传/导出时每次全量 chown 很慢
+  if [ "$(stat -c '%u:%g' "$DATA")" != "$APP_UID:$APP_GID" ]; then
+    chown -R "$APP_UID:$APP_GID" "$DATA"
+  fi
+  if [ "$(stat -c '%u:%g' "$CONF")" != "$APP_UID:$APP_GID" ]; then
+    chown "$APP_UID:$APP_GID" "$CONF"
+  fi
 else
   if [ "$(id -u)" != "$APP_UID" ]; then
     warn "APP_UID=$APP_UID 与当前用户 $(id -u) 不同；请确保 $DATA 对 uid $APP_UID 可写（或用 root 跑一次 chown -R $APP_UID:$APP_GID $DATA）"
@@ -275,6 +334,14 @@ if [ "$USE_TLS" = 1 ]; then
   info "TLS：$SERVER_NAME（80→443）"
 else
   HTTP_PORT=$(env_get HTTP_PORT); HTTP_PORT=${HTTP_PORT:-8081}
+  # 旧版 TLS 模式会把 80 写进 .env；HTTP 模式下 SERVER_NAME 已配但证书不可用，
+  # 只可能是那个旧自动值（显式要 HTTP:80 的部署不会配 SERVER_NAME）。
+  # 只在证据明确时自动改回 8081，并告诉用户想保留 80 该怎么改。
+  if [ "$HTTP_PORT" = 80 ] && [ -n "$SERVER_NAME" ] && ! placeholder "$SERVER_NAME" \
+     && { [ ! -s "$CERTS/fullchain.pem" ] || [ ! -s "$CERTS/privkey.pem" ]; }; then
+    warn "检测到旧版 TLS 模式残留的 HTTP_PORT=80（SERVER_NAME 已配但证书不可用，本次按 HTTP 启动）；已改回 8081。确需 HTTP 监听 80 时，手动把 $ENV_FILE 里的 HTTP_PORT 改成 80 再跑。"
+    HTTP_PORT=8081
+  fi
   env_set HTTP_PORT "$HTTP_PORT"
   # 导出后 shell 环境优先于 .env，避免 .env 里残留值影响本次起栈
   export HTTP_PORT
