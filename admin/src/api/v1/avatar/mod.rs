@@ -405,6 +405,7 @@ fn form_error(e: axum::extract::multipart::MultipartError) -> ApiError {
 pub async fn get_avatar(
     State(state): State<AppState>,
     AppPath(id): AppPath<String>,
+    req_headers: HeaderMap,
 ) -> Result<Response, ApiError> {
     let id = hid::dec(&id)?;
 
@@ -421,15 +422,23 @@ pub async fn get_avatar(
         return Err(ApiError::NotFound);
     }
 
-    let path = if stored.starts_with('/') {
-        AVATAR_EXTS
-            .iter()
-            .map(|ext| legacy_avatar_path(&state.cfg, id, ext))
-            .find(|p| p.is_file())
+    // 候选路径：老 URL 两种扩展名都试；saved_path 交给插件校验后解析。
+    // 落盘判定走 tokio::fs，别在 async handler 里做阻塞 stat。
+    let candidates: Vec<PathBuf> = if stored.starts_with('/') {
+        AVATAR_EXTS.iter().map(|ext| legacy_avatar_path(&state.cfg, id, ext)).collect()
     } else {
-        state.aether.resource(stored).map(|r| r.path).filter(|p| p.is_file())
+        state.aether.resource(stored).map(|r| r.path).into_iter().collect()
     };
-    let Some(path) = path else {
+    let mut found = None;
+    for path in candidates {
+        if let Ok(meta) = tokio::fs::metadata(&path).await
+            && meta.is_file()
+        {
+            found = Some((path, meta));
+            break;
+        }
+    }
+    let Some((path, meta)) = found else {
         return Err(ApiError::NotFound);
     };
 
@@ -437,17 +446,43 @@ pub async fn get_avatar(
         // 头像组白名单之外的内容不该出现在这里（真出现了也不当文件发）
         return Err(ApiError::NotFound);
     };
-    let bytes = std::fs::read(&path)
-        .map_err(|e| ApiError::internal(format!("读头像文件 {} 失败: {e}", path.display())))?;
 
+    // ETag 必须在读正文之前算：命中 If-None-Match 时一个字节都不用读
+    let etag = file_etag(&meta);
     let mut headers = HeaderMap::new();
+    headers.insert(header::ETAG, etag.parse().expect("ETag 只含 ASCII"));
+    // no-cache：仍可缓存但每次回源校验；带 ETag 后校验通过就 304
+    headers.insert(header::CACHE_CONTROL, axum::http::HeaderValue::from_static("no-cache"));
+
+    let not_modified = req_headers
+        .get(header::IF_NONE_MATCH)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| {
+            v.split(',').any(|tag| {
+                let tag = tag.trim();
+                tag == etag.as_str() || tag == "*"
+            })
+        });
+    if not_modified {
+        return Ok((StatusCode::NOT_MODIFIED, headers).into_response());
+    }
+
+    let bytes = tokio::fs::read(&path)
+        .await
+        .map_err(|e| ApiError::internal(format!("读头像文件 {} 失败: {e}", path.display())))?;
     headers.insert(header::CONTENT_TYPE, content_type.parse().expect("静态 MIME"));
-    // no-cache：仍可缓存但每次回源校验，换头像后立刻生效
-    headers.insert(
-        header::CACHE_CONTROL,
-        axum::http::HeaderValue::from_static("no-cache"),
-    );
     Ok((headers, bytes).into_response())
+}
+
+/// ETag = mtime（纳秒）+ 文件字节数，带引号的强校验器。换头像会换文件，两个值都变；
+/// 不读正文，metadata 一次就够。
+fn file_etag(meta: &std::fs::Metadata) -> String {
+    let mtime = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0, |d| d.as_nanos());
+    format!("\"{mtime:x}-{:x}\"", meta.len())
 }
 
 /// 按扩展名定 Content-Type；非图片返回 `None`（调用方按 404 处理）。
@@ -457,6 +492,27 @@ fn image_content_type(path: &Path) -> Option<&'static str> {
         "png" => Some("image/png"),
         "jpg" | "jpeg" => Some("image/jpeg"),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod etag_tests {
+    use super::*;
+
+    #[test]
+    fn file_etag_is_quoted_and_follows_size() {
+        let dir = Path::new("target/test-uploads");
+        std::fs::create_dir_all(dir).expect("建测试目录");
+        let path = dir.join("etag-test.png");
+        std::fs::write(&path, b"abc").expect("写测试文件");
+        let first = file_etag(&std::fs::metadata(&path).expect("读元数据"));
+        assert!(first.starts_with('"') && first.ends_with('"'), "ETag 必须带引号: {first}");
+        let again = file_etag(&std::fs::metadata(&path).expect("读元数据"));
+        assert_eq!(first, again, "同一文件应稳定");
+        std::fs::write(&path, b"abcd").expect("改写测试文件");
+        let second = file_etag(&std::fs::metadata(&path).expect("读元数据"));
+        assert_ne!(first, second, "大小变化必须换 ETag");
+        let _ = std::fs::remove_file(&path);
     }
 }
 

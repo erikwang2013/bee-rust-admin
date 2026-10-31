@@ -55,16 +55,37 @@ pub fn verify_password(plain: &str, hashed: &str) -> bool {
     }
 }
 
+/// argon2 的进程级并发闸。默认参数每份哈希约占 19 MiB 内存且是纯 CPU 计算；阻塞池
+/// 默认 512 线程，登录洪水能把约 10 GiB 的哈希任务排进来。限 4 份（峰值 ≈76 MiB）：
+/// 常见的 2–4 核部署下正好吃满 CPU 又不打爆内存，多出的请求排队等额度（不占内存）。
+static ARGON2_LIMITER: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
+
 /// argon2id 哈希的异步壳：CPU / 内存都压到阻塞线程池，别占 tokio worker。
 pub async fn hash_password_async(plain: String) -> Result<String, String> {
-    tokio::task::spawn_blocking(move || hash_password(&plain))
+    let permit = ARGON2_LIMITER
+        .acquire()
         .await
-        .map_err(|e| format!("argon2 哈希任务失败: {e}"))
+        .map_err(|_| "argon2 哈希限流器已关闭".to_string())?;
+    tokio::task::spawn_blocking(move || {
+        // permit 跟着阻塞任务走：调用方取消 future 时哈希还在算，额度不能提前放掉
+        let _held = permit;
+        hash_password(&plain)
+    })
+    .await
+    .map_err(|e| format!("argon2 哈希任务失败: {e}"))
 }
 
-/// argon2id 校验的异步壳；任务本身失败（panic / 取消）按「密码不对」处理。
+/// argon2id 校验的异步壳；任务本身失败（panic / 取消 / 闸已关）按「密码不对」处理。
 pub async fn verify_password_async(plain: String, hashed: String) -> bool {
-    tokio::task::spawn_blocking(move || verify_password(&plain, &hashed)).await.unwrap_or(false)
+    let Ok(permit) = ARGON2_LIMITER.acquire().await else {
+        return false;
+    };
+    tokio::task::spawn_blocking(move || {
+        let _held = permit;
+        verify_password(&plain, &hashed)
+    })
+    .await
+    .unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -86,5 +107,21 @@ mod tests {
         assert!(h.starts_with("$argon2"), "unexpected hash: {h}");
         assert!(verify_password_async("admin123".into(), h.clone()).await);
         assert!(!verify_password_async("wrong".into(), h).await);
+    }
+
+    #[tokio::test]
+    async fn concurrent_hashes_do_not_deadlock() {
+        // 闸只有 4 个许可：8 个并发调用（两轮）必须全部完成 —— 漏还许可会在这里挂住
+        let h = hash_password("admin123");
+        let mut tasks = Vec::with_capacity(8);
+        for _ in 0..8 {
+            let h = h.clone();
+            tasks.push(tokio::spawn(async move {
+                verify_password_async("admin123".into(), h).await
+            }));
+        }
+        for task in tasks {
+            assert!(task.await.expect("并发校验任务不应 panic"));
+        }
     }
 }
