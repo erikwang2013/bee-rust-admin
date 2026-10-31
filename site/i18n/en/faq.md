@@ -66,7 +66,7 @@ Never expose database dumps or the `admin` table to untrusted users. Back up `ap
 
 ### 5.10 Operations: database backup and restore
 
-- The built-in `db_backup` job runs `mysqldump` to disk (files mode 0600, configurable directory and retention, default 7 copies); run history is in `job_log`.
+- The built-in `db_backup` job runs `mysqldump` to disk (files mode 0600, configurable directory and retention, default 7 copies); run history is in `job_log`. Compose images include `mariadb-client`; bare-metal installs need their own MySQL client. Stale `backup_*.sql.part` files older than 24 hours are reclaimed before the next backup.
 - Restore is manual: stop the service, import the dump (`mysql < dump`), then start the service. Test restores regularly.
 - Back up `admin/conf/app.conf` separately; `encrypt_key` and `hashids_salt` cannot be regenerated without data loss.
 - The `notify_retry` ledger and other retention jobs are configured in System Config / jobs.

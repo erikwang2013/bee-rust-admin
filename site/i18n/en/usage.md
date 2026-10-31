@@ -33,6 +33,8 @@ The footer shows site information (version, copyright, repository link; editable
 
 Login failures:
 
+Usernames are limited to **64** characters and passwords to **1024**; oversized requests get the generic invalid-credentials response before any database lookup or password hash.
+
 | Message | Meaning |
 | --- | --- |
 | Username and password are required | One field is empty |
@@ -62,9 +64,9 @@ From left to right: breadcrumb, **language** (简体中文 / English), **light/d
 
 - PNG / JPEG only, max **512 KB**. Larger images are compressed in the browser (long edge 512 px, decreasing JPEG quality);
   if still over 512 KB you are asked to choose a smaller file.
-- Upload shows progress; the top-bar avatar updates on success.
+- Upload shows progress; the top-bar avatar updates on success. Avatar responses carry an ETag and return 304 on revalidation.
 
-**Change password**: current password, new password (at least 8 characters with at least two of letters/numbers/symbols), confirm.
+**Change password**: current password, new password (8–1024 characters with at least two of letters/numbers/symbols), confirm.
 All sessions on **every device, including this one**, are invalidated; log in again with the new password.
 
 **Sign out other devices**: other sessions are invalidated immediately; **this device stays signed in** (the backend quietly issues a new token).
@@ -140,7 +142,7 @@ The drawer loads both the menu tree and the department tree, so the operator als
 Menu **System → Admins**.
 
 1. Click **Add**; enter username, initial password, nickname, department, roles, status.
-2. Rules: username 3–64 chars (letters/numbers/underscore, unique); password at least 8 chars with at least two of letters/numbers/symbols;
+2. Rules: username 3–64 chars (letters/numbers/underscore, unique); password 8–1024 chars with at least two of letters/numbers/symbols;
    nickname required (max 64 chars).
 3. **Usernames cannot be changed** after creation; passwords are changed via **Reset password** (or by the user in Profile).
 4. Give the user the username and initial password; ask them to change it immediately.
@@ -241,7 +243,7 @@ Items have label, value (unique within the type), order and status. Deleting a t
 
 Two tabs: **Tasks** and **Run history**. Tasks are registered in code; the database stores only scheduling and run history, so the UI can change interval and enable/disable but cannot add or rename tasks.
 Eight built-in jobs: `log_retention`, `avatar_orphan_clean`, `attach_orphan_clean`, `db_backup`, `export_run`, `export_clean`, `device_clean`, `notify_retry`.
-Most run daily; `export_run` every 60 seconds; `attach_orphan_clean` every hour; `notify_retry` every 5 minutes. Intervals come from the database row, so upgrades do not overwrite existing rows.
+Most run daily; `export_run` every 60 seconds; `attach_orphan_clean` every hour; `notify_retry` every 5 minutes. Intervals come from the database row, so upgrades do not overwrite existing rows. The upload cleanup jobs reclaim stale `_header/`/`.part` files older than 24 hours; `db_backup` reclaims stale `backup_*.sql.part` files.
 **Trigger once** runs in the background and returns immediately; the last run/result columns and run history update afterwards. Triggering a running job is rejected (409) and does not start a second copy.
 Disabled jobs are not scheduled, but **Trigger once** still works. Jobs run serially; a long job delays the next checks. In multi-instance deployments enable scheduling on only one instance
 (`[job] enabled = true`); the “already running” guard is per process.
@@ -280,7 +282,7 @@ The Admins, Departments and Dictionary items pages have an **Import** button: **
 - **All or nothing**: one invalid row means no rows are written; the dialog lists row number and reason. Valid files commit in one transaction.
 - Permissions and data scope are enforced per row. Import does not bypass them.
 - UTF-8 only; at most 5000 rows per import. Empty data (header only) is reported as “no data”, not a failure.
-- Long imports are subject to the 30-second request timeout; split very large imports or use the Export center for big data.
+- Normal requests time out after 30 seconds; imports get a 180-second ceiling. Split very large imports or use the Export center for big data.
 
 ### 3.12 Export center (system:export)
 

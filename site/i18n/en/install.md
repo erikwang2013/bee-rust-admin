@@ -131,7 +131,7 @@ The default prefix is `/opt/bee-admin`, exposed on `8081`.
 Common variants (see `install.sh --help`):
 
 ```bash
-# Older machines (glibc < 2.38): build from source (needs rust 1.99+ / node 20+ / pnpm 9+)
+# Older machines (glibc < 2.38): build from source (needs rust 1.99+ / node 22.12+ / pnpm 10+)
 bash install.sh --mode build
 
 # Install a second instance (separate directory, service name, ports and snowflake node)
@@ -163,30 +163,29 @@ The repository includes `docker-compose.yml` (MySQL + backend + frontend, expose
 `compose-up.sh` (generates missing passwords/secrets and writes them to `.env` and `admin/conf/app.conf`):
 
 ```bash
-./compose-up.sh --build     # generates missing passwords/secrets and prints the initial password; drop --build when images exist
-# Open http://localhost:8081 (account admin; initial password is in admin/conf/app.conf under [seed] initial_admin_password)
-
-# Fill it yourself (or avoid the helper):
-cp .env.example .env && cp admin/conf/app.conf.example admin/conf/app.conf
-vi .env admin/conf/app.conf    # set MySQL root password, jwt secret, encrypt_key
-docker compose up -d --build
+./compose-up.sh --build     # generates missing passwords/secrets and starts the stack; drop --build when images exist
+# Open http://localhost:8081 (account admin; initial password is in secrets/initial_admin_password)
 ```
 
 - The container database address is injected via `BEE_ADMIN_DB_DSN` (pointing at the compose `mysql` service);
   the config file is mounted from the host `admin/conf/app.conf`, and JWT secret / initial password are read from it.
-- The backend container runs as **the owner of the host config file** (`APP_UID`/`APP_GID` in `.env`, default `1000:1000`):
+- Uploads, exports, attachments and database backups live in the host `data/bra/` directory (mounted at `/home/uploads`),
+  not in the container layer; MySQL data is in the `mysql-data` volume. Logs use rotated json-file, `/tmp` and nginx caches use tmpfs.
+- Abandoned `_header/` / `.part` upload files and `backup_*.sql.part` older than 24 hours are reclaimed by the built-in cleanup jobs;
+  nginx streams `/api/` requests and responses instead of buffering them into the 32MB tmpfs.
+- The backend container runs as **the owner of the host config file** (`APP_UID`/`APP_GID` in `.env`; a fresh `.env` uses the current user, existing explicit values are kept):
   `app.conf` is usually mode 600, so the image’s default non-root user cannot read it and the service fails to start.
-  Change `APP_UID`/`APP_GID` if your host uid/gid is not 1000 (`id -u` / `id -g`).
-- Uploaded avatars go to `/home/uploads` inside the container (the image sets WORKDIR to `/home` and pre-creates this writable directory:
-  `upload_dir=uploads` is relative to WORKDIR, while `/app` is owned by root and cannot be written as `APP_UID`);
-  **they are lost when the container is recreated**.
-- `compose-up.sh` only fills empty/placeholder values (existing values are left alone; rerunning does not regenerate them); generated values
-  live in the two local files, **back up `admin/conf/app.conf`** (losing `encrypt_key` makes encrypted email/phone permanently unreadable).
+  Change `APP_UID`/`APP_GID` explicitly if your host uid/gid differs (`id -u` / `id -g`); root only chowns app.conf/data when the owner differs.
+- Uploaded avatars go to `/home/uploads` (the `data/bra/` bind mount), so they survive container recreation.
+- `compose-up.sh` only fills empty/placeholder values (existing values are left alone; rerunning does not regenerate them);
+  local secrets live in `secrets/` (0600). Back up `secrets/` and `admin/conf/app.conf` (losing `encrypt_key` makes encrypted
+  email/phone permanently unreadable). Old `.env` / app.conf DSN passwords are migrated, including external MySQL passwords;
+  a legacy TLS `HTTP_PORT=80` is reset to 8081 by `--http`.
 - To use an existing MySQL: remove the compose `mysql` service and `depends_on`, then change `BEE_ADMIN_DB_DSN`.
 - **Do not want to build locally** (no Rust/Node toolchain): every Release also ships `bra-images-vX.Y.Z.tar.gz`
   and `bra-compose-vX.Y.Z.tar.gz` offline packages (images are built on the maintainer’s machine; `docker load -i` imports them;
-  the compose package contains the compose file, a prefilled `.env` and a one-page README) — unpack and run `docker compose up -d`
-  (**without `--build`**). See the Docker section in the root README for details.
+  the compose package contains the compose file, `compose-up.sh`, a prefilled `.env` and a one-page README) — unpack,
+  `docker load -i`, then run `./compose-up.sh` (without `--build`). See the Docker section in the root README.
 
 ### (c) Manual deployment
 
