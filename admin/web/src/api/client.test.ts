@@ -149,9 +149,9 @@ describe('长请求超时', () => {
     expect(timeout()).toBe(0);
   });
 
-  it('CSV 导入带长超时（全局 15s 会掐断大文件）', async () => {
+  it('CSV 导入带长超时（与后端 180s / nginx 180s 对齐）', async () => {
     const timeout = capture({ code: 0, msg: 'ok', data: { kind: 'admin', created: 0, rows: [] } });
     await importApi.upload('admin', new File(['id\n'], 'a.csv', { type: 'text/csv' }));
-    expect(timeout()).toBe(120000);
+    expect(timeout()).toBe(180000);
   });
 });

@@ -58,7 +58,7 @@
   <rect class="band" x="110" y="60" width="820" height="68" rx="8"/>
   <rect class="box-frontend" x="330" y="68" width="320" height="52" rx="6"/>
   <text class="t-name" x="490" y="90" text-anchor="middle">Browser · Admin SPA</text>
-  <text class="t-sub"  x="490" y="107" text-anchor="middle">React 18 + TypeScript + Ant Design 5 (Vite)</text>
+  <text class="t-sub"  x="490" y="107" text-anchor="middle">React 19 + TypeScript + Ant Design 6 (Vite 8)</text>
 
   
   <text class="band-label" x="24" y="186">Gateway</text>

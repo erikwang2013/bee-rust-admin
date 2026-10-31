@@ -1,6 +1,6 @@
 # bee-rust 管理后台前端
 
-Vite + React 18 + TypeScript + antd 5 单页应用。后端契约见 `docs/superpowers/specs/2026-10-05-bee-rust-admin-design.md` §5.3。
+Vite 8 + React 19 + TypeScript + antd 6 单页应用。后端契约见 `docs/superpowers/specs/2026-10-05-bee-rust-admin-design.md` §5.3。
 
 ## 开发
 
@@ -31,7 +31,8 @@ pnpm analyze      # ANALYZE=1 vite build + 按 chunk 列出每个模块的体积
 - `vite.config.ts` 里的 `ENTRY_ANTD` 决定哪些 antd 组件进首屏 vendor 块。
   **新增首屏组件（布局 / 登录页 / 错误页用到的）要补进这个数组**；列表页才用的
   重组件（Table / DatePicker / Tree / Modal…）**不要**列进去 —— 列进去就会跟着上首屏。
-- 别把 `@ant-design/icons` 列进 `manualChunks`（会把 836 个图标拖进首屏，原因见 vite.config.ts 注释）。
+- 别把 `@ant-design/icons` 整包装进 `codeSplitting.groups`（会把整棵图标树拖进首屏）；
+  源码里已改为逐个 `@ant-design/icons/es/icons/*` 深路径导入，原因见 vite.config.ts 注释。
 
 ## 部署
 

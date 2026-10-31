@@ -66,7 +66,7 @@ SVG / PNG）**不是开源资产**，版权归作者所有。未经书面许可�
 
 **BRA（Bee Rust Admin）** 是一个开箱即用的后台管理系统：服务端用本仓库的
 [bee-rust](https://github.com/erikwang2013/bee-rust) 框架写就（axum 路由 + 自研 ORM 执行层 +
-INI 配置），前端是 Vite + React 18 + Ant Design 5 单页应用，两者通过一套统一的
+INI 配置），前端是 Vite 8 + React 19 + Ant Design 6 单页应用，两者通过一套统一的
 `{code, msg, data}` 接口契约对接（错误响应另带稳定的业务错误码 `err` 与参数 `args`，前端据此出多语言文案）。
 
 它解决的问题很实际：**权限要细到按钮、数据要看得到范围、登录要留痕**。因此：
@@ -88,7 +88,7 @@ INI 配置），前端是 Vite + React 18 + Ant Design 5 单页应用，两者�
 
 | 层 | 组成 | 说明 |
 |---|---|---|
-| 客户端 | 浏览器 SPA | React 18 + TypeScript + Ant Design 5（Vite 构建） |
+| 客户端 | 浏览器 SPA | React 19 + TypeScript + Ant Design 6（Vite 8 构建） |
 | 接入层 | nginx :8081 | 提供前端静态资源，`/api/` 反向代理到后端并透传 `X-Real-IP` |
 | 应用层 | `bee_admin` | bee_router（axum）· Auth 提取器 · 93 个 API handler · datascope 数据权限 · 统一响应信封 |
 | 框架层 | bee_orm / bee_config / bee_logs | 多后端连接池、QuerySet、CRUD、M2M、migrate 迁移；INI 配置；tracing 日志 |
