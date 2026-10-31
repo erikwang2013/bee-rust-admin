@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   App, Button, Col, Form, Input, InputNumber, Modal, Popconfirm, Row, Select, Space, Table, Tag, Typography,
 } from 'antd';
-import { DownloadOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import DownloadOutlined from '@ant-design/icons/es/icons/DownloadOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import type { ColumnsType } from 'antd/es/table';
 import {
   dictApi,
@@ -306,7 +308,7 @@ export default function DictPage() {
         open={typeModal}
         onCancel={() => setTypeModal(false)}
         onOk={() => void submitType()}
-        destroyOnClose
+        destroyOnHidden
         width={520}
       >
         <Form form={typeForm} labelCol={{ span: 5 }} wrapperCol={{ span: 18 }}>
@@ -335,7 +337,7 @@ export default function DictPage() {
         open={itemModal}
         onCancel={() => setItemModal(false)}
         onOk={() => void submitItem()}
-        destroyOnClose
+        destroyOnHidden
         width={520}
       >
         <Form form={itemForm} labelCol={{ span: 5 }} wrapperCol={{ span: 18 }}>

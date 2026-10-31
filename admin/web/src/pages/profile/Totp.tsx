@@ -195,7 +195,7 @@ export default function Totp() {
       <Modal
         open={backupOpen}
         title={t('totp.backup_title')}
-        maskClosable={false}
+        mask={{ closable: false }}
         keyboard={false}
         closable={backupCodes.length === 0}
         onCancel={() => setBackupOpen(false)}

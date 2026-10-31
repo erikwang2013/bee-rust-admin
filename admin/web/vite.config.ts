@@ -75,17 +75,37 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
-    rollupOptions: {
+    // Vite 8 底层换成 Rolldown：不再支持对象形式的 manualChunks，改用 codeSplitting.groups。
+    // 语义保持不变——命中的模块连同依赖递归进对应块（includeDependenciesRecursively 默认 true）；
+    // react 组优先级更高，避免 antd 组递归依赖时把它并进 antd 块。
+    rolldownOptions: {
       output: {
         // 框架与组件库单独成块：业务代码改动不会让用户重下这两坨（内容哈希不变即可命中缓存）
         //
-        // 这里**不能**再列 '@ant-design/icons'：数组写法会把这个包连同它的整棵依赖树
+        // 这里**不能**匹配 '@ant-design/icons'：那样会把这个包连同它的整棵依赖树
         // （836 个图标模块）全部并进 antd 块，而 antd 块是首屏静态加载的 —— 那样
         // src/icons.ts 里的按需引入就白做了。antd 自己用到的图标会由依赖关系自然
         // 并入 antd 块，剩下没用到的归入懒加载块，只有运维填了映射外的 icon 名才下载。
-        manualChunks: {
-          react: ['react', 'react-dom', 'react-router'],
-          antd: ENTRY_ANTD,
+        codeSplitting: {
+          groups: [
+            {
+              name: 'react',
+              test: /node_modules[\\/](react|react-dom|react-router)[\\/]/,
+              priority: 2,
+            },
+            {
+              name: 'antd',
+              test: (id: string) => {
+                const marker = '/node_modules/';
+                const pos = id.lastIndexOf(marker);
+                if (pos === -1) return false;
+                const normalized = id.slice(pos + marker.length);
+                return ENTRY_ANTD.some(
+                  (p) => normalized === p || normalized.startsWith(`${p}/`) || normalized.startsWith(`${p}.`),
+                );
+              },
+            },
+          ],
         },
       },
     },

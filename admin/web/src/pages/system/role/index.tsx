@@ -3,7 +3,8 @@ import {
   App, Button, Divider, Drawer, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag, Tree,
 } from 'antd';
 import type { DataNode } from 'antd/es/tree';
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import type { ColumnsType } from 'antd/es/table';
 import { roleApi, type RoleForm, type RoleQuery } from '../../../api/role';
 import { menuApi } from '../../../api/menu';
@@ -183,7 +184,7 @@ export default function RolePage() {
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onOk={() => void submit()}
-        destroyOnClose
+        destroyOnHidden
         width={520}
       >
         <Form form={form} labelCol={{ span: 5 }} wrapperCol={{ span: 18 }}>
@@ -226,7 +227,7 @@ export default function RolePage() {
         />
         {permRole?.data_scope === 5 && (
           <>
-            <Divider orientation="left">{t('role.data_perm')}</Divider>
+            <Divider titlePlacement="left">{t('role.data_perm')}</Divider>
             <Tree
               checkable
               defaultExpandAll

@@ -1,6 +1,6 @@
 import { useRef, useState, type ChangeEvent } from 'react';
 import { App, Avatar, Button, Card, Divider, Form, Input, Popconfirm, Progress, Space } from 'antd';
-import { UploadOutlined } from '@ant-design/icons';
+import UploadOutlined from '@ant-design/icons/es/icons/UploadOutlined';
 import { authApi } from '../../api/auth';
 import { AvatarUploadError, uploadAvatar } from '../../api/avatarUpload';
 import { TOKEN_KEY } from '../../api/client';

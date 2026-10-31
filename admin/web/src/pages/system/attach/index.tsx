@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { App, Button, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag, Typography } from 'antd';
-import { DownloadOutlined, LinkOutlined, ReloadOutlined, UploadOutlined } from '@ant-design/icons';
+import DownloadOutlined from '@ant-design/icons/es/icons/DownloadOutlined';
+import LinkOutlined from '@ant-design/icons/es/icons/LinkOutlined';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
+import UploadOutlined from '@ant-design/icons/es/icons/UploadOutlined';
 import type { ColumnsType } from 'antd/es/table';
 import { attachApi, uploadAttachment, type AttachQuery } from '../../../api/attach';
 import { UploadError } from '../../../api/chunkedUpload';
@@ -186,9 +189,9 @@ export default function AttachPage() {
         open={binding !== null}
         onCancel={() => setBinding(null)}
         onOk={() => void submitBind()}
-        destroyOnClose
+        destroyOnHidden
       >
-        <Space direction="vertical" style={{ width: '100%' }}>
+        <Space orientation="vertical" style={{ width: '100%' }}>
           <Select
             style={{ width: '100%' }}
             allowClear

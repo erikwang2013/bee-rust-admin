@@ -1,65 +1,65 @@
-import {
-  ApiOutlined,
-  ApartmentOutlined,
-  AppstoreOutlined,
-  AreaChartOutlined,
-  AuditOutlined,
-  BarChartOutlined,
-  BellOutlined,
-  CalendarOutlined,
-  CheckCircleOutlined,
-  ClockCircleOutlined,
-  CloseCircleOutlined,
-  ClusterOutlined,
-  ControlOutlined,
-  DashboardOutlined,
-  DatabaseOutlined,
-  DeleteOutlined,
-  DeploymentUnitOutlined,
-  DownloadOutlined,
-  EditOutlined,
-  ExclamationCircleOutlined,
-  FileOutlined,
-  FileSearchOutlined,
-  FileTextOutlined,
-  FilterOutlined,
-  FolderOpenOutlined,
-  FolderOutlined,
-  FundOutlined,
-  GlobalOutlined,
-  HomeOutlined,
-  IdcardOutlined,
-  InfoCircleOutlined,
-  KeyOutlined,
-  LineChartOutlined,
-  LockOutlined,
-  LoginOutlined,
-  MailOutlined,
-  MenuOutlined,
-  MessageOutlined,
-  NotificationOutlined,
-  PictureOutlined,
-  PieChartOutlined,
-  PlusOutlined,
-  ProfileOutlined,
-  SafetyOutlined,
-  SearchOutlined,
-  SettingOutlined,
-  ShopOutlined,
-  ShoppingOutlined,
-  SolutionOutlined,
-  StarOutlined,
-  TagsOutlined,
-  TeamOutlined,
-  ThunderboltOutlined,
-  ToolOutlined,
-  UnlockOutlined,
-  UploadOutlined,
-  UsergroupAddOutlined,
-  UserOutlined,
-  VideoCameraOutlined,
-  WarningOutlined,
-} from '@ant-design/icons';
+// 逐个走深路径而不是从 '@ant-design/icons' 桶导入：桶同时被下面的动态 import 引用，
+// Rolldown 会把静态桶和整个懒加载包并成同一个首屏 chunk（实测 797 个图标 ~968 kB）。
+import ApiOutlined from '@ant-design/icons/es/icons/ApiOutlined';
+import ApartmentOutlined from '@ant-design/icons/es/icons/ApartmentOutlined';
+import AppstoreOutlined from '@ant-design/icons/es/icons/AppstoreOutlined';
+import AreaChartOutlined from '@ant-design/icons/es/icons/AreaChartOutlined';
+import AuditOutlined from '@ant-design/icons/es/icons/AuditOutlined';
+import BarChartOutlined from '@ant-design/icons/es/icons/BarChartOutlined';
+import BellOutlined from '@ant-design/icons/es/icons/BellOutlined';
+import CalendarOutlined from '@ant-design/icons/es/icons/CalendarOutlined';
+import CheckCircleOutlined from '@ant-design/icons/es/icons/CheckCircleOutlined';
+import ClockCircleOutlined from '@ant-design/icons/es/icons/ClockCircleOutlined';
+import CloseCircleOutlined from '@ant-design/icons/es/icons/CloseCircleOutlined';
+import ClusterOutlined from '@ant-design/icons/es/icons/ClusterOutlined';
+import ControlOutlined from '@ant-design/icons/es/icons/ControlOutlined';
+import DashboardOutlined from '@ant-design/icons/es/icons/DashboardOutlined';
+import DatabaseOutlined from '@ant-design/icons/es/icons/DatabaseOutlined';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import DeploymentUnitOutlined from '@ant-design/icons/es/icons/DeploymentUnitOutlined';
+import DownloadOutlined from '@ant-design/icons/es/icons/DownloadOutlined';
+import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
+import ExclamationCircleOutlined from '@ant-design/icons/es/icons/ExclamationCircleOutlined';
+import FileOutlined from '@ant-design/icons/es/icons/FileOutlined';
+import FileSearchOutlined from '@ant-design/icons/es/icons/FileSearchOutlined';
+import FileTextOutlined from '@ant-design/icons/es/icons/FileTextOutlined';
+import FilterOutlined from '@ant-design/icons/es/icons/FilterOutlined';
+import FolderOpenOutlined from '@ant-design/icons/es/icons/FolderOpenOutlined';
+import FolderOutlined from '@ant-design/icons/es/icons/FolderOutlined';
+import FundOutlined from '@ant-design/icons/es/icons/FundOutlined';
+import GlobalOutlined from '@ant-design/icons/es/icons/GlobalOutlined';
+import HomeOutlined from '@ant-design/icons/es/icons/HomeOutlined';
+import IdcardOutlined from '@ant-design/icons/es/icons/IdcardOutlined';
+import InfoCircleOutlined from '@ant-design/icons/es/icons/InfoCircleOutlined';
+import KeyOutlined from '@ant-design/icons/es/icons/KeyOutlined';
+import LineChartOutlined from '@ant-design/icons/es/icons/LineChartOutlined';
+import LockOutlined from '@ant-design/icons/es/icons/LockOutlined';
+import LoginOutlined from '@ant-design/icons/es/icons/LoginOutlined';
+import MailOutlined from '@ant-design/icons/es/icons/MailOutlined';
+import MenuOutlined from '@ant-design/icons/es/icons/MenuOutlined';
+import MessageOutlined from '@ant-design/icons/es/icons/MessageOutlined';
+import NotificationOutlined from '@ant-design/icons/es/icons/NotificationOutlined';
+import PictureOutlined from '@ant-design/icons/es/icons/PictureOutlined';
+import PieChartOutlined from '@ant-design/icons/es/icons/PieChartOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import ProfileOutlined from '@ant-design/icons/es/icons/ProfileOutlined';
+import SafetyOutlined from '@ant-design/icons/es/icons/SafetyOutlined';
+import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
+import SettingOutlined from '@ant-design/icons/es/icons/SettingOutlined';
+import ShopOutlined from '@ant-design/icons/es/icons/ShopOutlined';
+import ShoppingOutlined from '@ant-design/icons/es/icons/ShoppingOutlined';
+import SolutionOutlined from '@ant-design/icons/es/icons/SolutionOutlined';
+import StarOutlined from '@ant-design/icons/es/icons/StarOutlined';
+import TagsOutlined from '@ant-design/icons/es/icons/TagsOutlined';
+import TeamOutlined from '@ant-design/icons/es/icons/TeamOutlined';
+import ThunderboltOutlined from '@ant-design/icons/es/icons/ThunderboltOutlined';
+import ToolOutlined from '@ant-design/icons/es/icons/ToolOutlined';
+import UnlockOutlined from '@ant-design/icons/es/icons/UnlockOutlined';
+import UploadOutlined from '@ant-design/icons/es/icons/UploadOutlined';
+import UsergroupAddOutlined from '@ant-design/icons/es/icons/UsergroupAddOutlined';
+import UserOutlined from '@ant-design/icons/es/icons/UserOutlined';
+import VideoCameraOutlined from '@ant-design/icons/es/icons/VideoCameraOutlined';
+import WarningOutlined from '@ant-design/icons/es/icons/WarningOutlined';
 import { Suspense, createElement, lazy, type ComponentType } from 'react';
 
 /**

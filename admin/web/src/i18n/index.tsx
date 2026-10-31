@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Select } from 'antd';
-import { GlobalOutlined } from '@ant-design/icons';
+import GlobalOutlined from '@ant-design/icons/es/icons/GlobalOutlined';
 import dayjs from 'dayjs';
 import 'dayjs/locale/zh-cn';
 import { zhCN, type I18nKey } from './zh-CN';

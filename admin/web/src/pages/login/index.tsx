@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { App, Button, Card, Form, Input, theme, Typography } from 'antd';
-import { LockOutlined, SafetyOutlined, UserOutlined } from '@ant-design/icons';
+import LockOutlined from '@ant-design/icons/es/icons/LockOutlined';
+import SafetyOutlined from '@ant-design/icons/es/icons/SafetyOutlined';
+import UserOutlined from '@ant-design/icons/es/icons/UserOutlined';
 import { useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../../auth/AuthContext';
 import { ThemeToggle } from '../../theme';

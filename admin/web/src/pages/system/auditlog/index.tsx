@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { App, Button, DatePicker, Input, Popconfirm, Select, Space, Table, Tag } from 'antd';
-import { DeleteOutlined, DownloadOutlined, ReloadOutlined } from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import DownloadOutlined from '@ant-design/icons/es/icons/DownloadOutlined';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import type { ColumnsType } from 'antd/es/table';
 import { auditLogApi, type AuditLogQuery } from '../../../api/auditLog';
 import { downloadCsv } from '../../../api/download';

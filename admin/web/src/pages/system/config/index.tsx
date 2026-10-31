@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   App, Button, Card, Empty, Form, Input, Modal, Popconfirm, Select, Space, Switch, Tag, Typography,
 } from 'antd';
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import { configApi, type ConfigForm, type ConfigUpdateForm } from '../../../api/config';
 import type { SysConfig } from '../../../api/types';
 import Auth from '../../../auth/Auth';

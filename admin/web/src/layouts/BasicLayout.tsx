@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Avatar, Breadcrumb, Dropdown, Layout, Menu, Space, theme, type MenuProps } from 'antd';
-import { LogoutOutlined, UserOutlined } from '@ant-design/icons';
+import LogoutOutlined from '@ant-design/icons/es/icons/LogoutOutlined';
+import UserOutlined from '@ant-design/icons/es/icons/UserOutlined';
 import { Outlet, useLocation, useNavigate } from 'react-router';
 import { menuIcon } from '../icons';
 import { avatarUrl, useAuth } from '../auth/AuthContext';

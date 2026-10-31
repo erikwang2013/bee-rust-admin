@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   App, Button, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Table, Tabs, Tag, Typography,
 } from 'antd';
-import { ReloadOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
+import ThunderboltOutlined from '@ant-design/icons/es/icons/ThunderboltOutlined';
 import type { ColumnsType } from 'antd/es/table';
 import { jobApi, type JobLogQuery, type JobQuery } from '../../../api/job';
 import type { Job, JobLog } from '../../../api/types';
@@ -162,7 +163,7 @@ function JobList() {
         open={modal}
         onCancel={() => setModal(false)}
         onOk={() => void submit()}
-        destroyOnClose
+        destroyOnHidden
         width={480}
       >
         <Form form={form} labelCol={{ span: 6 }} wrapperCol={{ span: 16 }}>

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { App, Button, DatePicker, Input, Popconfirm, Select, Space, Table, Tag, Typography } from 'antd';
-import { DownloadOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import DownloadOutlined from '@ant-design/icons/es/icons/DownloadOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import type { ColumnsType } from 'antd/es/table';
 import { exportApi, type ExportQuery } from '../../../api/export';
 import type { ExportKind, ExportTask } from '../../../api/types';

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   App, Button, Form, Input, InputNumber, Modal, Popconfirm, Radio, Select, Space, Table, Tag, TreeSelect,
 } from 'antd';
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import type { ColumnsType } from 'antd/es/table';
 import { menuApi, type MenuForm } from '../../../api/menu';
 import type { Menu } from '../../../api/types';
@@ -135,7 +136,7 @@ export default function MenuPage() {
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onOk={() => void submit()}
-        destroyOnClose
+        destroyOnHidden
         width={560}
       >
         <Form form={form} labelCol={{ span: 5 }} wrapperCol={{ span: 18 }}>

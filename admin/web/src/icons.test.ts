@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { AppstoreOutlined, SettingOutlined } from '@ant-design/icons';
+import AppstoreOutlined from '@ant-design/icons/es/icons/AppstoreOutlined';
+import SettingOutlined from '@ant-design/icons/es/icons/SettingOutlined';
 import { menuIcon } from './icons';
 
 describe('menuIcon', () => {

@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   App, Button, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tag,
 } from 'antd';
-import { DownloadOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import DownloadOutlined from '@ant-design/icons/es/icons/DownloadOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import type { ColumnsType } from 'antd/es/table';
 import { adminApi, type AdminForm, type AdminQuery } from '../../../api/admin';
 import { downloadCsv } from '../../../api/download';
@@ -214,7 +216,7 @@ export default function AdminPage() {
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onOk={() => void submit()}
-        destroyOnClose
+        destroyOnHidden
         width={560}
       >
         <Form form={form} labelCol={{ span: 5 }} wrapperCol={{ span: 18 }}>

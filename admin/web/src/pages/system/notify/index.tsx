@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   App, Button, Card, Divider, Form, Input, InputNumber, Popconfirm, Select, Space, Switch, Typography,
 } from 'antd';
-import { MailOutlined, ReloadOutlined } from '@ant-design/icons';
+import MailOutlined from '@ant-design/icons/es/icons/MailOutlined';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import { notifyApi, type NotifyForm } from '../../../api/notify';
 import type { NotifyConfig } from '../../../api/types';
 import Auth from '../../../auth/Auth';

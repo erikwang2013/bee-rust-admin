@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Badge, Button, Empty, Popover, Spin, Typography } from 'antd';
-import { BellOutlined } from '@ant-design/icons';
+import BellOutlined from '@ant-design/icons/es/icons/BellOutlined';
 import { noticeApi } from '../api/notice';
 import { applyRead } from '../hooks/noticeUnread';
 import { useI18n } from '../i18n';

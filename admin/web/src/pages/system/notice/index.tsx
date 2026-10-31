@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { App, Button, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, Typography } from 'antd';
-import { DeleteOutlined, PlusOutlined, ReloadOutlined, UploadOutlined } from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
+import UploadOutlined from '@ant-design/icons/es/icons/UploadOutlined';
 import type { ColumnsType } from 'antd/es/table';
 import { attachApi, uploadAttachment } from '../../../api/attach';
 import { UploadError } from '../../../api/chunkedUpload';
@@ -210,7 +213,7 @@ export default function NoticePage() {
         open={modal}
         onCancel={() => setModal(false)}
         onOk={() => void submit()}
-        destroyOnClose
+        destroyOnHidden
         width={640}
       >
         <Form form={form} labelCol={{ span: 4 }} wrapperCol={{ span: 19 }}>
@@ -233,7 +236,7 @@ export default function NoticePage() {
             {!canSeeImages ? (
               <Typography.Text type="secondary">{t('notice.image_no_perm')}</Typography.Text>
             ) : editing ? (
-              <Space direction="vertical" style={{ width: '100%' }}>
+              <Space orientation="vertical" style={{ width: '100%' }}>
                 <Space wrap>
                   {/* 两个码都要：传完立刻 bind（system:attach:edit），只有 add 的账号点下去会留下没绑定的孤儿附件 */}
                   <Auth code="system:attach:edit">

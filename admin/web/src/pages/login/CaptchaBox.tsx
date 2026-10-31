@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Button, Space, Typography, theme } from 'antd';
-import { ReloadOutlined, UndoOutlined } from '@ant-design/icons';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
+import UndoOutlined from '@ant-design/icons/es/icons/UndoOutlined';
 import type { CaptchaAnswer, CaptchaData } from '../../api/types';
 import { useI18n } from '../../i18n';
 import {
@@ -146,7 +147,7 @@ export default function CaptchaBox({ data, onAnswer, onRefresh }: Props) {
         : t('login.captcha_slider_hint');
 
   return (
-    <Space direction="vertical" size={6} style={{ width: '100%' }}>
+    <Space orientation="vertical" size={6} style={{ width: '100%' }}>
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
         {hint}
       </Typography.Text>

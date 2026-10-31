@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { App, Button, Modal, Space, Table, Tag, Typography, Upload } from 'antd';
-import { DownloadOutlined, FileTextOutlined, UploadOutlined } from '@ant-design/icons';
+import DownloadOutlined from '@ant-design/icons/es/icons/DownloadOutlined';
+import FileTextOutlined from '@ant-design/icons/es/icons/FileTextOutlined';
+import UploadOutlined from '@ant-design/icons/es/icons/UploadOutlined';
 import type { ColumnsType } from 'antd/es/table';
 import { downloadCsv } from '../../../api/download';
 import { importApi } from '../../../api/import';
@@ -74,8 +76,8 @@ export default function ImportButton({
       <Auth code={perm}>
         <Button icon={<UploadOutlined />} onClick={() => setOpen(true)}>{t('common.import')}</Button>
       </Auth>
-      <Modal title={t('import.title')} open={open} onCancel={close} footer={null} width={720} destroyOnClose>
-        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      <Modal title={t('import.title')} open={open} onCancel={close} footer={null} width={720} destroyOnHidden>
+        <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           <Typography.Text type="secondary">{t('import.hint')}</Typography.Text>
           <Space wrap>
             <Button

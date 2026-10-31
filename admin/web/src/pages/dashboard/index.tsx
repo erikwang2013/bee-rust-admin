@@ -20,7 +20,7 @@ export default function Dashboard() {
   }, []);
 
   return (
-    <Space direction="vertical" size={16} style={{ display: 'flex' }}>
+    <Space orientation="vertical" size={16} style={{ display: 'flex' }}>
       <Card title={t('dashboard.welcome')} size="small">
         <Descriptions column={1} bordered size="small" style={{ maxWidth: 520 }}>
           <Descriptions.Item label={t('field.username')}>{user?.username}</Descriptions.Item>

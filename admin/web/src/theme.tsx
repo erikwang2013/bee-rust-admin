@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Switch } from 'antd';
-import { MoonOutlined, SunOutlined } from '@ant-design/icons';
+import MoonOutlined from '@ant-design/icons/es/icons/MoonOutlined';
+import SunOutlined from '@ant-design/icons/es/icons/SunOutlined';
 import { useI18n } from './i18n';
 
 export type ThemeMode = 'light' | 'dark';
