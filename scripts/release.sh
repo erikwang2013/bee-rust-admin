@@ -398,9 +398,12 @@ EOF
   sed -i "s/@TAG@/$TAG/g" "$pkg/.env" "$pkg/README.md"
   tar czf "$ASSETS/bra-compose-$TAG.tar.gz" -C "$compose_pkg" "bra-compose-$TAG" \
     || die "组 compose 包失败"
+  # 先落到文件再 grep：grep -q 提前退出会让 tar 收到 SIGPIPE，pipefail 下被误判成失败
+  tar tzf "$ASSETS/bra-compose-$TAG.tar.gz" > "$compose_pkg/files.txt" \
+    || die "读取 compose 包失败"
   for f in docker-compose.yml docker-compose.tls.yml .env .env.example compose-up.sh README.md \
            admin/conf/app.conf.example deploy/nginx-tls.conf.template certs/README.md; do
-    tar tzf "$ASSETS/bra-compose-$TAG.tar.gz" | grep -qx "bra-compose-$TAG/$f" \
+    grep -qx "bra-compose-$TAG/$f" "$compose_pkg/files.txt" \
       || die "compose 包里没有 $f"
   done
   rm -rf "$compose_pkg"; compose_pkg=''
