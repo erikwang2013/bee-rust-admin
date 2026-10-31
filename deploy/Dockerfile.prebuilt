@@ -31,8 +31,9 @@
 # 与构建阶段同为 Debian 13（trixie）；有 trixie-slim 时可换成更小的镜像
 FROM debian:13
 # libgomp1：release 二进制链接了 OpenMP 运行时（libgomp.so.1），slim 基础镜像不自带
+# mariadb-client：内置 db_backup 任务要调 mysqldump（admin/src/backup.rs），基础镜像没有
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libgomp1 ca-certificates \
+    && apt-get install -y --no-install-recommends libgomp1 ca-certificates mariadb-client \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -r -u 10001 -m app
 

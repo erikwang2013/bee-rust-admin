@@ -39,7 +39,7 @@ warn() { printf '警告: %s\n' "$*" >&2; }
 die()  { printf '错误: %s\n' "$*" >&2; exit 1; }
 
 usage() {
-  sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 need_cmd() { command -v "$1" >/dev/null 2>&1 || die "缺少命令：$1"; }
@@ -71,7 +71,12 @@ chmod 700 "$SECRETS" "$SECRETS/backups"
 chmod 750 data "$DATA" 2>/dev/null || true
 
 # ── 读旧值（升级兼容）与渲染工具 ─────────────────────────────────────────
-[ -f "$ENV_FILE" ] || { cp "$ENV_EXAMPLE" "$ENV_FILE"; info "已从 $ENV_EXAMPLE 创建 $ENV_FILE"; }
+ENV_CREATED=0
+if [ ! -f "$ENV_FILE" ]; then
+  cp "$ENV_EXAMPLE" "$ENV_FILE"
+  ENV_CREATED=1
+  info "已从 $ENV_EXAMPLE 创建 $ENV_FILE（运行身份取当前用户）"
+fi
 [ -f "$CONF" ] || { cp "$CONF_EXAMPLE" "$CONF"; info "已从 $CONF_EXAMPLE 创建 $CONF"; }
 chmod 600 "$ENV_FILE" "$CONF"
 
@@ -120,6 +125,7 @@ generate_secret() { # name → stdout
 legacy_value() { # name → old value from .env/app.conf
   case "$1" in
     mysql_root_password) env_get MYSQL_ROOT_PASSWORD;;
+    mysql_password)      env_get MYSQL_PASSWORD;;
     jwt_secret)          ini_get secret;;
     encrypt_key)         ini_get encrypt_key;;
     hashids_salt)        ini_get hashids_salt;;
@@ -203,9 +209,20 @@ env_set MYSQL_DATABASE "$MYSQL_DATABASE"
 env_set MYSQL_USER "$MYSQL_USER"
 BRA_VERSION=$(env_get BRA_VERSION); BRA_VERSION=${BRA_VERSION:-latest}
 env_set BRA_VERSION "$BRA_VERSION"
-APP_UID=$(env_get APP_UID); APP_UID=${APP_UID:-$(id -u)}
-APP_GID=$(env_get APP_GID); APP_GID=${APP_GID:-$(id -g)}
+# 新 .env 不照抄示例里的 1000：直接取当前用户，否则非 1000 用户读不到 600 的 app.conf
+if [ "$ENV_CREATED" = 1 ]; then
+  APP_UID=$(id -u); APP_GID=$(id -g)
+else
+  APP_UID=$(env_get APP_UID); APP_UID=${APP_UID:-$(id -u)}
+  APP_GID=$(env_get APP_GID); APP_GID=${APP_GID:-$(id -g)}
+fi
 [[ $APP_UID =~ ^[0-9]+$ && $APP_GID =~ ^[0-9]+$ ]] || die "APP_UID / APP_GID 必须是数字"
+# 后端容器不以 root 运行；root 跑本脚本时退回 1000，并靠下面的 chown 保证可读可写
+if [ "$APP_UID" = 0 ] || [ "$APP_GID" = 0 ]; then
+  [ "$(id -u)" = 0 ] || die "APP_UID / APP_GID 不能为 0（当前用户是 $(id -u):$(id -g)）"
+  warn "APP_UID/APP_GID=0 会让后端容器以 root 运行，已改用 1000:1000（只影响容器内身份）"
+  APP_UID=1000; APP_GID=1000
+fi
 env_set APP_UID "$APP_UID"
 env_set APP_GID "$APP_GID"
 TZ_VAL=$(env_get TZ); TZ_VAL=${TZ_VAL:-Asia/Shanghai}
@@ -221,9 +238,11 @@ ini_set initial_admin_password "$(secret_value initial_admin_password)" seed
 ini_set upload_dir "uploads" app
 chmod 600 "$ENV_FILE" "$CONF"
 
-# ── data 目录归属 ─────────────────────────────────────────────────────────
+# ── 归属 ─────────────────────────────────────────────────────────────────
+# root 跑时把渲染出的 app.conf 与 data/ 交给后端 uid；secrets/.env 保持 root:root 0600
 if [ "$(id -u)" = 0 ]; then
   chown -R "$APP_UID:$APP_GID" "$DATA"
+  chown "$APP_UID:$APP_GID" "$CONF"
 else
   if [ "$(id -u)" != "$APP_UID" ]; then
     warn "APP_UID=$APP_UID 与当前用户 $(id -u) 不同；请确保 $DATA 对 uid $APP_UID 可写（或用 root 跑一次 chown -R $APP_UID:$APP_GID $DATA）"
@@ -249,13 +268,16 @@ fi
 COMPOSE=(docker compose -f docker-compose.yml)
 if [ "$USE_TLS" = 1 ]; then
   COMPOSE+=(-f docker-compose.tls.yml)
-  env_set HTTP_PORT 80
+  # 只对本次 compose 生效（80→80 跳转）：不写 .env，否则之后 --http 仍会绑 80
+  export HTTP_PORT=80
   HTTPS_PORT=$(env_get HTTPS_PORT); HTTPS_PORT=${HTTPS_PORT:-443}
   env_set HTTPS_PORT "$HTTPS_PORT"
   info "TLS：$SERVER_NAME（80→443）"
 else
   HTTP_PORT=$(env_get HTTP_PORT); HTTP_PORT=${HTTP_PORT:-8081}
   env_set HTTP_PORT "$HTTP_PORT"
+  # 导出后 shell 环境优先于 .env，避免 .env 里残留值影响本次起栈
+  export HTTP_PORT
   if [ $FORCE_HTTP -eq 0 ] && [ -z "$SERVER_NAME" -o "$(env_get SERVER_NAME)" = "" ]; then
     warn "未配置 SERVER_NAME + certs/，按 HTTP 启动（:${HTTP_PORT}）。域名证书准备好后加 --tls 或直接重跑。"
   fi

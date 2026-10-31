@@ -5,9 +5,9 @@
 #   - .env 里的 SERVER_NAME 是真实域名（不是占位符）；
 #   - 80 端口留给 HTTP→HTTPS 跳转，443 提供 TLS。
 #
-# compose-up.sh 在证书齐全时会自动加 -f docker-compose.tls.yml，并把 HTTP_PORT
-# 设为 80；也可以手动：
-#   docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d
+# compose-up.sh 在证书齐全时会自动加 -f docker-compose.tls.yml，并只在启动 compose 时
+# 把 HTTP_PORT 导出为 80（不写入 .env，避免之后 --http 仍绑 80）；也可以手动：
+#   HTTP_PORT=80 docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d
 services:
   bee-admin-web:
     ports:
