@@ -41,6 +41,14 @@ pub async fn login(
         return Err(ApiError::BadRequest("用户名和密码不能为空".into()));
     }
     let username = body.username.trim();
+    // body 上限 8 MiB：超长的用户名 / 密码必须在这里截停，不能带进限流、查库或
+    // argon2（匿名请求拿超长密码就能白烧一次 KDF）。用户名创建时最多 64 字符，
+    // 密码上限 1024 字符（兼容存量账号）。与其它登录失败同一句话，不暴露是哪一项超限。
+    if username.chars().count() > LOGIN_USERNAME_MAX
+        || body.password.chars().count() > crate::api::admin::PASSWORD_MAX
+    {
+        return Err(ApiError::BadRequest("用户名或密码错误".into()));
+    }
     let ip = client_ip(&headers);
 
     // 限流闸门在验密之前：过不去就不比对密码，响应也不泄露密码是否正确

@@ -271,6 +271,11 @@ pub async fn change_password(
     auth: Auth,
     AppJson(body): AppJson<ChangePasswordBody>,
 ) -> Result<Json<Value>, ApiError> {
+    // 超长的原密码不可能与库里的密码匹配：在 argon2 之前截停，省掉一次无谓的 KDF。
+    // 与普通「原密码错误」同一句话，不暴露是长度问题。
+    if body.old_password.chars().count() > crate::api::admin::PASSWORD_MAX {
+        return Err(ApiError::BadRequest("原密码错误".into()));
+    }
     crate::api::admin::validate_password(&body.new_password, "新密码")?;
     if !verify_password_async(body.old_password.clone(), auth.admin.password.clone()).await {
         return Err(ApiError::BadRequest("原密码错误".into()));

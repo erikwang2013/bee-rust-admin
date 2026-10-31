@@ -104,7 +104,11 @@ pub(crate) fn validate_username(u: &str) -> Result<(), ApiError> {
     Ok(())
 }
 
-/// 密码复杂度（P6 最小加固）：**字符数** ≥ 8，且四类里至少两类。
+/// 新设 / 新改密码的长度上限（字符数）。取 1024 是为了不误伤存量账号；登录路径
+/// 不校验复杂度，但同样按这个上限在 argon2 之前截停（见 `api::v1::auth::login`）。
+pub(crate) const PASSWORD_MAX: usize = 1024;
+
+/// 密码复杂度（P6 最小加固）：**字符数** 8-1024，且四类里至少两类。
 ///
 /// 类别按 **ASCII** 划：小写 / 大写 / 数字，其余一律算「其它」（符号、汉字、emoji）。
 /// 前端 `admin/web/src/password.ts` 必须同口径（`/[a-z]/`、`/[A-Z]/`、`/[0-9]/`、`/[^a-zA-Z0-9]/`）。
@@ -113,6 +117,10 @@ pub(crate) fn validate_username(u: &str) -> Result<(), ApiError> {
 /// `label` 是消息里对密码的称呼（`"密码"` / `"新密码"`）。拼出来的 msg 必须与
 /// `error.rs` 的 `ERR_TABLE` 逐字对上，否则 `err` 静默消失、前端译不了。
 pub(crate) fn validate_password(p: &str, label: &str) -> Result<(), ApiError> {
+    // 上限先判：超长输入连分类统计都不该做，更不该进 argon2
+    if p.chars().count() > PASSWORD_MAX {
+        return Err(ApiError::BadRequest(format!("{label}长度不能超过 {PASSWORD_MAX} 个字符")));
+    }
     let classes = [
         p.chars().any(|c| c.is_ascii_lowercase()),
         p.chars().any(|c| c.is_ascii_uppercase()),
@@ -368,4 +376,19 @@ pub async fn export(
         async move { export_batch(&state, &q, &scope, last).await }
     })
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 新密码策略的上限：1024 字符照收（存量 / 长口令），1025 字符拒绝；
+    /// 不依赖数据库，纯策略函数。
+    #[test]
+    fn password_policy_has_an_upper_bound() {
+        let max = format!("Aa1{}", "x".repeat(PASSWORD_MAX - 3));
+        assert_eq!(max.chars().count(), PASSWORD_MAX);
+        assert!(validate_password(&max, "密码").is_ok());
+        assert!(validate_password(&format!("{max}x"), "密码").is_err());
+    }
 }

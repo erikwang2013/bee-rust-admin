@@ -143,14 +143,23 @@ pub fn login_throttle(cfg: &AppConfig) -> Option<Arc<Throttle<MemoryThrottleStor
     )))
 }
 
+/// 登录用户名的长度上限。与创建用户名的 `validate_username` 一致（3-64）：库里不可能
+/// 存在更长的用户名，登录体在限流 / 查库 / argon2 之前就按它截停（见 `login`）。
+pub(crate) const LOGIN_USERNAME_MAX: usize = 64;
+
 /// 登录用户名的字符集：与创建用户名的 `validate_username` 一致（ASCII 字母 / 数字 /
 /// 下划线）。MySQL 的 `utf8mb4_0900_ai_ci` 大小写 / 重音不敏感：拿原始串查库时
 /// `Admin` / `ádmin` 会命中同一个账号，而限流桶按原始串分 —— 每种写法都是一个新桶，
 /// 失败锁定就被绕过了。这类串在库里**不可能存在**（创建时就被这个字符集挡住），
 /// 登录时直接按「用户不存在」处理，不查库。
+///
+/// 长度上限在这里再兜一道（纵深防御）：`login` 已在更前面拦过一次，但任何新调用方
+/// 都不该把超长串交给查库 / argon2。
 pub(crate) fn valid_login_username(username: &str) -> bool {
     let username = username.trim();
-    !username.is_empty() && username.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+    !username.is_empty()
+        && username.chars().count() <= LOGIN_USERNAME_MAX
+        && username.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 /// 账号维度的桶名。trim + ASCII 小写归一（大小写变体共用同一个失败计数桶 ——
@@ -390,5 +399,15 @@ mod tests {
         assert!(!valid_login_username("ａｄｍｉｎ"));
         assert!(!valid_login_username("ad-min"));
         assert!(!valid_login_username("   "));
+    }
+
+    /// 长度上限（创建时 3-64）：64 字符放行，65 字符拒绝 —— 超长串不能进限流桶、
+    /// 不能查库、也不能烧 argon2。
+    #[test]
+    fn login_username_is_length_bounded() {
+        assert!(valid_login_username(&"a".repeat(64)));
+        assert!(!valid_login_username(&"a".repeat(65)));
+        // trim 之后再数：首尾空白不占额度
+        assert!(valid_login_username(&format!(" {} ", "a".repeat(64))));
     }
 }
