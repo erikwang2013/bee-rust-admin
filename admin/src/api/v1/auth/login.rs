@@ -1,5 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use super::*;
+use crate::util::verify_password_async;
 use bee_orm::Value as DbValue;
 
 #[apidoc::title("登录")]
@@ -85,7 +86,7 @@ pub async fn login(
     // 而限流桶按原始串分 —— 重音变体每次换一个新桶就绕过了失败锁定。这类串在库里
     // 不可能存在，按「用户不存在」处理（同样烧一次 argon2），不查库。
     if !valid_login_username(username) {
-        let _ = verify_password(&body.password, DUMMY_PASSWORD_HASH);
+        let _ = verify_password_async(body.password.clone(), DUMMY_PASSWORD_HASH.to_string()).await;
         write_login_log(&state, 0, username, &headers, 0, "用户不存在").await;
         record_login_failure(&state, username, &ip);
         return Err(ApiError::BadRequest("用户名或密码错误".into()));
@@ -101,12 +102,12 @@ pub async fn login(
     let Some(admin) = admin else {
         // 与下面「密码错误」分支付同样的 argon2 代价（结果丢弃），
         // 否则两条路径的耗时差就是用户名枚举的侧信道
-        let _ = verify_password(&body.password, DUMMY_PASSWORD_HASH);
+        let _ = verify_password_async(body.password.clone(), DUMMY_PASSWORD_HASH.to_string()).await;
         write_login_log(&state, 0, username, &headers, 0, "用户不存在").await;
         record_login_failure(&state, username, &ip);
         return Err(ApiError::BadRequest("用户名或密码错误".into()));
     };
-    if !verify_password(&body.password, &admin.password) {
+    if !verify_password_async(body.password.clone(), admin.password.clone()).await {
         write_login_log(&state, admin.id, &admin.username, &headers, 0, "密码错误").await;
         record_login_failure(&state, username, &ip);
         return Err(ApiError::BadRequest("用户名或密码错误".into()));

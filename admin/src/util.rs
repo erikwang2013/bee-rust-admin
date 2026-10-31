@@ -55,6 +55,18 @@ pub fn verify_password(plain: &str, hashed: &str) -> bool {
     }
 }
 
+/// argon2id 哈希的异步壳：CPU / 内存都压到阻塞线程池，别占 tokio worker。
+pub async fn hash_password_async(plain: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || hash_password(&plain))
+        .await
+        .map_err(|e| format!("argon2 哈希任务失败: {e}"))
+}
+
+/// argon2id 校验的异步壳；任务本身失败（panic / 取消）按「密码不对」处理。
+pub async fn verify_password_async(plain: String, hashed: String) -> bool {
+    tokio::task::spawn_blocking(move || verify_password(&plain, &hashed)).await.unwrap_or(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -66,5 +78,13 @@ mod tests {
         assert!(verify_password("admin123", &h));
         assert!(!verify_password("wrong", &h));
         assert!(!verify_password("admin123", "not-a-hash"));
+    }
+
+    #[tokio::test]
+    async fn async_hash_roundtrip() {
+        let h = hash_password_async("admin123".into()).await.expect("异步哈希失败");
+        assert!(h.starts_with("$argon2"), "unexpected hash: {h}");
+        assert!(verify_password_async("admin123".into(), h.clone()).await);
+        assert!(!verify_password_async("wrong".into(), h).await);
     }
 }

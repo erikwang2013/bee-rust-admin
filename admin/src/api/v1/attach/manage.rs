@@ -105,13 +105,20 @@ pub(crate) async fn row_labels(
     notice_ids.dedup();
     let mut labels = Labels::new();
     if !notice_ids.is_empty() {
-        let notices: Vec<Notice> = Notice::query()
-            .filter_in("id", &crate::api::ids_to_values(&notice_ids))
-            .map_err(ApiError::from)?
-            .all(&state.db)
-            .await
-            .map_err(ApiError::from)?;
-        labels = notices.into_iter().map(|n| (n.id, (n.title, n.status == 1))).collect();
+        // 只取展示要用的三列：content 单行最大 64KB，列表拿标题/状态不该把它整列读出来。
+        // 占位符个数来自内部 id 列表，id 本身仍走绑定参数，没有拼接用户输入。
+        let placeholders = vec!["?"; notice_ids.len()].join(", ");
+        let sql = format!("SELECT id, title, status FROM notice WHERE id IN ({placeholders})");
+        let params = crate::api::ids_to_values(&notice_ids);
+        for row in state.db.query(&sql, &params).await.map_err(ApiError::from)? {
+            if let (Some(id), Some(title), Some(status)) = (
+                row.get("id").and_then(|v| v.as_i64()),
+                row.get("title").and_then(|v| v.as_str()),
+                row.get("status").and_then(|v| v.as_i64()),
+            ) {
+                labels.insert(id, (title.to_string(), status == 1));
+            }
+        }
     }
     Ok((names, labels))
 }

@@ -1,5 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use super::*;
+use crate::util::{hash_password_async, verify_password_async};
 use bee_orm::Value as DbValue;
 
 #[apidoc::title("退出登录")]
@@ -271,12 +272,12 @@ pub async fn change_password(
     AppJson(body): AppJson<ChangePasswordBody>,
 ) -> Result<Json<Value>, ApiError> {
     crate::api::admin::validate_password(&body.new_password, "新密码")?;
-    if !verify_password(&body.old_password, &auth.admin.password) {
+    if !verify_password_async(body.old_password.clone(), auth.admin.password.clone()).await {
         return Err(ApiError::BadRequest("原密码错误".into()));
     }
     // 只写 password / token_version / updated_at，并把设备行置 0：
     // 全端下线，需重新登录（设备缓存由 helper 一并清掉）
-    let password = hash_password(&body.new_password);
+    let password = hash_password_async(body.new_password).await.map_err(ApiError::internal)?;
     crate::auth::revoke_sessions(&state, auth.admin.id, None, Some(&password)).await?;
     Ok(ok(Value::Null))
 }

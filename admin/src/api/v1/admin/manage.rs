@@ -1,5 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use super::*;
+use crate::util::hash_password_async;
 use bee_orm::Value as DbValue;
 
 #[apidoc::title("管理员详情")]
@@ -105,10 +106,11 @@ pub async fn create(
     datascope::ensure_dept_in_scope(&auth, &state.db, body.dept_id).await?;
     datascope::ensure_roles_grantable(&auth, &state.db, &body.role_ids).await?;
 
+    let password = hash_password_async(body.password).await.map_err(ApiError::internal)?;
     let a = Admin {
         id: state.next_id()?,
         username: body.username.trim().to_string(),
-        password: hash_password(&body.password),
+        password,
         nickname: body.nickname,
         email: sealed(&state.crypto, &body.email)?,
         phone: sealed(&state.crypto, &body.phone)?,
@@ -418,7 +420,7 @@ pub async fn reset_password(
     }
     datascope::ensure_admin_in_scope(&auth, &state.db, &a).await?;
     // 只写 password / token_version / updated_at，并把设备行置 0：旧 token 立即失效
-    let password = hash_password(&body.password);
+    let password = hash_password_async(body.password).await.map_err(ApiError::internal)?;
     crate::auth::revoke_sessions(&state, id, None, Some(&password)).await?;
     Ok(ok(Value::Null))
 }
