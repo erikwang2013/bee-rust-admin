@@ -249,6 +249,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // 管理端 CSV 导入可能是几 MB；框架默认 2 MiB，这里只放宽管理端自身。
         // nginx 模板同步设了 client_max_body_size 8m。
         .body_limit(8 * 1024 * 1024)
+        // 导入是同步接口：300 行管理员（逐行哈希密码）、5000 行部门/字典的写入都可能
+        // 超过框架默认的 30 秒。前端等 120 秒、nginx 180 秒，后端取同一上限 180 秒。
+        .timeout_for("/api/v1/imports", std::time::Duration::from_secs(180))
         .ns("/api/v1", |ns| {
             ns.get("/health", health).get("/version", version)
         })

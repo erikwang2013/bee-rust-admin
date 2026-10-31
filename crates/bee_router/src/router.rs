@@ -29,11 +29,29 @@ fn error_response(status: StatusCode, msg: &'static str) -> Response {
 pub struct Router<S = ()> {
     routes: Vec<(String, MethodRouter<S>)>,
     body_limit: usize,
+    /// 默认请求超时；没有被 [`Router::timeout_for`] 前缀命中的路由用它。
+    timeout: Duration,
+    /// 按路径前缀覆盖的超时，匹配时取最长前缀。
+    timeout_overrides: Vec<(String, Duration)>,
+}
+
+/// 选最长匹配前缀的超时；没有前缀命中时用 `default`。
+fn pick_timeout(default: Duration, overrides: &[(String, Duration)], path: &str) -> Duration {
+    overrides
+        .iter()
+        .filter(|(prefix, _)| path.starts_with(prefix.as_str()))
+        .max_by_key(|(prefix, _)| prefix.len())
+        .map_or(default, |(_, timeout)| *timeout)
 }
 
 impl<S> Router<S> {
     pub fn new() -> Self {
-        Self { routes: Vec::new(), body_limit: 2 * 1024 * 1024 }
+        Self {
+            routes: Vec::new(),
+            body_limit: 2 * 1024 * 1024,
+            timeout: Duration::from_secs(30),
+            timeout_overrides: Vec::new(),
+        }
     }
 
     pub fn ns<F>(mut self, prefix: &str, f: F) -> Self
@@ -52,36 +70,52 @@ impl<S> Router<S> {
         self
     }
 
+    /// 按路径前缀覆盖请求超时（取最长匹配前缀），未命中的路由仍用默认 30 秒。
+    ///
+    /// 同步接口（如 CSV 导入）可能合法地跑过 30 秒，用这里放宽。
+    pub fn timeout_for(mut self, prefix: &str, timeout: Duration) -> Self {
+        self.timeout_overrides.push((prefix.to_string(), timeout));
+        self
+    }
+
     /// Build the router without supplying state. Handlers using
     /// [`axum::extract::State`] require [`Router::with_state`] instead.
     ///
     /// Every route gets a 2 MiB body limit (see [`Router::body_limit`]) and a
-    /// 30 s request timeout.
+    /// 30 s request timeout unless overridden per prefix (see
+    /// [`Router::timeout_for`]).
     pub fn build(self) -> AxumRouter<S>
     where
         S: Clone + Send + Sync + 'static,
     {
-        let body_limit = self.body_limit;
+        let Router { routes, body_limit, timeout, timeout_overrides } = self;
         let mut router = AxumRouter::new();
-        for (path, method_router) in self.routes {
-            router = router.route(&path, method_router);
+        for (path, method_router) in routes {
+            let route_timeout = pick_timeout(timeout, &timeout_overrides, &path);
+            router = router.route(
+                &path,
+                method_router.route_layer(
+                    // Per-route stack: the error handling must be outside the
+                    // timeout so the composed service's error is `Infallible`.
+                    tower::ServiceBuilder::new()
+                        .layer(axum::error_handling::HandleErrorLayer::new(
+                            |err: axum::BoxError| async move {
+                                if err.is::<tower::timeout::error::Elapsed>() {
+                                    error_response(StatusCode::REQUEST_TIMEOUT, "请求超时")
+                                } else {
+                                    error_response(
+                                        StatusCode::INTERNAL_SERVER_ERROR,
+                                        "服务器内部错误",
+                                    )
+                                }
+                            },
+                        ))
+                        .layer(tower::timeout::TimeoutLayer::new(route_timeout)),
+                ),
+            );
         }
-        router.layer(
-            // One stack per `Router::layer` call: the error handling must be
-            // inside it so the composed service's error is `Infallible`.
-            tower::ServiceBuilder::new()
-                .layer(axum::error_handling::HandleErrorLayer::new(
-                    |err: axum::BoxError| async move {
-                        if err.is::<tower::timeout::error::Elapsed>() {
-                            error_response(StatusCode::REQUEST_TIMEOUT, "请求超时")
-                        } else {
-                            error_response(StatusCode::INTERNAL_SERVER_ERROR, "服务器内部错误")
-                        }
-                    },
-                ))
-                .layer(tower::timeout::TimeoutLayer::new(Duration::from_secs(30)))
-                .layer(axum::extract::DefaultBodyLimit::max(body_limit)),
-        )
+        // 请求体上限对整棵路由树生效，别下放到单条路由。
+        router.layer(axum::extract::DefaultBodyLimit::max(body_limit))
     }
 
     /// Build the router and attach `state`, yielding a fully constructed
@@ -269,5 +303,28 @@ mod tests {
         assert_eq!(res.status(), StatusCode::OK);
         let body = axum::body::to_bytes(res.into_body(), 1024).await.unwrap();
         assert_eq!(&body[..], b"5");
+    }
+
+    #[test]
+    fn timeout_defaults_to_30s_and_overrides_use_longest_prefix() {
+        let router = Router::<()>::new();
+        assert_eq!(router.timeout, Duration::from_secs(30));
+        assert_eq!(
+            pick_timeout(router.timeout, &router.timeout_overrides, "/api/v1/imports"),
+            Duration::from_secs(30)
+        );
+
+        let router = Router::<()>::new()
+            .timeout_for("/api/v1/imports", Duration::from_secs(180))
+            .timeout_for("/api/v1/imports/slow", Duration::from_secs(300))
+            .timeout_for("/metrics", Duration::from_secs(5));
+        let pick = |path: &str| pick_timeout(router.timeout, &router.timeout_overrides, path);
+
+        assert_eq!(pick("/api/v1/imports"), Duration::from_secs(180));
+        assert_eq!(pick("/api/v1/imports/template"), Duration::from_secs(180));
+        assert_eq!(pick("/api/v1/imports/slow/path"), Duration::from_secs(300));
+        assert_eq!(pick("/metrics"), Duration::from_secs(5));
+        // 没有前缀命中的路由回落到默认 30 秒
+        assert_eq!(pick("/api/v1/admins"), Duration::from_secs(30));
     }
 }
