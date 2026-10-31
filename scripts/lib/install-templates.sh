@@ -55,6 +55,8 @@ server {
     location /api/ {
         # 不带尾斜杠：原样转发完整 URI（/api/v1/auth/login 保持 /api/v1/auth/login）
         proxy_pass http://127.0.0.1:@BACKEND_PORT@;
+        # 请求体不落 nginx 缓冲：导入/上传直接流给后端，避免撑满 /var/cache/nginx/client_temp（Compose 下是 32MB tmpfs）
+        proxy_request_buffering off;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -65,7 +67,7 @@ server {
         proxy_read_timeout 180s;
         proxy_send_timeout 180s;
         # 大导出/附件不落响应缓冲：Compose 里 /var/cache/nginx 是 32MB tmpfs，
-        # 缓冲写满 proxy_temp 会直接失败；只关响应缓冲，请求缓冲保持默认。
+        # 缓冲写满 proxy_temp 会直接失败。
         proxy_buffering off;
     }
 
