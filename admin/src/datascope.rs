@@ -244,6 +244,41 @@ pub async fn ensure_menus_attachable(
     Ok(())
 }
 
+/// 给角色挂部门（`role::set_depts`）时的闸：
+/// ① 每个 `dept_id` 必须真实存在（同 `ensure_menus_attachable`，不写悬空关联行）；
+/// ② 非超管只能挂自己数据范围内的部门 —— 否则 scope=5 的「自定义」范围能被
+///    扩到看不见的部门。超管只受①约束。
+pub async fn ensure_depts_attachable(
+    auth: &Auth,
+    db: &Pool,
+    dept_ids: &[i64],
+) -> Result<(), ApiError> {
+    let ids = dedup_ids(dept_ids.to_vec());
+    if ids.is_empty() {
+        return Ok(()); // 清空不是授予（同 ensure_roles_grantable 的空集合口径）
+    }
+    let depts = Dept::query()
+        .filter_in("id", &ids_to_values(&ids))
+        .map_err(ApiError::from)?
+        .all(db)
+        .await
+        .map_err(ApiError::from)?;
+    if depts.len() != ids.len() {
+        return Err(ApiError::BadRequest("部门不存在".into()));
+    }
+    if auth.is_super {
+        return Ok(());
+    }
+    let scope = resolve(auth, db).await?;
+    if ids
+        .iter()
+        .all(|id| dept_covered(&scope, *id) || (scope.self_only && *id == auth.admin.dept_id))
+    {
+        return Ok(());
+    }
+    Err(ApiError::Forbidden("超出你的数据权限范围".into()))
+}
+
 /// 非超管往菜单上写 `perm`（`menu::create` / `menu::update`）时的闸：非空时必须是
 /// 操作者自己已有的权限码 —— 否则配合 `system:role:edit` 就地造一个码再挂到自己
 /// 角色上，是两次请求就能完成的提权。超管不受管。

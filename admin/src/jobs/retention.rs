@@ -24,8 +24,8 @@ pub(super) async fn log_retention(state: AppState) -> Result<String, String> {
 /// 看起来像可以删掉的啰嗦，其实是在防误删 —— 目录里除了成品头像还有：
 /// 插件写到一半的临时文件（`<临时名>.png.part`，扩展名是 `part`）、运维/用户手放的
 /// 文件（备份、说明、别人家的上传）。这些没有引用关系可依赖，只能靠白名单划界。
-/// 反过来说：白名单内、又没人引用的 png/jpg 就是孤儿（包括用户手放的），该删。
-/// 留着的代价只是占点磁盘，删错的代价是丢数据 —— 划界就按这条。
+/// 反过来说：白名单内、又没人引用、且过了保护期（`too_fresh`）的 png/jpg 就是孤儿
+/// （包括用户手放的），该删。留着的代价只是占点磁盘，删错的代价是丢数据 —— 划界就按这条。
 pub(super) async fn avatar_orphan_clean(state: AppState) -> Result<String, String> {
     let dir = std::path::Path::new(&state.cfg.upload_dir).join("avatar");
     let files = match collect_files(&dir) {
@@ -37,10 +37,7 @@ pub(super) async fn avatar_orphan_clean(state: AppState) -> Result<String, Strin
     };
 
     // 引用集合：相对头像组目录的路径（与下面 walk 出来的相对路径同一坐标系）
-    let admins = Admin::query()
-        .all(&state.db)
-        .await
-        .map_err(|e| format!("查管理员失败: {e}"))?;
+    let admins = Admin::query().all(&state.db).await.map_err(|e| format!("查管理员失败: {e}"))?;
     let mut kept: std::collections::HashSet<std::path::PathBuf> = std::collections::HashSet::new();
     for admin in &admins {
         let stored = admin.avatar.trim();
@@ -61,7 +58,7 @@ pub(super) async fn avatar_orphan_clean(state: AppState) -> Result<String, Strin
         }
     }
 
-    let (mut seen, mut removed) = (0u64, 0u64);
+    let (mut seen, mut removed, mut fresh) = (0u64, 0u64, 0u64);
     for path in files {
         seen += 1;
         if !is_avatar_file(&path) {
@@ -69,6 +66,11 @@ pub(super) async fn avatar_orphan_clean(state: AppState) -> Result<String, Strin
         }
         let Ok(rel) = path.strip_prefix(&dir) else { continue };
         if kept.contains(rel) {
+            continue;
+        }
+        // 与附件同一个保护期：上传是「先落盘、后落库」，撞进这个窗口就会删掉马上要用的头像
+        if too_fresh(&path) {
+            fresh += 1;
             continue;
         }
         match std::fs::remove_file(&path) {
@@ -79,7 +81,7 @@ pub(super) async fn avatar_orphan_clean(state: AppState) -> Result<String, Strin
             Err(e) => tracing::warn!("删孤儿头像 {} 失败: {e}", path.display()),
         }
     }
-    Ok(format!("头像 {seen} 个，删除孤儿 {removed} 个"))
+    Ok(format!("头像 {seen} 个，删除孤儿 {removed} 个，保护期内跳过 {fresh} 个"))
 }
 
 /// 附件孤儿清理：删附件组目录（`{upload_dir}/attach/`）下**不再被任何 `attachment` 行
@@ -98,10 +100,7 @@ pub(super) async fn attach_orphan_clean(state: AppState) -> Result<String, Strin
         Err(e) => return Err(format!("读附件目录 {} 失败: {e}", dir.display())),
     };
 
-    let rows = Attachment::query()
-        .all(&state.db)
-        .await
-        .map_err(|e| format!("查附件失败: {e}"))?;
+    let rows = Attachment::query().all(&state.db).await.map_err(|e| format!("查附件失败: {e}"))?;
     let mut kept: std::collections::HashSet<std::path::PathBuf> = std::collections::HashSet::new();
     for row in &rows {
         let stored = row.stored_path.trim();
@@ -177,10 +176,9 @@ fn collect_files(root: &std::path::Path) -> std::io::Result<Vec<std::path::PathB
 /// 死链（头像 404）。`rel` 是相对**该分组目录**的路径，只有「一层子目录 + 文件名」这种
 /// 插件成品的位置才构造得出 saved_path；直接躺在组目录下的老文件/手工文件跳过。
 fn purge_instant(state: &AppState, group: &str, rel: &std::path::Path) {
-    let (Some(subdir), Some(name)) = (
-        rel.parent().and_then(|p| p.to_str()),
-        rel.file_name().and_then(|n| n.to_str()),
-    ) else {
+    let (Some(subdir), Some(name)) =
+        (rel.parent().and_then(|p| p.to_str()), rel.file_name().and_then(|n| n.to_str()))
+    else {
         return;
     };
     if subdir.is_empty() || subdir.contains('/') {
@@ -203,9 +201,9 @@ fn is_attach_file(path: &std::path::Path) -> bool {
     in_ext_whitelist(path, &crate::api::attach::ATTACH_EXTS)
 }
 
-/// 孤儿文件的保护期（批次 E S2）。上传是「先落盘、后 INSERT」，两者之间有毫秒级窗口；
-/// 附件删除也改成「只删行、文件交给清理」（延迟回收）—— 有这条下限，刚写下的文件不会被
-/// 任何一轮清理误收。5 分钟：比任何一次上传耗时都长得多，又短到磁盘不会被垃圾拖住。
+/// 孤儿文件的保护期（批次 E S2），头像与附件共用。上传是「先落盘、后 INSERT」，两者之间
+/// 有毫秒级窗口；附件删除也改成「只删行、文件交给清理」（延迟回收）—— 有这条下限，刚写下
+/// 的文件不会被任何一轮清理误收。5 分钟：比任何一次上传耗时都长得多，又短到磁盘不会被垃圾拖住。
 pub(super) const ATTACH_MIN_AGE_SECS: u64 = 300;
 
 /// 文件「太新」= 保护期内，清理不碰。读不到 mtime（个别文件系统 / 文件刚被并发删掉）

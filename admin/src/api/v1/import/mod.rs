@@ -15,7 +15,8 @@
 //! 导入的参数若比同步接口宽，就是个绕过闸门的后门。
 //!
 //! shortcut: 只认 UTF-8（Excel 默认另存是 GBK，会被拒并提示另存为 CSV UTF-8）；
-//! 等真实诉求来了再接 encoding_rs 做编码嗅探。行数上限 5000（事务规模 + 响应体都框住）。
+//! 等真实诉求来了再接 encoding_rs 做编码嗅探。行数上限：部门 / 字典项 5000（事务规模 +
+//! 响应体），管理员 300（每行 argon2，压到一次请求能跑完）。
 
 use crate::api::admin::{sealed, validate_profile, validate_username};
 use crate::api::csv::{BOM, headers as csv_headers, row as csv_row};
@@ -112,11 +113,20 @@ mod tests {
 
     #[test]
     fn parse_status_accepts_both_dialects() {
-        for (s, want) in [("", 1), ("1", 1), ("启用", 1), (" 启用 ", 1), ("0", 0), ("禁用", 0)] {
+        for (s, want) in [("", 1), ("1", 1), ("启用", 1), (" 启用 ", 1), ("0", 0), ("禁用", 0)]
+        {
             assert_eq!(parse_status(s).unwrap(), want, "{s:?}");
         }
         assert!(parse_status("2").is_err());
         assert!(parse_status("yes").is_err());
+    }
+
+    /// 管理员行要逐个 hash，行数上限单独压低；部门 / 字典项仍是 5000。
+    #[test]
+    fn row_caps_match_hash_cost() {
+        assert_eq!(Kind::Admin.max_rows(), 300);
+        assert_eq!(Kind::Dept.max_rows(), MAX_ROWS);
+        assert_eq!(Kind::DictItem.max_rows(), MAX_ROWS);
     }
 
     #[test]

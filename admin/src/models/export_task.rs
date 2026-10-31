@@ -12,7 +12,8 @@ pub struct ExportTask {
     #[bee(pk)]
     #[serde(serialize_with = "crate::hid::ser_id", deserialize_with = "crate::hid::de_id")]
     pub id: i64,
-    /// 发起人：也是「谁能看 / 下 / 删」的判据（导出中心只列自己的）
+    /// 发起人：也是「谁能看 / 下 / 删」的判据（导出中心只列自己的）；对外与前端同形（短串）
+    #[serde(serialize_with = "crate::hid::ser_id", deserialize_with = "crate::hid::de_id")]
     pub admin_id: i64,
     /// 发起人用户名（列表直接显示，不为一个名字再联表）
     #[bee(sql_type = "VARCHAR(64)")]
@@ -25,7 +26,9 @@ pub struct ExportTask {
     pub params: String,
     /// 0 待处理 / 1 执行中 / 2 已完成 / 3 失败 / 4 已取消
     pub status: i8,
-    /// 落盘绝对路径；清理任务删记录时**连着它一起删**（谁也不会留下孤儿文件）
+    /// 落盘绝对路径；清理任务删记录时**连着它一起删**（谁也不会留下孤儿文件）。
+    /// 内部地址不对外序列化（列表接口直接回行，不能把服务器路径带出去）。
+    #[serde(skip)]
     #[bee(sql_type = "VARCHAR(255)")]
     pub file_path: String,
     pub row_count: i64,

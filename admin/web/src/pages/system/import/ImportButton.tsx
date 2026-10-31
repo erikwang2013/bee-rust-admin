@@ -102,12 +102,13 @@ export default function ImportButton({
             </Button>
           </Space>
           {report && (
+            // 后端最多回 5000 行；分页避免一次铺 5000 个 <tr> 卡住弹窗
             <Table<ImportRow>
               rowKey="line"
               size="small"
               columns={columns}
               dataSource={report.rows}
-              pagination={false}
+              pagination={{ pageSize: 100, showSizeChanger: false }}
               scroll={{ y: 320 }}
             />
           )}

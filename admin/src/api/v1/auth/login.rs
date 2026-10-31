@@ -1,5 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use super::*;
+use bee_orm::Value as DbValue;
 
 #[apidoc::title("登录")]
 #[apidoc::desc("用户名 + 密码登录，返回 JWT 与当前用户信息。受失败锁定（[auth] max_fail / lock_minutes）与图形验证码（[auth] captcha）保护：过不去就不比密码，响应不泄露密码是否正确")]
@@ -79,6 +80,17 @@ pub async fn login(
         }
     }
 
+    // 用户名只能是 ASCII 字母 / 数字 / 下划线（与创建时同一字符集）。MySQL 的
+    // utf8mb4_0900_ai_ci 大小写 / 重音不敏感：`Admin` / `ádmin` 都能命中 `admin`，
+    // 而限流桶按原始串分 —— 重音变体每次换一个新桶就绕过了失败锁定。这类串在库里
+    // 不可能存在，按「用户不存在」处理（同样烧一次 argon2），不查库。
+    if !valid_login_username(username) {
+        let _ = verify_password(&body.password, DUMMY_PASSWORD_HASH);
+        write_login_log(&state, 0, username, &headers, 0, "用户不存在").await;
+        record_login_failure(&state, username, &ip);
+        return Err(ApiError::BadRequest("用户名或密码错误".into()));
+    }
+
     let admin = Admin::query()
         .filter_eq("username", username)
         .map_err(ApiError::from)?
@@ -108,7 +120,6 @@ pub async fn login(
     // 动态验证码闸门（项 7）：绑定了才要。放在密码之后 —— 码是第二因子，
     // 先要码等于让不知道密码的人也能把这条路径走一遍。
     // S1：一枚码只换一次登录（同一 30 秒窗里的第二台设备得等下一枚）。
-    let mut used_step: Option<i64> = None;
     if admin.totp_enabled == 1 {
         let code = body.code.as_deref().unwrap_or("");
         if code.trim().is_empty() {
@@ -127,14 +138,12 @@ pub async fn login(
                 }
                 Some(step) => {
                     // 记账与放行是同一条 UPDATE（`步号 > last_step` 才成立），并发登录只有一个
-                    // 赢家。放在这里而不是整行 update 之后：被拒的重放不许碰 last_login_at，
-                    // 也不许落设备行/发 token —— 输了就直接在这条路径上返回。
+                    // 赢家。被拒的重放不许碰 last_login_at，也不许落设备行/发 token。
                     if !crate::api::totp::consume_step(&state, admin.id, step).await? {
                         write_login_log(&state, admin.id, &admin.username, &headers, 0, "动态验证码已使用").await;
                         record_login_failure(&state, username, &ip);
                         return Err(ApiError::BadRequest(crate::error::TOTP_REPLAYED.into()));
                     }
-                    used_step = Some(step);
                 }
             }
         } else {
@@ -152,6 +161,49 @@ pub async fn login(
         }
     }
 
+    // 登录成功落库：只写登录时间 / IP，不再整行写回。WHERE 带 status 与 token_version
+    // 的读时快照 —— 校验密码 / TOTP 期间账号可能已被禁用或改密，整行 update 会把那次
+    // 变更抹掉（禁用被撤销、被重置的密码被换回旧值），并签发一枚旧版本的 token。
+    // totp_last_step 已由上面的 consume_step CAS 写过，这里不碰。
+    let ts = now();
+    let affected = state
+        .db
+        .execute(
+            "UPDATE admin SET last_login_at = ?, last_login_ip = ?, updated_at = ? \
+             WHERE id = ? AND status = 1 AND token_version = ?",
+            &[
+                DbValue::from(ts),
+                DbValue::from(ip.clone()),
+                DbValue::from(ts),
+                DbValue::from(admin.id),
+                DbValue::from(admin.token_version),
+            ],
+        )
+        .await
+        .map_err(ApiError::from)?;
+    if affected == 0 {
+        // affected_rows 只数「真正变了」的行：DATETIME 是秒精度，同一秒内重复登录
+        // 写回的值完全相同，这里会是 0，不能直接当成并发变更（正常登录会被误杀）。
+        // 按同一快照条件再确认一次：行还在 = 值没变，照常发 token；行没了才是真的
+        // 被禁用 / 改密。
+        let still_valid = Admin::query()
+            .filter_eq("id", admin.id)
+            .map_err(ApiError::from)?
+            .filter_eq("status", 1)
+            .map_err(ApiError::from)?
+            .filter_eq("token_version", admin.token_version)
+            .map_err(ApiError::from)?
+            .count(&state.db)
+            .await
+            .map_err(ApiError::from)?
+            > 0;
+        if !still_valid {
+            // 快照期间状态/版本变了：不发 token（静默返回会让人以为是自己密码错了）
+            write_login_log(&state, admin.id, &admin.username, &headers, 0, "账号状态已变更").await;
+            return Err(ApiError::Unauthorized);
+        }
+    }
+
     // 设备行（项 7）：同账号同 UA 复用一条，token 里带上它的 id，之后能单独踢掉这台
     let device = find_or_create_device(&state, admin.id, &user_agent(&headers), &ip).await?;
     let (token, expires_in) = sign_token(
@@ -161,25 +213,6 @@ pub async fn login(
         device.id,
         expire_secs(&state.cfg),
     )?;
-
-    let mut updated = admin.clone();
-    updated.last_login_at = Some(now());
-    updated.last_login_ip = client_ip(&headers);
-    updated.updated_at = now();
-    // 上面是整行 update（会把内存里的全部字段写回去）：账本是刚 CAS 写的，这里同步
-    // 一份，否则这行会拿登录开始时的旧值（NULL）把账本盖掉，重放就又通了。
-    // 已知窄口（范围=**所有**「读整行 → 改几列 → 整行 update」的写路径，不只是登录：
-    // 注销、个人资料 / 头像修改、TOTP 绑定与解绑、超管编辑管理员，都可能拿读时的旧快照
-    // 把账本压回那一刻）。压回后同一步可以再消费一次，可重放窗 = 那枚码还在被接受的
-    // 时间 —— 窗口本身加上前后各一步容差（totp::WINDOW=1），从 CAS 成功算起最多约
-    // 一分钟。要利用得同时凑齐「并发整行写正落在读行到写回的毫秒缝里」「重放落在同一枚
-    // 码的有效期内」「已握有密码」，可利用性很低；真要堵死得让每条整行写路径都带 CAS
-    // 条件（`WHERE id=? AND (totp_last_step IS NULL OR totp_last_step < ?)` 写回读值），
-    // shortcut: 接受这个窄口，等出现多设备同窗并发登录的真实场景再上 CAS 行锁。
-    if let Some(step) = used_step {
-        updated.totp_last_step = Some(step);
-    }
-    updated.update(&state.db).await.map_err(ApiError::from)?;
 
     // 成功即清掉该账号的失败计数（修复①：4 次失败 + 1 次成功 + 1 次失败不该锁死）。
     // IP 桶**不清**：桶是共享的，攻击者拿自己账号登录一次就能替爆破者洗掉计数，
@@ -195,6 +228,8 @@ pub async fn login(
     // 库里 email / phone 是密文，出去前解成明文（前端无感）
     let email = crypto::plain(&state.crypto, &admin.email).map_err(ApiError::internal)?;
     let phone = crypto::plain(&state.crypto, &admin.phone).map_err(ApiError::internal)?;
+    // avatar 列存的是插件的 saved_path（内部地址），与 profile 一样换成可用的 URL
+    let avatar = crate::api::avatar::public_avatar(&admin.avatar, admin.id);
 
     Ok(ok(json!({
         "token": token,
@@ -203,7 +238,7 @@ pub async fn login(
             "id": hid::enc(admin.id),
             "username": admin.username,
             "nickname": admin.nickname,
-            "avatar": admin.avatar,
+            "avatar": avatar,
             "email": email,
             "phone": phone,
             "sex": admin.sex,

@@ -1,10 +1,22 @@
-/* 首屏蜂巢背景：three.js 本地模块，无外部网络请求 */
-import * as THREE from "./three.module.min.js";
-
+/* 首屏蜂巢背景：three.js 本地模块，无外部网络请求。
+   reduced-motion 或无 WebGL 时连 672KB 都不下载 —— 所以静态 import 换成入口处按需 import。 */
 const canvas = document.getElementById("hive-canvas");
-if (canvas) init(canvas);
+if (canvas && !window.matchMedia("(prefers-reduced-motion: reduce)").matches && webglOk()) {
+  import("./three.module.min.js")
+    .then(function (THREE) { init(canvas, THREE); })
+    .catch(function () {});
+}
 
-function init(canvas) {
+function webglOk() {
+  try {
+    const probe = document.createElement("canvas");
+    return !!(probe.getContext("webgl2") || probe.getContext("webgl"));
+  } catch (err) {
+    return false;
+  }
+}
+
+function init(canvas, THREE) {
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   let renderer;
   try {

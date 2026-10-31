@@ -1,5 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use super::*;
+use std::collections::HashMap;
 
 /// 单元格（列数不足时当空串：报告里会点名，不用 unwrap 炸掉）。
 pub(crate) fn cell(rec: &csv::StringRecord, i: usize) -> &str {
@@ -11,8 +12,7 @@ pub(crate) fn parse_int(s: &str, label: &str) -> Result<i32, ApiError> {
     if t.is_empty() {
         return Ok(0);
     }
-    t.parse()
-        .map_err(|_| ApiError::BadRequest(format!("{label}必须是整数，收到 {t:?}")))
+    t.parse().map_err(|_| ApiError::BadRequest(format!("{label}必须是整数，收到 {t:?}")))
 }
 
 /// 状态列：空 / 1 / 启用 → 1，0 / 禁用 → 0（与页面上那套中文下拉对齐）。
@@ -20,9 +20,9 @@ pub(crate) fn parse_status(s: &str) -> Result<i8, ApiError> {
     match s.trim() {
         "" | "1" | "启用" => Ok(1),
         "0" | "禁用" => Ok(0),
-        other => Err(ApiError::BadRequest(format!(
-            "状态只认 1/0 或「启用」「禁用」，收到 {other:?}"
-        ))),
+        other => {
+            Err(ApiError::BadRequest(format!("状态只认 1/0 或「启用」「禁用」，收到 {other:?}")))
+        }
     }
 }
 
@@ -53,6 +53,8 @@ pub(crate) fn pick_roles(roles: &[Role], names: &str) -> Result<Vec<i64>, ApiErr
 }
 
 /// 管理员行。id 在校验期就发号（雪花号有间隔无所谓），写完不用的号作废。
+/// **password 此时是明文**（导入内部临时值）：校验阶段完全不 hash，落库前由
+/// `write_all` 统一 `spawn_blocking` 批量 hash —— 逐行 argon2 会堵住 async worker。
 pub(crate) async fn admin_item(
     state: &AppState,
     auth: &Auth,
@@ -81,7 +83,8 @@ pub(crate) async fn admin_item(
     let row = Admin {
         id: state.next_id()?,
         username,
-        password: hash_password(password),
+        // 明文临时值，只在导入内存里活到 `write_all` 批量 hash 那一刻
+        password: password.to_string(),
         nickname,
         email: sealed(&state.crypto, &email)?,
         phone: sealed(&state.crypto, &phone)?,
@@ -105,7 +108,11 @@ pub(crate) async fn admin_item(
 
 /// 部门行：上级按名称定位，**必须是库里已有的部门**（文件里新建的当不了上级 ——
 /// 否则要么一遍扫描里排顺序，要么多趟解析，都不值得）。
-pub(crate) fn dept_item(state: &AppState, ctx: &mut Ctx, rec: &csv::StringRecord) -> Result<Item, ApiError> {
+pub(crate) fn dept_item(
+    state: &AppState,
+    ctx: &mut Ctx,
+    rec: &csv::StringRecord,
+) -> Result<Item, ApiError> {
     let name = cell(rec, 0).trim().to_string();
     let leader = cell(rec, 2).trim().to_string();
     let phone = cell(rec, 3).trim().to_string();
@@ -134,7 +141,11 @@ pub(crate) fn dept_item(state: &AppState, ctx: &mut Ctx, rec: &csv::StringRecord
 }
 
 /// 字典项行：类型编码必须已存在；`(类型, 值)` 是复合唯一键。
-pub(crate) fn dict_item(state: &AppState, ctx: &mut Ctx, rec: &csv::StringRecord) -> Result<Item, ApiError> {
+pub(crate) fn dict_item(
+    state: &AppState,
+    ctx: &mut Ctx,
+    rec: &csv::StringRecord,
+) -> Result<Item, ApiError> {
     let type_code = cell(rec, 0).trim().to_string();
     let label = cell(rec, 1).trim().to_string();
     let value = cell(rec, 2).trim().to_string();
@@ -169,13 +180,38 @@ pub(crate) async fn write_all<'a>(
     state: &AppState,
     items: impl Iterator<Item = &'a Item>,
 ) -> Result<i64, ApiError> {
+    let items: Vec<&Item> = items.collect();
+    // 明文密码集中到阻塞线程池批量 hash（argon2 很贵）：不占 async worker，
+    // 也不会因为事务回滚白算一半行的哈希。校验阶段已经保证这里不会有坏行。
+    let plain: Vec<(i64, String)> = items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Admin { row, .. } => Some((row.id, row.password.clone())),
+            _ => None,
+        })
+        .collect();
+    let hashed: HashMap<i64, String> = if plain.is_empty() {
+        HashMap::new()
+    } else {
+        tokio::task::spawn_blocking(move || {
+            plain.into_iter().map(|(id, p)| (id, hash_password(&p))).collect()
+        })
+        .await
+        .map_err(|e| ApiError::internal(format!("管理员密码批量哈希失败: {e}")))?
+    };
+
     let mut conn = state.db.get().await.map_err(ApiError::from)?;
     conn.begin().await.map_err(ApiError::from)?;
     let mut created = 0i64;
     for item in items {
         let r = match item {
             Item::Admin { row, role_ids } => {
-                insert_tx(&mut conn, row).await.map_err(|e| conflict(e, "用户名已存在"))?;
+                let password = hashed.get(&row.id).cloned().ok_or_else(|| {
+                    ApiError::internal(format!("管理员 {} 的密码哈希缺失", row.id))
+                })?;
+                let mut row = row.clone();
+                row.password = password;
+                insert_tx(&mut conn, &row).await.map_err(|e| conflict(e, "用户名已存在"))?;
                 for rid in role_ids {
                     conn.execute(
                         "INSERT INTO admin_role (admin_id, role_id) VALUES (?, ?)",
@@ -187,7 +223,9 @@ pub(crate) async fn write_all<'a>(
                 Ok(())
             }
             Item::Dept(d) => insert_tx(&mut conn, d).await,
-            Item::Dict(d) => insert_tx(&mut conn, d).await.map_err(|e| conflict(e, "该类型下字典值已存在")),
+            Item::Dict(d) => {
+                insert_tx(&mut conn, d).await.map_err(|e| conflict(e, "该类型下字典值已存在"))
+            }
         };
         if let Err(e) = r {
             // 回滚失败只记日志：原始错误更有用（回滚失败本身会让连接弃用）
@@ -226,11 +264,8 @@ pub(crate) async fn insert_tx<M: Model>(conn: &mut CheckedConn, row: &M) -> Resu
     }
     let columns: Vec<&str> = values.iter().map(|(c, _)| *c).collect();
     let placeholders = vec!["?"; values.len()].join(", ");
-    let sql = format!(
-        "INSERT INTO {} ({}) VALUES ({placeholders})",
-        M::table_name(),
-        columns.join(", ")
-    );
+    let sql =
+        format!("INSERT INTO {} ({}) VALUES ({placeholders})", M::table_name(), columns.join(", "));
     let params: Vec<Value> = values.into_iter().map(|(_, v)| v).collect();
     conn.execute(&sql, &params).await.map_err(ApiError::from)?;
     Ok(())

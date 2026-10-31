@@ -1,5 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use super::*;
+use bee_orm::Value as DbValue;
 
 #[apidoc::title("管理员详情")]
 #[apidoc::desc("编辑弹窗回显：管理员字段 + role_ids（email / phone 明文），目标超出数据范围时 403")]
@@ -173,17 +174,16 @@ pub async fn update(
         .ok_or(ApiError::NotFound)?;
     let old = a.clone(); // 变更摘要的旧值（下面就地改 a）
 
-    // 本接口同样能改状态，必须走 set_status 的保护，否则可以绕过它禁用超管/自己
+    // 本接口同样能改状态，必须走 set_status 的保护，否则可以绕过它禁用超管/自己。
+    // 禁用要在快照比较之外无条件拦：快照可能滞后（库里已被并发启用），只比较快照
+    // 会放过「禁用自己 / 禁用超管」。
     let new_status = if body.status == 0 { 0 } else { 1 };
-    if new_status != a.status {
+    if new_status == 0 || new_status != a.status {
         if id == auth.admin.id {
             return Err(ApiError::BadRequest("不能修改自己的状态".into()));
         }
         if a.is_super == 1 {
             return Err(ApiError::BadRequest("不能修改超级管理员的状态".into()));
-        }
-        if new_status != 1 {
-            a.token_version += 1; // 禁用即踢下线
         }
     }
 
@@ -202,7 +202,48 @@ pub async fn update(
     a.status = new_status;
     a.remark = body.remark;
     a.updated_at = now();
-    a.update(&state.db).await.map_err(ApiError::from)?;
+
+    // 只写本接口负责的列：整行 update 会把读快照里的 password / token_version /
+    // totp_secret 写回去，撤销并发的改密或 TOTP 绑定。禁用时版本自增写进同一条
+    // SQL —— 用库里的当前值，不用快照（否则并发改密的版本会被压回去）。
+    // 不看旧状态：哪怕快照显示已禁用，库里可能刚被并发启用，再写 0 也必须让旧 token 失效。
+    let disabling = new_status == 0;
+    let sql = if disabling {
+        "UPDATE admin SET nickname = ?, email = ?, phone = ?, sex = ?, dept_id = ?, \
+         status = ?, remark = ?, updated_at = ?, token_version = token_version + 1 \
+         WHERE id = ?"
+    } else {
+        "UPDATE admin SET nickname = ?, email = ?, phone = ?, sex = ?, dept_id = ?, \
+         status = ?, remark = ?, updated_at = ? WHERE id = ?"
+    };
+    let mut params = vec![
+        DbValue::from(a.nickname.clone()),
+        DbValue::from(a.email.clone()),
+        DbValue::from(a.phone.clone()),
+        DbValue::from(a.sex),
+        DbValue::from(a.dept_id),
+        DbValue::from(a.status),
+        DbValue::from(a.remark.clone()),
+        DbValue::from(a.updated_at),
+    ];
+    params.push(DbValue::from(id));
+    state.db.execute(sql, &params).await.map_err(ApiError::from)?;
+
+    if disabling {
+        // 版本已经作废旧 token，设备行也一起置 0，别让列表里留僵尸设备
+        if let Err(e) = state
+            .db
+            .execute(
+                "UPDATE admin_login_device SET status = 0 WHERE admin_id = ? AND status = 1",
+                &[DbValue::from(id)],
+            )
+            .await
+        {
+            tracing::warn!("禁用管理员后停用设备行失败 (admin_id={id}): {e}");
+        }
+        crate::auth::forget_admin_devices(id);
+    }
+
     state
         .db
         .set_relations("admin_role", ("admin_id", id), "role_id", &dedup_ids(body.role_ids))
@@ -258,6 +299,17 @@ pub async fn remove(
         .del_relations("admin_role", "admin_id", id)
         .await
         .map_err(ApiError::from)?;
+    // 设备行与备用码是这个人自己的附属数据，不跟着删就是永久孤儿（没有管理员能认领）
+    state
+        .db
+        .del_relations("admin_login_device", "admin_id", id)
+        .await
+        .map_err(ApiError::from)?;
+    state
+        .db
+        .del_relations("admin_backup_code", "admin_id", id)
+        .await
+        .map_err(ApiError::from)?;
     a.delete(&state.db).await.map_err(ApiError::from)?;
     Ok(ok(Value::Null))
 }
@@ -296,11 +348,41 @@ pub async fn set_status(
     }
     datascope::ensure_admin_in_scope(&auth, &state.db, &a).await?;
     a.status = if body.status == 0 { 0 } else { 1 };
-    if a.status != 1 {
-        a.token_version += 1; // 禁用即踢下线
-    }
     a.updated_at = now();
-    a.update(&state.db).await.map_err(ApiError::from)?;
+    // 只写 status/updated_at；禁用时 token_version 在 SQL 里用库中当前值自增
+    // （整行 update 会拿读快照撤销并发的改密/绑定）。
+    let sql = if a.status != 1 {
+        "UPDATE admin SET status = ?, updated_at = ?, token_version = token_version + 1 \
+         WHERE id = ?"
+    } else {
+        "UPDATE admin SET status = ?, updated_at = ? WHERE id = ?"
+    };
+    state
+        .db
+        .execute(
+            sql,
+            &[
+                DbValue::from(a.status),
+                DbValue::from(a.updated_at),
+                DbValue::from(id),
+            ],
+        )
+        .await
+        .map_err(ApiError::from)?;
+    if a.status != 1 {
+        // 禁用即踢下线：版本已作废旧 token，设备行也一起置 0
+        if let Err(e) = state
+            .db
+            .execute(
+                "UPDATE admin_login_device SET status = 0 WHERE admin_id = ? AND status = 1",
+                &[DbValue::from(id)],
+            )
+            .await
+        {
+            tracing::warn!("禁用管理员后停用设备行失败 (admin_id={id}): {e}");
+        }
+        crate::auth::forget_admin_devices(id);
+    }
     Ok(ok(Value::Null))
 }
 
@@ -324,7 +406,7 @@ pub async fn reset_password(
     auth.require("system:admin:resetPwd")?;
     let id = hid::dec(&id)?;
     validate_password(&body.password, "密码")?;
-    let mut a = Admin::query()
+    let a = Admin::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
         .one(&state.db)
@@ -335,10 +417,9 @@ pub async fn reset_password(
         return Err(ApiError::BadRequest("不能重置其他超级管理员的密码".into()));
     }
     datascope::ensure_admin_in_scope(&auth, &state.db, &a).await?;
-    a.password = hash_password(&body.password);
-    a.token_version += 1; // 旧 token 立即失效
-    a.updated_at = now();
-    a.update(&state.db).await.map_err(ApiError::from)?;
+    // 只写 password / token_version / updated_at，并把设备行置 0：旧 token 立即失效
+    let password = hash_password(&body.password);
+    crate::auth::revoke_sessions(&state, id, None, Some(&password)).await?;
     Ok(ok(Value::Null))
 }
 

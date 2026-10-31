@@ -1,5 +1,8 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use super::*;
+use axum::body::{Body, Bytes};
+use tokio::io::AsyncReadExt;
+use tokio_stream::wrappers::ReceiverStream;
 
 // ── 列表 ────────────────────────────────────────────────────
 
@@ -16,7 +19,9 @@ pub struct AttachQuery {
 }
 
 #[apidoc::title("附件列表")]
-#[apidoc::desc("按文件名模糊 / 关联类型筛选 + 分页；受数据权限约束（只看得到自己范围内的上传人）。需要 `system:attach:list`")]
+#[apidoc::desc(
+    "按文件名模糊 / 关联类型筛选 + 分页；受数据权限约束（只看得到自己范围内的上传人）。需要 `system:attach:list`"
+)]
 #[apidoc::url("/api/v1/attachments")]
 #[apidoc::method("GET")]
 #[apidoc::tag("附件")]
@@ -25,7 +30,11 @@ pub struct AttachQuery {
 #[apidoc::query(name = "size", ty = "int", desc = "每页条数，默认 10，上限 100")]
 #[apidoc::query(name = "name", ty = "string", desc = "原始文件名模糊匹配")]
 #[apidoc::query(name = "entity_type", ty = "string", desc = "关联类型：notice / none（未绑定）")]
-#[apidoc::query(name = "entity_id", ty = "string", desc = "关联对象短串（配合 entity_type 精确定位）")]
+#[apidoc::query(
+    name = "entity_id",
+    ty = "string",
+    desc = "关联对象短串（配合 entity_type 精确定位）"
+)]
 #[apidoc::response_status("200")]
 #[apidoc::returned(name = "data", ty = "object", desc = "分页结果", children = [
     {name = "list", ty = "array", desc = "附件行（含 admin_name / entity_label / is_public）"},
@@ -50,18 +59,13 @@ pub async fn list(
         other => qs = qs.filter_eq("entity_type", other).map_err(ApiError::from)?,
     }
     if let Some(raw) = q.entity_id.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-        qs = qs
-            .filter_eq("entity_id", crate::hid::dec(raw)?)
-            .map_err(ApiError::from)?;
+        qs = qs.filter_eq("entity_id", crate::hid::dec(raw)?).map_err(ApiError::from)?;
     }
     // 数据权限：按上传人收窄（与日志类同一套：`admin_id` 子查询形态）
     qs = datascope::apply_admin_scope(qs, &scope);
 
-    let (rows, total) = qs
-        .order_by("id DESC")
-        .fetch_page(&state.db, page, size)
-        .await
-        .map_err(ApiError::from)?;
+    let (rows, total) =
+        qs.order_by("id DESC").fetch_page(&state.db, page, size).await.map_err(ApiError::from)?;
 
     let (names, labels) = row_labels(&state, &rows).await?;
     let list: Vec<Value> = rows.iter().map(|a| row_json(a, &names, &labels)).collect();
@@ -74,7 +78,10 @@ pub(crate) type Names = HashMap<i64, String>;
 /// 关联对象 id → (标题, 是否公开可见)
 pub(crate) type Labels = HashMap<i64, (String, bool)>;
 
-pub(crate) async fn row_labels(state: &AppState, rows: &[Attachment]) -> Result<(Names, Labels), ApiError> {
+pub(crate) async fn row_labels(
+    state: &AppState,
+    rows: &[Attachment],
+) -> Result<(Names, Labels), ApiError> {
     let mut admin_ids: Vec<i64> = rows.iter().map(|a| a.admin_id).collect();
     admin_ids.sort_unstable();
     admin_ids.dedup();
@@ -104,10 +111,7 @@ pub(crate) async fn row_labels(state: &AppState, rows: &[Attachment]) -> Result<
             .all(&state.db)
             .await
             .map_err(ApiError::from)?;
-        labels = notices
-            .into_iter()
-            .map(|n| (n.id, (n.title, n.status == 1)))
-            .collect();
+        labels = notices.into_iter().map(|n| (n.id, (n.title, n.status == 1))).collect();
     }
     Ok((names, labels))
 }
@@ -137,7 +141,9 @@ pub(crate) fn row_json(a: &Attachment, names: &Names, labels: &Labels) -> Value 
 // ── 下载 ────────────────────────────────────────────────────
 
 #[apidoc::title("下载附件")]
-#[apidoc::desc("需要登录。绑定了**已发布**公告的附件对所有登录用户可下；其余按上传人的数据权限（超范围 403）。文件不存在 404")]
+#[apidoc::desc(
+    "需要登录。绑定了**已发布**公告的附件对所有登录用户可下；其余按上传人的数据权限（超范围 403）。文件不存在 404"
+)]
 #[apidoc::url("/api/v1/attachments/{id}")]
 #[apidoc::method("GET")]
 #[apidoc::tag("附件")]
@@ -162,14 +168,39 @@ pub async fn download(
         .map(|r| r.path)
         .filter(|p| p.is_file())
         .ok_or(ApiError::NotFound)?;
-    let bytes = tokio::fs::read(&path)
+    // 流式回文件（与 csv::stream_file 同款）：附件最大 10MB，整读进内存后并发下载会成倍放大
+    let file = tokio::fs::File::open(&path)
         .await
         .map_err(|e| ApiError::internal(format!("读附件 {} 失败: {e}", path.display())))?;
+    let (tx, rx) = tokio::sync::mpsc::channel::<Result<Bytes, std::io::Error>>(4);
+    tokio::spawn(async move {
+        let mut file = file;
+        // 64 KiB 一块：太小则 syscall 多，太大则白占内存
+        let mut buf = vec![0u8; 64 * 1024];
+        loop {
+            match file.read(&mut buf).await {
+                Ok(0) => return,
+                // 发送失败 = 客户端断开：收手
+                Ok(n) => {
+                    if tx.send(Ok(Bytes::copy_from_slice(&buf[..n]))).await.is_err() {
+                        return;
+                    }
+                }
+                // 状态码早已发出、改不了：中断 body 让客户端看到「传输失败」
+                Err(e) => {
+                    tracing::error!("附件下载中断: {e}");
+                    let _ = tx.send(Err(e)).await;
+                    return;
+                }
+            }
+        }
+    });
 
     let mut headers = HeaderMap::new();
     headers.insert(
         header::CONTENT_TYPE,
-        HeaderValue::from_str(&row.mime).unwrap_or(HeaderValue::from_static("application/octet-stream")),
+        HeaderValue::from_str(&row.mime)
+            .unwrap_or(HeaderValue::from_static("application/octet-stream")),
     );
     // 非 ASCII 文件名会让 HeaderValue 构造失败 → 退化成裸 `attachment`，
     // 浏览器侧的文件名由前端 `a.download` 决定（与 csv 导出同一取舍）
@@ -178,13 +209,17 @@ pub async fn download(
         HeaderValue::from_str(&format!("attachment; filename=\"{}\"", row.name))
             .unwrap_or_else(|_| HeaderValue::from_static("attachment")),
     );
-    Ok((headers, bytes).into_response())
+    Ok((headers, Body::from_stream(ReceiverStream::new(rx))).into_response())
 }
 
 /// 「能不能读这份附件」的唯一口径（下载用；列表另走数据权限）。
 /// 1) 绑定了已发布公告 → 放行（公开）；
 /// 2) 否则按上传人的数据权限。
-pub(crate) async fn ensure_readable(state: &AppState, auth: &Auth, row: &Attachment) -> Result<(), ApiError> {
+pub(crate) async fn ensure_readable(
+    state: &AppState,
+    auth: &Auth,
+    row: &Attachment,
+) -> Result<(), ApiError> {
     if row.entity_type == "notice" && row.entity_id != 0 {
         let notice = Notice::query()
             .filter_eq("id", row.entity_id)
@@ -243,7 +278,9 @@ pub struct BindBody {
 }
 
 #[apidoc::title("关联附件")]
-#[apidoc::desc("把附件挂到业务对象上（目前只支持 notice = 公告配图）；`entity_type` 传空串 = 解绑。绑定的公告**发布后**该附件对所有登录用户可下载。需要 `system:attach:edit` + 上传人在你的数据权限内")]
+#[apidoc::desc(
+    "把附件挂到业务对象上（目前只支持 notice = 公告配图）；`entity_type` 传空串 = 解绑。绑定的公告**发布后**该附件对所有登录用户可下载。需要 `system:attach:edit` + 上传人在你的数据权限内"
+)]
 #[apidoc::url("/api/v1/attachments/{id}")]
 #[apidoc::method("PUT")]
 #[apidoc::tag("附件")]
@@ -279,11 +316,7 @@ pub async fn bind(
     }
 
     // 空串 = 0（解绑），其余必须是可解的短串（解不出由 `hid::dec` 给 400）
-    let entity_id = if body.entity_id.trim().is_empty() {
-        0
-    } else {
-        hid::dec(&body.entity_id)?
-    };
+    let entity_id = if body.entity_id.trim().is_empty() { 0 } else { hid::dec(&body.entity_id)? };
     if entity_type == "notice" {
         if entity_id == 0 {
             return Err(ApiError::BadRequest("关联公告不能为空".into()));
@@ -316,7 +349,11 @@ pub async fn bind(
 
 /// 写路径（改关联 / 删除）的数据权限：与下载的规则 2 同源，但**不看公开规则**
 /// —— 能下到一张公开配图不等于能改它。
-pub(crate) async fn ensure_writable(state: &AppState, auth: &Auth, row: &Attachment) -> Result<(), ApiError> {
+pub(crate) async fn ensure_writable(
+    state: &AppState,
+    auth: &Auth,
+    row: &Attachment,
+) -> Result<(), ApiError> {
     match Admin::query()
         .filter_eq("id", row.admin_id)
         .map_err(ApiError::from)?
@@ -339,7 +376,9 @@ pub(crate) async fn ensure_writable(state: &AppState, auth: &Auth, row: &Attachm
 // ── 删除 ────────────────────────────────────────────────────
 
 #[apidoc::title("删除附件")]
-#[apidoc::desc("需要 `system:attach:remove` + 上传人在你的数据权限内（绑定公开公告也不放宽）。**只删记录行，文件不立即删**（S2 竞态硬化）：成品文件统一由内置任务「附件孤儿清理」在保护期（5 分钟）后收走，避免与「上传末片落盘 → 落库」的窗口打架")]
+#[apidoc::desc(
+    "需要 `system:attach:remove` + 上传人在你的数据权限内（绑定公开公告也不放宽）。**只删记录行，文件不立即删**（S2 竞态硬化）：成品文件统一由内置任务「附件孤儿清理」在保护期（5 分钟）后收走，避免与「上传末片落盘 → 落库」的窗口打架"
+)]
 #[apidoc::url("/api/v1/attachments/{id}")]
 #[apidoc::method("DELETE")]
 #[apidoc::tag("附件")]

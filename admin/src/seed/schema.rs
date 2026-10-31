@@ -99,6 +99,9 @@ pub async fn migrate(db: &Pool) -> Result<(), OrmError> {
 
     // 3) 单列唯一键与索引：原先写在模型属性上（`#[bee(unique)]` / `#[bee(index)]`），
     //    上游属性里没有这两个概念，移到这儿。
+    //    job_log 建表 DDL 已有 (job_code, started_at)，单列 idx_job_log_job_code 只是最左
+    //    前缀的重复；从 CONSTRAINTS 移除后，还要把已有库上的那份删掉（幂等）。
+    drop_index_if_exists(db, "job_log", "idx_job_log_job_code").await?;
     for (table, index, ddl) in CONSTRAINTS {
         ensure_index(db, table, index, ddl).await?;
     }
@@ -139,8 +142,7 @@ async fn ensure_encrypted_width(db: &Pool) -> Result<(), OrmError> {
                 &[Value::from(*table), Value::from(*column)],
             )
             .await?;
-        let Some(current) = rows.first().and_then(|r| r.get("ty")).and_then(|v| v.as_str())
-        else {
+        let Some(current) = rows.first().and_then(|r| r.get("ty")).and_then(|v| v.as_str()) else {
             // 走到这儿说明列不存在：sync 已经建过表，不该发生 —— 响一声，别静默跳过
             tracing::warn!("查不到 {table}.{column} 的列类型，跳过列宽检查");
             continue;
@@ -149,9 +151,7 @@ async fn ensure_encrypted_width(db: &Pool) -> Result<(), OrmError> {
             continue;
         }
         // MODIFY COLUMN 要写全定义，否则 NOT NULL / DEFAULT 会被一起抹掉
-        let ddl = format!(
-            "ALTER TABLE {table} MODIFY COLUMN {column} {want} NOT NULL DEFAULT ''"
-        );
+        let ddl = format!("ALTER TABLE {table} MODIFY COLUMN {column} {want} NOT NULL DEFAULT ''");
         tracing::info!("列宽迁移：{table}.{column} 由 {current} 改为 {want}（要放密文）");
         db.execute(&ddl, &[]).await?;
     }
@@ -227,7 +227,11 @@ pub async fn encrypt_legacy(db: &Pool, guard: &encryptable::guard::Guard) -> Res
             };
             db.execute(
                 "UPDATE admin SET email = ?, phone = ? WHERE id = ?",
-                &[Value::from(new_email.as_str()), Value::from(new_phone.as_str()), Value::from(id)],
+                &[
+                    Value::from(new_email.as_str()),
+                    Value::from(new_phone.as_str()),
+                    Value::from(id),
+                ],
             )
             .await?;
             encrypted += 1;
@@ -265,31 +269,118 @@ const CONSTRAINTS: &[(&str, &str, &str)] = &[
     ("admin", "idx_admin_status", "CREATE INDEX idx_admin_status ON admin (status)"),
     ("role", "uk_role_code", "CREATE UNIQUE INDEX uk_role_code ON role (code)"),
     ("dict_type", "uk_dict_type_code", "CREATE UNIQUE INDEX uk_dict_type_code ON dict_type (code)"),
-    ("dict_item", "idx_dict_item_type_code", "CREATE INDEX idx_dict_item_type_code ON dict_item (type_code)"),
+    (
+        "dict_item",
+        "idx_dict_item_type_code",
+        "CREATE INDEX idx_dict_item_type_code ON dict_item (type_code)",
+    ),
     ("job", "uk_job_code", "CREATE UNIQUE INDEX uk_job_code ON job (code)"),
-    ("job_log", "idx_job_log_job_code", "CREATE INDEX idx_job_log_job_code ON job_log (job_code)"),
+    // 保留清理按 started_at 扫；建表 DDL 的 (job_code, started_at) 不能单独服务 started_at
+    (
+        "job_log",
+        "idx_job_log_started_at",
+        "CREATE INDEX idx_job_log_started_at ON job_log (started_at)",
+    ),
     // 仪表盘的近 7 天按天窗口（项 2）每次进首页都查一遍：没有它是一次全表扫。
     // 登录记录列表的时间段筛选同样沾光。
-    ("login_log", "idx_login_log_created_at", "CREATE INDEX idx_login_log_created_at ON login_log (created_at)"),
+    (
+        "login_log",
+        "idx_login_log_created_at",
+        "CREATE INDEX idx_login_log_created_at ON login_log (created_at)",
+    ),
+    // 数据权限按 admin_id 收窄后再按时间区间筛；清空日志也按同一组条件 keyset 翻页
+    (
+        "login_log",
+        "idx_login_log_admin_created_at",
+        "CREATE INDEX idx_login_log_admin_created_at ON login_log (admin_id, created_at)",
+    ),
+    // audit_log 原先没有索引：数据权限 + 时间段筛必须走 (admin_id, created_at)，
+    // 只按时间段（全量筛选 / 保留清理）另配单列 created_at
+    (
+        "audit_log",
+        "idx_audit_log_admin_created_at",
+        "CREATE INDEX idx_audit_log_admin_created_at ON audit_log (admin_id, created_at)",
+    ),
+    (
+        "audit_log",
+        "idx_audit_log_created_at",
+        "CREATE INDEX idx_audit_log_created_at ON audit_log (created_at)",
+    ),
     // 登录设备（项 7）只按账号查（列列表 / 每次登录找同 UA 的行），表很小但会很频繁
-    ("admin_login_device", "idx_admin_login_device_admin_id", "CREATE INDEX idx_admin_login_device_admin_id ON admin_login_device (admin_id)"),
-    ("sys_config", "uk_sys_config_key", "CREATE UNIQUE INDEX uk_sys_config_key ON sys_config (config_key)"),
+    (
+        "admin_login_device",
+        "idx_admin_login_device_admin_id",
+        "CREATE INDEX idx_admin_login_device_admin_id ON admin_login_device (admin_id)",
+    ),
+    (
+        "sys_config",
+        "uk_sys_config_key",
+        "CREATE UNIQUE INDEX uk_sys_config_key ON sys_config (config_key)",
+    ),
     // 附件（项 5）：列表按上传人收窄、多态关联按 (entity_type, entity_id) 取「某个对象的
     // 配图」，各配一条。`stored_path` 那条**已无查询用它**（S2 后删除只删行、不再数引用），
     // 留着不删：索引删了要重建，但不该再按旧注释当成热路径
-    ("attachment", "idx_attachment_admin_id", "CREATE INDEX idx_attachment_admin_id ON attachment (admin_id)"),
-    ("attachment", "idx_attachment_stored_path", "CREATE INDEX idx_attachment_stored_path ON attachment (stored_path)"),
-    ("attachment", "idx_attachment_entity", "CREATE INDEX idx_attachment_entity ON attachment (entity_type, entity_id)"),
+    (
+        "attachment",
+        "idx_attachment_admin_id",
+        "CREATE INDEX idx_attachment_admin_id ON attachment (admin_id)",
+    ),
+    (
+        "attachment",
+        "idx_attachment_stored_path",
+        "CREATE INDEX idx_attachment_stored_path ON attachment (stored_path)",
+    ),
+    (
+        "attachment",
+        "idx_attachment_entity",
+        "CREATE INDEX idx_attachment_entity ON attachment (entity_type, entity_id)",
+    ),
     // 导出中心（批次 E T4）：`export_run` 每分钟按 status 扫待处理/卡住的行，
     // `export_clean` 每天按 expire_at 扫过期的行 —— 两条各有索引，量大了才不会是全表扫
-    ("export_task", "idx_export_task_status", "CREATE INDEX idx_export_task_status ON export_task (status)"),
-    ("export_task", "idx_export_task_expire_at", "CREATE INDEX idx_export_task_expire_at ON export_task (expire_at)"),
+    (
+        "export_task",
+        "idx_export_task_status",
+        "CREATE INDEX idx_export_task_status ON export_task (status)",
+    ),
+    (
+        "export_task",
+        "idx_export_task_expire_at",
+        "CREATE INDEX idx_export_task_expire_at ON export_task (expire_at)",
+    ),
     // F4-1：备用码登录按 (admin_id, used_at IS NULL) 取未用行；表很小，但登录是热路径
-    ("admin_backup_code", "idx_admin_backup_code_admin", "CREATE INDEX idx_admin_backup_code_admin ON admin_backup_code (admin_id)"),
+    (
+        "admin_backup_code",
+        "idx_admin_backup_code_admin",
+        "CREATE INDEX idx_admin_backup_code_admin ON admin_backup_code (admin_id)",
+    ),
     // F4-3：重投任务按 (status, next_at) 找 due 行；30 天清理按 created_at 扫
-    ("notify_delivery", "idx_notify_delivery_due", "CREATE INDEX idx_notify_delivery_due ON notify_delivery (status, next_at)"),
-    ("notify_delivery", "idx_notify_delivery_created_at", "CREATE INDEX idx_notify_delivery_created_at ON notify_delivery (created_at)"),
+    (
+        "notify_delivery",
+        "idx_notify_delivery_due",
+        "CREATE INDEX idx_notify_delivery_due ON notify_delivery (status, next_at)",
+    ),
+    (
+        "notify_delivery",
+        "idx_notify_delivery_created_at",
+        "CREATE INDEX idx_notify_delivery_created_at ON notify_delivery (created_at)",
+    ),
 ];
+
+/// 幂等删索引：MySQL 没有 `DROP INDEX IF EXISTS`，先查 information_schema，存在才删。
+async fn drop_index_if_exists(db: &Pool, table: &str, index: &str) -> Result<(), OrmError> {
+    let rows = db
+        .query(
+            "SELECT COUNT(*) AS n FROM information_schema.statistics \
+             WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?",
+            &[Value::from(table), Value::from(index)],
+        )
+        .await?;
+    let n = rows.first().and_then(|r| r.get("n")).and_then(|v| v.as_i64()).unwrap_or(0);
+    if n > 0 {
+        db.execute(&format!("DROP INDEX {index} ON {table}"), &[]).await?;
+    }
+    Ok(())
+}
 
 /// 幂等建索引：MySQL 没有 `CREATE INDEX IF NOT EXISTS`，先查 information_schema。
 async fn ensure_index(db: &Pool, table: &str, index: &str, ddl: &str) -> Result<(), OrmError> {
@@ -300,11 +391,7 @@ async fn ensure_index(db: &Pool, table: &str, index: &str, ddl: &str) -> Result<
             &[Value::from(table), Value::from(index)],
         )
         .await?;
-    let n = rows
-        .first()
-        .and_then(|r| r.get("n"))
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0);
+    let n = rows.first().and_then(|r| r.get("n")).and_then(|v| v.as_i64()).unwrap_or(0);
     if n == 0 {
         db.execute(ddl, &[]).await?;
     }

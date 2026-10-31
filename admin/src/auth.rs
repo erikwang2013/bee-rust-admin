@@ -236,6 +236,91 @@ pub(crate) fn forget_admin_devices(admin_id: i64) {
     }
 }
 
+/// 让某管理员的旧 token 全部失效：`token_version + 1`（`new_password` 非空时同一条
+/// UPDATE 一起改密），并把 `admin_login_device` 的行置 0（软删）。
+///
+/// 只自增版本不置设备，列表里会留下一排「在用」的僵尸设备（设备列表只列 status=1，
+/// 清理任务只清 status=0）。两条 UPDATE 在同一事务里 —— 不能出现「版本已加、设备还在用」
+/// 的半截状态。`keep_device`：保留为在用的那一台（logout-others 的当前设备）；
+/// `None` = 全踢。返回自增后的版本（logout-others 换发 token 用它）。
+pub(crate) async fn revoke_sessions(
+    state: &AppState,
+    admin_id: i64,
+    keep_device: Option<i64>,
+    new_password: Option<&str>,
+) -> Result<i32, ApiError> {
+    let updated_at = crate::util::now();
+    let mut conn = state.db.get().await.map_err(ApiError::from)?;
+    conn.begin().await.map_err(ApiError::from)?;
+    let result: Result<i32, ApiError> = async {
+        match new_password {
+            Some(password) => {
+                conn.execute(
+                    "UPDATE admin SET password = ?, token_version = token_version + 1, \
+                     updated_at = ? WHERE id = ?",
+                    &[
+                        DbValue::from(password),
+                        DbValue::from(updated_at),
+                        DbValue::from(admin_id),
+                    ],
+                )
+                .await?;
+            }
+            None => {
+                conn.execute(
+                    "UPDATE admin SET token_version = token_version + 1, updated_at = ? \
+                     WHERE id = ?",
+                    &[DbValue::from(updated_at), DbValue::from(admin_id)],
+                )
+                .await?;
+            }
+        }
+        match keep_device {
+            // 当前设备保持 status=1：换发的 token 还挂在它上面
+            Some(keep) => {
+                conn.execute(
+                    "UPDATE admin_login_device SET status = 0 \
+                     WHERE admin_id = ? AND status = 1 AND id <> ?",
+                    &[DbValue::from(admin_id), DbValue::from(keep)],
+                )
+                .await?;
+            }
+            None => {
+                conn.execute(
+                    "UPDATE admin_login_device SET status = 0 \
+                     WHERE admin_id = ? AND status = 1",
+                    &[DbValue::from(admin_id)],
+                )
+                .await?;
+            }
+        }
+        let rows = conn
+            .query(
+                "SELECT token_version FROM admin WHERE id = ?",
+                &[DbValue::from(admin_id)],
+            )
+            .await?;
+        rows.first()
+            .and_then(|r| r.get("token_version"))
+            .and_then(|v| v.as_i64())
+            .map(|v| v as i32)
+            .ok_or(ApiError::Unauthorized)
+    }
+    .await;
+    match result {
+        Ok(ver) => {
+            conn.commit().await.map_err(ApiError::from)?;
+            forget_admin_devices(admin_id);
+            Ok(ver)
+        }
+        Err(e) => {
+            // 回滚失败也把原始错误抛出去：那是真正要查的那个
+            let _ = conn.rollback().await;
+            Err(e)
+        }
+    }
+}
+
 /// 设备闸门：token 的 `dv` 必须是本人**启用中**的设备。
 /// 只缓存「有效」的结果 —— 无效的每次重查（不把刚复用的设备行缓存成不可用）。
 /// 查询失败仍按 500 处理（与缓存前一致，不悄悄放行）。

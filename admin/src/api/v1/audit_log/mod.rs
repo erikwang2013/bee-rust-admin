@@ -12,6 +12,9 @@ use axum::response::Response;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+/// 清空日志的批大小：一次最多物化 / 删除这么多行（`changes` 是 TEXT，不能全表进内存）。
+const CLEAR_BATCH: usize = 5000;
+
 #[derive(Deserialize, Clone)]
 pub struct AuditListQuery {
     pub page: Option<u32>,
@@ -68,7 +71,11 @@ fn filtered(
 #[apidoc::query(name = "module", ty = "string", desc = "模块名")]
 #[apidoc::query(name = "action", ty = "string", desc = "动作名")]
 #[apidoc::query(name = "status", ty = "int", desc = "结果：1 成功（2xx）/ 0 失败")]
-#[apidoc::query(name = "start", ty = "string", desc = "开始时间（闭区间，格式 YYYY-MM-DD HH:MM:SS）")]
+#[apidoc::query(
+    name = "start",
+    ty = "string",
+    desc = "开始时间（闭区间，格式 YYYY-MM-DD HH:MM:SS）"
+)]
 #[apidoc::query(name = "end", ty = "string", desc = "结束时间（闭区间）")]
 #[apidoc::response_status("200")]
 pub async fn list(
@@ -88,6 +95,7 @@ pub async fn list(
 }
 
 /// 按当前筛选条件清空。自带审计：这次删除本身也会被中间件记一条。
+/// keyset 分批（每批 5000，按 id DESC 走），内存只与一批成正比。
 #[apidoc::title("清空操作日志")]
 #[apidoc::desc("按当前筛选条件清空。**自带审计**：这次删除本身也会被中间件记一条")]
 #[apidoc::url("/api/v1/audit-logs")]
@@ -109,12 +117,23 @@ pub async fn clear(
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:auditlog:remove")?;
     let scope = datascope::resolve(&auth, &state.db).await?;
-    let rows = filtered(&q, &scope)?
-        .all(&state.db)
-        .await
-        .map_err(ApiError::from)?;
-    let ids: Vec<i64> = rows.iter().map(|r| r.id).collect();
-    let deleted = crate::api::delete_by_ids(&state, "audit_log", &ids).await?;
+    let mut deleted = 0i64;
+    let mut last: Option<i64> = None;
+    loop {
+        let mut qs = filtered(&q, &scope)?.order_by("id DESC").limit(CLEAR_BATCH);
+        if let Some(last) = last {
+            qs = qs.filter_lt("id", last).map_err(ApiError::from)?;
+        }
+        let rows = qs.all(&state.db).await.map_err(ApiError::from)?;
+        let Some(last_row) = rows.last() else { break };
+        let ids: Vec<i64> = rows.iter().map(|r| r.id).collect();
+        deleted += crate::api::delete_by_ids(&state, "audit_log", &ids).await?;
+        // 不足一批说明已经到底；满批则用本批最小 id 继续往前翻
+        if rows.len() < CLEAR_BATCH {
+            break;
+        }
+        last = Some(last_row.id);
+    }
     Ok(ok(json!({ "deleted": deleted })))
 }
 
@@ -127,9 +146,9 @@ pub(crate) fn headers() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::datascope::DataScope;
     use bee_orm::Value;
     use chrono::NaiveDateTime;
-    use crate::datascope::DataScope;
 
     fn dt(s: &str) -> Value {
         Value::from(NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").unwrap())

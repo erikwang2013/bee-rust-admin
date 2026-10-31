@@ -109,12 +109,27 @@ pub async fn setup(State(state): State<AppState>, auth: Auth) -> Result<Json<Val
         return Err(ApiError::BadRequest(TOTP_BOUND.into()));
     }
     let b32 = totp::base32_encode(&totp::random_secret());
-    let mut admin = auth.admin.clone();
-    admin.totp_secret = crypto::write(&state.crypto, &b32).map_err(ApiError::internal)?;
-    admin.updated_at = now();
-    admin.update(&state.db).await.map_err(ApiError::from)?;
+    let secret = crypto::write(&state.crypto, &b32).map_err(ApiError::internal)?;
+    // 只写密钥列，并且以 totp_enabled=0 为条件：并发里如果另一请求刚把账号绑上，
+    // 这里不能再拿旧快照把 enabled 写回 0 / 换掉已确认的密钥
+    let affected = state
+        .db
+        .execute(
+            "UPDATE admin SET totp_secret = ?, updated_at = ? \
+             WHERE id = ? AND totp_enabled = 0",
+            &[
+                bee_orm::Value::from(secret),
+                bee_orm::Value::from(now()),
+                bee_orm::Value::from(auth.admin.id),
+            ],
+        )
+        .await
+        .map_err(ApiError::from)?;
+    if affected == 0 {
+        return Err(ApiError::BadRequest(TOTP_BOUND.into()));
+    }
 
-    let url = totp::otpauth_url(&state.cfg.app_name, &admin.username, &b32);
+    let url = totp::otpauth_url(&state.cfg.app_name, &auth.admin.username, &b32);
     let svg = totp::qr_svg(&url).map_err(|e| ApiError::internal(format!("生成二维码失败: {e}")))?;
     Ok(ok(json!({ "secret": b32, "otpauth_url": url, "qr_svg": svg })))
 }
@@ -143,10 +158,24 @@ pub async fn enable(
     if !verify_code(&state, &auth.admin, &body.code)? {
         return Err(ApiError::BadRequest(BAD_TOTP.into()));
     }
-    let mut admin = auth.admin.clone();
-    admin.totp_enabled = 1;
-    admin.updated_at = now();
-    admin.update(&state.db).await.map_err(ApiError::from)?;
+    // 只写 enabled 列；条件带上读快照里的密文与“未绑定”——并发 setup 换了密钥、
+    // 或另一请求先绑上了，都不能拿这次校验对应的旧密钥去覆盖
+    let affected = state
+        .db
+        .execute(
+            "UPDATE admin SET totp_enabled = 1, updated_at = ? \
+             WHERE id = ? AND totp_enabled = 0 AND totp_secret = ?",
+            &[
+                bee_orm::Value::from(now()),
+                bee_orm::Value::from(auth.admin.id),
+                bee_orm::Value::from(&auth.admin.totp_secret),
+            ],
+        )
+        .await
+        .map_err(ApiError::from)?;
+    if affected == 0 {
+        return Err(ApiError::BadRequest(TOTP_BOUND.into()));
+    }
     Ok(ok(Value::Null))
 }
 

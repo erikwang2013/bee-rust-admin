@@ -246,6 +246,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let router = bee_rust::bee_router::Router::new()
+        // 管理端 CSV 导入可能是几 MB；框架默认 2 MiB，这里只放宽管理端自身。
+        // nginx 模板同步设了 client_max_body_size 8m。
+        .body_limit(8 * 1024 * 1024)
         .ns("/api/v1", |ns| {
             ns.get("/health", health).get("/version", version)
         })

@@ -1,5 +1,6 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use super::*;
+use bee_orm::Value as DbValue;
 
 #[apidoc::title("退出登录")]
 #[apidoc::desc("当前设备的 token 立即失效（token_version 自增）。需要登录")]
@@ -14,11 +15,9 @@ pub async fn logout(
     auth: Auth,
     headers: HeaderMap,
 ) -> Result<Json<Value>, ApiError> {
-    let mut admin = auth.admin.clone();
-    admin.token_version += 1; // 当前 token 立即失效
-    admin.updated_at = now();
-    admin.update(&state.db).await.map_err(ApiError::from)?;
-    write_login_log(&state, admin.id, &admin.username, &headers, 1, "退出登录").await;
+    // 当前 token 立即失效；设备行一起置 0（否则列表里留一排「在用」的僵尸设备）
+    crate::auth::revoke_sessions(&state, auth.admin.id, None, None).await?;
+    write_login_log(&state, auth.admin.id, &auth.admin.username, &headers, 1, "退出登录").await;
     Ok(ok(Value::Null))
 }
 
@@ -41,31 +40,34 @@ pub async fn logout_others(
     auth: Auth,
     headers: HeaderMap,
 ) -> Result<Json<Value>, ApiError> {
-    let mut admin = auth.admin.clone();
-    admin.token_version += 1;
-    admin.updated_at = now();
-    admin.update(&state.db).await.map_err(ApiError::from)?;
-    // 全端下线的本进程语义：设备闸门缓存也一起清（别的实例最迟 30 秒）
-    crate::auth::forget_admin_devices(admin.id);
+    // 全端下线：版本自增 + 除当前设备外的设备行置 0（当前设备保持 1，换发 token 还挂它）。
+    // 本进程的设备闸门缓存也由 helper 一并清掉（别的实例最迟 30 秒）。
+    let new_ver =
+        crate::auth::revoke_sessions(&state, auth.admin.id, Some(auth.device_id), None).await?;
 
     // 换发的 token 仍挂在**当前这台设备**上：不然一杯新 token 就把本机从设备列表里摘掉。
     // 老 token（升级前签的，claims 里没有 dv）解出来是 0 —— 原样签回去这台设备就永远
     // 不在列表里（踢不掉），而且循环调用 logout-others 能一直续期。按当前 UA 落一行再签。
     let device_id = if auth.device_id == 0 {
-        find_or_create_device(&state, admin.id, &user_agent(&headers), &client_ip(&headers))
-            .await?
-            .id
+        find_or_create_device(
+            &state,
+            auth.admin.id,
+            &user_agent(&headers),
+            &client_ip(&headers),
+        )
+        .await?
+        .id
     } else {
         auth.device_id
     };
     let (token, expires_in) = sign_token(
         &state.jwt,
-        admin.id,
-        admin.token_version,
+        auth.admin.id,
+        new_ver,
         device_id,
         expire_secs(&state.cfg),
     )?;
-    write_login_log(&state, admin.id, &admin.username, &headers, 1, "退出其他设备").await;
+    write_login_log(&state, auth.admin.id, &auth.admin.username, &headers, 1, "退出其他设备").await;
     Ok(ok(json!({ "token": token, "expires_in": expires_in })))
 }
 
@@ -230,13 +232,25 @@ pub async fn update_profile(
     crate::api::check_len("email", &body.email, 128)?;
     crate::api::check_len("phone", &body.phone, 20)?;
 
-    let mut admin = auth.admin.clone();
-    admin.nickname = body.nickname;
     // 写库一律密文（`crate::crypto::write` 对已是密文的输入原样返回，重放安全）
-    admin.email = crypto::write(&state.crypto, &body.email).map_err(ApiError::BadRequest)?;
-    admin.phone = crypto::write(&state.crypto, &body.phone).map_err(ApiError::BadRequest)?;
-    admin.updated_at = now();
-    admin.update(&state.db).await.map_err(ApiError::from)?;
+    let email = crypto::write(&state.crypto, &body.email).map_err(ApiError::BadRequest)?;
+    let phone = crypto::write(&state.crypto, &body.phone).map_err(ApiError::BadRequest)?;
+    // 只写这三列：整行 update 会把读快照里的 password / status / token_version 写回去，
+    // 撤销并发的改密或禁用
+    state
+        .db
+        .execute(
+            "UPDATE admin SET nickname = ?, email = ?, phone = ?, updated_at = ? WHERE id = ?",
+            &[
+                DbValue::from(body.nickname),
+                DbValue::from(email),
+                DbValue::from(phone),
+                DbValue::from(now()),
+                DbValue::from(auth.admin.id),
+            ],
+        )
+        .await
+        .map_err(ApiError::from)?;
     Ok(ok(Value::Null))
 }
 
@@ -260,12 +274,9 @@ pub async fn change_password(
     if !verify_password(&body.old_password, &auth.admin.password) {
         return Err(ApiError::BadRequest("原密码错误".into()));
     }
-    let mut admin = auth.admin.clone();
-    admin.password = hash_password(&body.new_password);
-    admin.token_version += 1; // 全端下线，需重新登录
-    admin.updated_at = now();
-    admin.update(&state.db).await.map_err(ApiError::from)?;
-    // 全端下线的本进程语义：设备闸门缓存也一起清（别的实例最迟 30 秒）
-    crate::auth::forget_admin_devices(admin.id);
+    // 只写 password / token_version / updated_at，并把设备行置 0：
+    // 全端下线，需重新登录（设备缓存由 helper 一并清掉）
+    let password = hash_password(&body.new_password);
+    crate::auth::revoke_sessions(&state, auth.admin.id, None, Some(&password)).await?;
     Ok(ok(Value::Null))
 }

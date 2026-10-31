@@ -143,10 +143,22 @@ pub fn login_throttle(cfg: &AppConfig) -> Option<Arc<Throttle<MemoryThrottleStor
     )))
 }
 
-/// 账号维度的桶名。截断到与 `login_log.username` 同样的 64 字符：
-/// 库要求 key 有界（否则人人换一个超长用户名就能撑爆内存）。
+/// 登录用户名的字符集：与创建用户名的 `validate_username` 一致（ASCII 字母 / 数字 /
+/// 下划线）。MySQL 的 `utf8mb4_0900_ai_ci` 大小写 / 重音不敏感：拿原始串查库时
+/// `Admin` / `ádmin` 会命中同一个账号，而限流桶按原始串分 —— 每种写法都是一个新桶，
+/// 失败锁定就被绕过了。这类串在库里**不可能存在**（创建时就被这个字符集挡住），
+/// 登录时直接按「用户不存在」处理，不查库。
+pub(crate) fn valid_login_username(username: &str) -> bool {
+    let username = username.trim();
+    !username.is_empty() && username.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// 账号维度的桶名。trim + ASCII 小写归一（大小写变体共用同一个失败计数桶 ——
+/// MySQL 的 `_ai_ci` 排序规则让它们命中同一个账号）。截断到与 `login_log.username`
+/// 同样的 64 字符：库要求 key 有界（否则人人换一个超长用户名就能撑爆内存）。
 pub(crate) fn user_key(username: &str) -> String {
-    format!("user:{}", username.chars().take(64).collect::<String>())
+    let canonical = username.trim().to_ascii_lowercase();
+    format!("user:{}", canonical.chars().take(64).collect::<String>())
 }
 
 /// IP 维度的桶名。无 X-Real-IP / X-Forwarded-For（直连）时 `client_ip()` 返回
@@ -346,4 +358,37 @@ pub async fn captcha_new(
         .create_json(None)
         .map_err(|e| ApiError::internal(format!("生成验证码失败: {e}")))?;
     Ok(ok(value))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 大小写 / 首尾空白归一：MySQL 的 `_ai_ci` 让它们命中同一个账号，
+    /// 限流桶也必须只有一个（否则换个大小写就是一套新额度）。
+    #[test]
+    fn user_key_normalizes_case_and_trim() {
+        assert_eq!(user_key("Admin"), user_key("admin"));
+        assert_eq!(user_key("  ADMIN  "), user_key("admin"));
+        assert_eq!(user_key("ÁDMIN"), user_key("Ádmin"), "非 ASCII 原样保留，ASCII 部分小写");
+    }
+
+    /// 截断仍在（超长用户名不能把内存撑爆）。
+    #[test]
+    fn user_key_is_bounded() {
+        let long = "A".repeat(1000);
+        assert_eq!(user_key(&long), format!("user:{}", "a".repeat(64)));
+    }
+
+    /// 重音 / 全角 / 其它非 ASCII 变体在库里不可能存在（创建时只允许 ASCII 字母数字下划线），
+    /// 登录时直接拒绝，不能拿它们去命中真实账号。
+    #[test]
+    fn login_username_rejects_non_ascii_variants() {
+        assert!(valid_login_username("admin_01"));
+        assert!(valid_login_username(" Admin "));
+        assert!(!valid_login_username("ádmin"));
+        assert!(!valid_login_username("ａｄｍｉｎ"));
+        assert!(!valid_login_username("ad-min"));
+        assert!(!valid_login_username("   "));
+    }
 }

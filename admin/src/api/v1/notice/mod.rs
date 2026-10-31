@@ -22,14 +22,12 @@ const UNREAD_LIMIT: i64 = 50;
 /// 公告正文上限：TEXT 列是 64KB 字节，按中文 3 字节算 20000 字仍在列内，
 /// 超了直接 400，别让 MySQL 报 1406 变成 500。
 const CONTENT_MAX: usize = 20_000;
+/// TEXT 的实际上限（UTF-8 字节）：单靠 20000 字符兜不住 4 字节 emoji（20000 × 4 > 65535）。
+const CONTENT_MAX_BYTES: usize = 65_535;
 
 /// 发布语义：置 1 时**只在还是 NULL 时**写 `published_at`；从 1 改回 0 不清空（留痕：曾发布过）。
 fn publish_at(status: i8, current: Option<NaiveDateTime>) -> Option<NaiveDateTime> {
-    if status == 1 && current.is_none() {
-        Some(now())
-    } else {
-        current
-    }
+    if status == 1 && current.is_none() { Some(now()) } else { current }
 }
 
 fn check_title(title: &str) -> Result<(), ApiError> {
@@ -43,7 +41,14 @@ fn check_content(content: &str) -> Result<(), ApiError> {
     if content.trim().is_empty() {
         return Err(ApiError::BadRequest("公告内容不能为空".into()));
     }
-    check_len("content", content, CONTENT_MAX)
+    check_len("content", content, CONTENT_MAX)?;
+    if content.len() > CONTENT_MAX_BYTES {
+        return Err(ApiError::BadRequest(format!(
+            "公告内容超出数据库上限：最多 {CONTENT_MAX_BYTES} 字节（UTF-8），当前 {} 字节",
+            content.len()
+        )));
+    }
+    Ok(())
 }
 
 // ── 管理侧 ──────────────────────────────────────────────────
@@ -96,11 +101,8 @@ pub async fn list(
     if let Some(s) = q.status {
         qs = qs.filter_eq("status", s).map_err(ApiError::from)?;
     }
-    let (rows, total) = qs
-        .order_by("id DESC")
-        .fetch_page(&state.db, page, size)
-        .await
-        .map_err(ApiError::from)?;
+    let (rows, total) =
+        qs.order_by("id DESC").fetch_page(&state.db, page, size).await.map_err(ApiError::from)?;
     Ok(ok(json!({ "list": rows, "total": total })))
 }
 
@@ -231,16 +233,14 @@ pub async fn remove(
     let mut conn = state.db.get().await.map_err(ApiError::from)?;
     conn.begin().await.map_err(ApiError::from)?;
     let result = async {
-        conn.execute("DELETE FROM notice_read WHERE notice_id = ?", &[DbValue::from(id)])
-            .await?;
+        conn.execute("DELETE FROM notice_read WHERE notice_id = ?", &[DbValue::from(id)]).await?;
         // 配图附件行跟着走；文件留在盘上，由 attach_orphan_clean 按「无行引用」回收
         conn.execute(
             "DELETE FROM attachment WHERE entity_type = 'notice' AND entity_id = ?",
             &[DbValue::from(id)],
         )
         .await?;
-        conn.execute("DELETE FROM notice WHERE id = ?", &[DbValue::from(id)])
-            .await?;
+        conn.execute("DELETE FROM notice WHERE id = ?", &[DbValue::from(id)]).await?;
         Ok::<(), OrmError>(())
     }
     .await;
@@ -259,7 +259,9 @@ pub async fn remove(
 /// 当前用户的未读列表：已发布 + 自己没读过，按 id DESC 取最近 50 条。
 /// `total` 是**未读总数**（铃铛角标用它，不能拿 `list.length`——超过 50 条就少报了）。
 #[apidoc::title("我的未读公告")]
-#[apidoc::desc("登录即可。已发布 + 自己没读过，按 id DESC 取最近 50 条；total 是**未读总数**（铃铛角标用它）")]
+#[apidoc::desc(
+    "登录即可。已发布 + 自己没读过，按 id DESC 取最近 50 条；total 是**未读总数**（铃铛角标用它）"
+)]
 #[apidoc::url("/api/v1/notices/unread")]
 #[apidoc::method("GET")]
 #[apidoc::tag("公告")]
@@ -269,10 +271,7 @@ pub async fn remove(
             {name = "list", ty = "array", desc = "最近 50 条未读公告"},
             {name = "total", ty = "int", desc = "未读总数（不受 50 条上限影响）"},
         ])]
-pub async fn unread(
-    State(state): State<AppState>,
-    auth: Auth,
-) -> Result<Json<Value>, ApiError> {
+pub async fn unread(State(state): State<AppState>, auth: Auth) -> Result<Json<Value>, ApiError> {
     // 「已发布 + 我没读过」是 LEFT JOIN 的语义（复合主键的 notice_read 表，
     // 关联不到 ORM 的单列外键上），保留带参裸 SQL，值仍走绑定。
     let total: i64 = state
@@ -301,18 +300,17 @@ pub async fn unread(
         )
         .await
         .map_err(ApiError::from)?;
-    let list = rows
-        .iter()
-        .map(Notice::from_row)
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(ApiError::from)?;
+    let list =
+        rows.iter().map(Notice::from_row).collect::<Result<Vec<_>, _>>().map_err(ApiError::from)?;
     Ok(ok(json!({ "total": total, "list": list })))
 }
 
 /// 标记已读：**幂等**（`INSERT IGNORE` 语义），重复标记仍 200。
 /// 目标是草稿或不存在时 404——草稿不属于任何人可见的未读集合（也不该借它探到草稿存在）。
 #[apidoc::title("标记公告已读")]
-#[apidoc::desc("登录即可。**幂等**（INSERT IGNORE 语义），重复标记仍 200；目标不存在或是草稿回 404")]
+#[apidoc::desc(
+    "登录即可。**幂等**（INSERT IGNORE 语义），重复标记仍 200；目标不存在或是草稿回 404"
+)]
 #[apidoc::url("/api/v1/notices/{id}/read")]
 #[apidoc::method("POST")]
 #[apidoc::tag("公告")]
@@ -380,5 +378,18 @@ mod tests {
         assert!(check_content(" ").is_err());
         assert!(check_content("今晚停机").is_ok());
         assert!(check_content(&"x".repeat(CONTENT_MAX + 1)).is_err());
+    }
+
+    /// 字符数没超、字节数超了也必须拒：4 字节 emoji × 16384 = 65536 字节 > TEXT 上限。
+    #[test]
+    fn content_byte_limit_rejects_multibyte_overflow() {
+        let emoji = "😀".repeat(CONTENT_MAX_BYTES / 4 + 1);
+        assert!(emoji.chars().count() < CONTENT_MAX, "字符数本身没超，超的是字节数");
+        match check_content(&emoji) {
+            Err(ApiError::BadRequest(msg)) => assert!(msg.contains("字节"), "{msg}"),
+            other => panic!("应返回 400 字节超限，实际: {other:?}"),
+        }
+        // 中文 3 字节：正常长度仍能过
+        assert!(check_content("今晚停机维护，预计两小时").is_ok());
     }
 }

@@ -7,6 +7,7 @@ const { toast } = vi.hoisted(() => ({ toast: vi.fn() }));
 vi.mock('antd', () => ({ message: { error: toast } }));
 
 import { TOKEN_KEY, client, envelopeError, errCodeOf, http } from './client';
+import { importApi } from './import';
 
 describe('errCodeOf', () => {
   it('从 axios 错误里取信封错误码（登录页靠它判断要不要亮动态验证码框）', () => {
@@ -121,5 +122,36 @@ describe('响应拦截器 · silent', () => {
     expect(removeItem).toHaveBeenCalledWith(TOKEN_KEY);
     expect(loc.href).toBe('/login');
     expect(toast).not.toHaveBeenCalled();
+  });
+});
+
+// ── 长请求超时（导入 / 导出不被全局 15s 掐断）────────────────────
+describe('长请求超时', () => {
+  beforeEach(() => {
+    // 请求拦截器要读 token；node 环境没有 localStorage
+    vi.stubGlobal('localStorage', { getItem: () => null, removeItem: vi.fn() });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** 换掉 adapter，返回「本次请求实际生效的 timeout」取值器 */
+  function capture(body: unknown) {
+    let timeout: number | undefined;
+    client.defaults.adapter = async (cfg: InternalAxiosRequestConfig): Promise<AxiosResponse> => {
+      timeout = cfg.timeout;
+      return { data: body, status: 200, statusText: 'OK', headers: {}, config: cfg };
+    };
+    return () => timeout;
+  }
+
+  it('blob 导出显式 timeout: 0，不踩全局 15s', async () => {
+    const timeout = capture(new Blob(['id,name\n1,张三\n'], { type: 'text/csv' }));
+    await http.blob('/export/admins');
+    expect(timeout()).toBe(0);
+  });
+
+  it('CSV 导入带长超时（全局 15s 会掐断大文件）', async () => {
+    const timeout = capture({ code: 0, msg: 'ok', data: { kind: 'admin', created: 0, rows: [] } });
+    await importApi.upload('admin', new File(['id\n'], 'a.csv', { type: 'text/csv' }));
+    expect(timeout()).toBe(120000);
   });
 });

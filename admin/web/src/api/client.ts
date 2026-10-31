@@ -94,12 +94,17 @@ async function unwrap<T>(p: Promise<{ data: ApiResult<T> }>): Promise<T> {
 }
 
 export const http = {
-  /** `cfg` 目前只有 `silent` 在用（见 `AxiosRequestConfig.silent`），别当透传口子用。 */
+  /** `cfg` 只用来传 `silent` 或长超时这类请求级选项，别当透传口子用。 */
   get: <T>(url: string, params?: object, cfg?: AxiosRequestConfig) =>
     unwrap<T>(client.get(url, { params, ...cfg })),
-  post: <T>(url: string, data?: object) => unwrap<T>(client.post(url, data)),
+  post: <T>(url: string, data?: object, cfg?: AxiosRequestConfig) =>
+    unwrap<T>(client.post(url, data, cfg)),
   put: <T>(url: string, data?: object) => unwrap<T>(client.put(url, data)),
   del: <T>(url: string, params?: object) => unwrap<T>(client.delete(url, { params })),
-  /** 导出等二进制响应：不走 unwrap（响应体不是 JSON 信封）。 */
-  blob: (url: string, params?: object) => client.get<Blob>(url, { params, responseType: 'blob' }),
+  /**
+   * 导出等二进制响应：不走 unwrap（响应体不是 JSON 信封）。
+   * timeout: 0 关掉全局 15s —— 数据量大时同步导出会被提前掐断。
+   */
+  blob: (url: string, params?: object) =>
+    client.get<Blob>(url, { params, responseType: 'blob', timeout: 0 }),
 };

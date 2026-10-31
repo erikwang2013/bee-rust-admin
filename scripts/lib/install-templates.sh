@@ -33,6 +33,16 @@ server {
     root @PREFIX@/web/dist;
     index index.html;
 
+    # CSV 导入走后端 /api/v1/imports；管理端请求体上限已配成 8 MiB，nginx 默认只有 1m，
+    # 会先回 413。两处保持一致（multipart 边界等留余量），不是又放宽了业务上限。
+    client_max_body_size 8m;
+
+    # 点击劫持 / MIME 嗅探防护。注意 add_header 继承规则：下面任何自带 add_header 的
+    # location 都不再继承这三行，必须自己重复一遍。
+    add_header X-Frame-Options "DENY" always;
+    add_header Content-Security-Policy "frame-ancestors 'none'" always;
+    add_header X-Content-Type-Options "nosniff" always;
+
     gzip on;
     gzip_types text/css text/javascript application/javascript application/json image/svg+xml;
     gzip_min_length 1024;
@@ -52,12 +62,19 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    # （两处都有自己的 add_header，所以安全头必须重复，否则不再继承 server 级）
     location ~* \.(js|css|woff2?|svg|png|jpg|ico)$ {
         expires 30d;
         add_header Cache-Control "public, immutable";
+        add_header X-Frame-Options "DENY" always;
+        add_header Content-Security-Policy "frame-ancestors 'none'" always;
+        add_header X-Content-Type-Options "nosniff" always;
     }
     location = /index.html {
         add_header Cache-Control "no-cache";
+        add_header X-Frame-Options "DENY" always;
+        add_header Content-Security-Policy "frame-ancestors 'none'" always;
+        add_header X-Content-Type-Options "nosniff" always;
     }
 }
 EOF

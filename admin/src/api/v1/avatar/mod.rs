@@ -32,7 +32,7 @@ use axum::Json;
 use axum::extract::{Multipart, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use bee_orm::Model;
+use bee_orm::Value as DbValue;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -233,10 +233,20 @@ pub async fn chunk(
 async fn finish(state: &AppState, admin: &Admin, saved_path: &str) -> Result<(), ApiError> {
     let previous = admin.avatar.trim().to_string();
 
-    let mut row = admin.clone();
-    row.avatar = saved_path.to_string();
-    row.updated_at = now();
-    row.update(&state.db).await.map_err(ApiError::from)?;
+    // 只写 avatar 列：整行 update 会把读快照里的 password / status / token_version 写回去，
+    // 撤销并发的改密或禁用
+    state
+        .db
+        .execute(
+            "UPDATE admin SET avatar = ?, updated_at = ? WHERE id = ?",
+            &[
+                DbValue::from(saved_path),
+                DbValue::from(now()),
+                DbValue::from(admin.id),
+            ],
+        )
+        .await
+        .map_err(ApiError::from)?;
 
     if previous.is_empty() || previous == saved_path {
         return Ok(());
@@ -246,7 +256,7 @@ async fn finish(state: &AppState, admin: &Admin, saved_path: &str) -> Result<(),
         // 老 URL 形态：文件在老的落盘路径上（`{upload_dir}/avatar/{id}.{ext}`），
         // 两种扩展名都试一遍（老实现的「换格式删旧文件」就是这么做的）
         for ext in AVATAR_EXTS {
-            let path = legacy_avatar_path(&state.cfg, row.id, ext);
+            let path = legacy_avatar_path(&state.cfg, admin.id, ext);
             match std::fs::remove_file(&path) {
                 Ok(()) => {}
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}

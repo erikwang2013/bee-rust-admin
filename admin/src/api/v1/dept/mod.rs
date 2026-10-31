@@ -2,9 +2,11 @@
 use crate::api::{check_len, would_cycle};
 use crate::audit::{AuditDetail, Diff};
 use crate::auth::Auth;
+use crate::datascope;
 use crate::error::{ApiError, AppJson, AppPath, ok};
 use crate::hid;
 use crate::models::{Admin, Dept};
+use crate::relations::RelationsExt;
 use crate::state::AppState;
 use crate::util::now;
 use axum::Json;
@@ -139,6 +141,8 @@ pub async fn create(
     if !parent_exists(&state, body.parent_id).await? {
         return Err(ApiError::BadRequest("上级部门不存在".into()));
     }
+    // 非超管只能在自己范围内建部门（否则能往看不见的部门树里塞节点）
+    datascope::ensure_dept_in_scope(&auth, &state.db, body.parent_id).await?;
 
     let d = Dept {
         id: state.next_id()?,
@@ -197,6 +201,12 @@ pub async fn update(
         .ok_or(ApiError::NotFound)?;
     let old = d.clone(); // 变更摘要的旧值（下面就地改 d）
 
+    // 数据范围闸：目标部门与新的父部门都必须在操作者范围内。否则只管 A 部的经理
+    // 能把 B 部挂到 A 下，下一次请求他的「本部门及以下」就包含 B 及 B 下的人/日志。
+    // 跨范围重挂只允许超管（ensure_dept_in_scope 对超管自然放行）。
+    datascope::ensure_dept_in_scope(&auth, &state.db, d.id).await?;
+    datascope::ensure_dept_in_scope(&auth, &state.db, body.parent_id).await?;
+
     d.parent_id = body.parent_id;
     d.name = body.name.trim().to_string();
     d.sort = body.sort;
@@ -234,6 +244,16 @@ pub async fn remove(
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:dept:remove")?;
     let id = hid::dec(&id)?;
+    // 存在才做范围校验：不存在的 id 保持原来的「200、删 0 行」幂等语义
+    if let Some(d) = Dept::query()
+        .filter_eq("id", id)
+        .map_err(ApiError::from)?
+        .one(&state.db)
+        .await
+        .map_err(ApiError::from)?
+    {
+        datascope::ensure_dept_in_scope(&auth, &state.db, d.id).await?;
+    }
     let children = Dept::query()
         .filter_eq("parent_id", id)
         .map_err(ApiError::from)?
@@ -252,6 +272,12 @@ pub async fn remove(
     if admins > 0 {
         return Err(ApiError::BadRequest("该部门下还有管理员".into()));
     }
+    // 先清角色-部门关联，避免留下指向已删除部门的悬挂脏行
+    state
+        .db
+        .del_relations("role_dept", "dept_id", id)
+        .await
+        .map_err(ApiError::from)?;
     Dept::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?

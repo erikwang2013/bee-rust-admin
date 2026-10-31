@@ -1,8 +1,10 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 use super::*;
 
-/// 一次最多导入的数据行数。
+/// 一次最多导入的数据行数（部门 / 字典项）。
 pub(crate) const MAX_ROWS: usize = 5000;
+/// 管理员单次行数上限：每行都要 argon2，300 行已到一次请求可完成的范围。
+pub(crate) const ADMIN_MAX_ROWS: usize = 300;
 
 #[derive(Deserialize)]
 pub struct KindQuery {
@@ -38,6 +40,14 @@ impl Kind {
         }
     }
 
+    /// 本次导入的行数上限：管理员行要逐行 argon2，单独压低。
+    pub(crate) fn max_rows(self) -> usize {
+        match self {
+            Kind::Admin => ADMIN_MAX_ROWS,
+            Kind::Dept | Kind::DictItem => MAX_ROWS,
+        }
+    }
+
     /// 复用各模块的新增权限码：能新增就能导入（不新增权限码，批次 B 台账有 Ruling）。
     pub(crate) fn perm(self) -> &'static str {
         match self {
@@ -50,7 +60,9 @@ impl Kind {
     /// 表头 = 解析时逐字比对的列名（模板、前端提示、usage 文档都按这份走）。
     pub(crate) fn headers(self) -> &'static [&'static str] {
         match self {
-            Kind::Admin => &["用户名", "密码", "昵称", "邮箱", "手机号", "部门", "角色", "状态", "备注"],
+            Kind::Admin => {
+                &["用户名", "密码", "昵称", "邮箱", "手机号", "部门", "角色", "状态", "备注"]
+            }
             Kind::Dept => &["部门名称", "上级部门", "负责人", "联系电话", "排序", "状态"],
             Kind::DictItem => &["类型编码", "标签", "值", "排序", "状态", "备注"],
         }
@@ -72,20 +84,24 @@ pub(crate) struct Checked {
 }
 
 #[apidoc::title("下载导入模板")]
-#[apidoc::desc("只回表头（CSV + BOM，Excel 直接可编辑）。列名不能改：导入时逐字比对表头，改过会整份拒绝。数据行请照模板列序填，空行会被忽略。")]
+#[apidoc::desc(
+    "只回表头（CSV + BOM，Excel 直接可编辑）。列名不能改：导入时逐字比对表头，改过会整份拒绝。数据行请照模板列序填，空行会被忽略。"
+)]
 #[apidoc::url("/api/v1/imports/template")]
 #[apidoc::method("GET")]
 #[apidoc::tag("数据导入")]
 #[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
-#[apidoc::query(name = "kind", ty = "string", required, desc = "导入类型：admin 管理员 / dept 部门 / dict-item 字典项")]
+#[apidoc::query(
+    name = "kind",
+    ty = "string",
+    required,
+    desc = "导入类型：admin 管理员 / dept 部门 / dict-item 字典项"
+)]
 #[apidoc::response_status("200")]
 #[apidoc::response_status("400")]
 #[apidoc::response_status("403")]
 #[apidoc::returned(name = "data", ty = "file", desc = "CSV 附件（text/csv; charset=utf-8）")]
-pub async fn template(
-    auth: Auth,
-    Query(q): Query<KindQuery>,
-) -> Result<Response, ApiError> {
+pub async fn template(auth: Auth, Query(q): Query<KindQuery>) -> Result<Response, ApiError> {
     let kind = Kind::parse(&q.kind)?;
     auth.require(kind.perm())?;
     let cells: Vec<String> = kind.headers().iter().map(|h| h.to_string()).collect();
@@ -95,13 +111,25 @@ pub async fn template(
 }
 
 #[apidoc::title("CSV 导入")]
-#[apidoc::desc("multipart 表单（字段名 file）。先全量校验再落库：有一行不合规就整批不写（created=0），逐行报告给行号与原因，好行也是 ok=true。管理员行的「部门」「角色」按名称定位（角色多个用 | 分隔，与导出同分隔符）；部门行的「上级部门」必须是库里已有的部门。")]
+#[apidoc::desc(
+    "multipart 表单（字段名 file）。先全量校验再落库：有一行不合规就整批不写（created=0），逐行报告给行号与原因，好行也是 ok=true。管理员行的「部门」「角色」按名称定位（角色多个用 | 分隔，与导出同分隔符）；部门行的「上级部门」必须是库里已有的部门。"
+)]
 #[apidoc::url("/api/v1/imports")]
 #[apidoc::method("POST")]
 #[apidoc::tag("数据导入")]
 #[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
-#[apidoc::query(name = "kind", ty = "string", required, desc = "导入类型：admin 管理员 / dept 部门 / dict-item 字典项")]
-#[apidoc::param(name = "file", ty = "file", required, desc = "CSV 文件（UTF-8 / CSV UTF-8，带不带 BOM 都认）")]
+#[apidoc::query(
+    name = "kind",
+    ty = "string",
+    required,
+    desc = "导入类型：admin 管理员 / dept 部门 / dict-item 字典项"
+)]
+#[apidoc::param(
+    name = "file",
+    ty = "file",
+    required,
+    desc = "CSV 文件（UTF-8 / CSV UTF-8，带不带 BOM 都认）"
+)]
 #[apidoc::response_status("200")]
 #[apidoc::response_status("400")]
 #[apidoc::response_status("403")]
@@ -142,10 +170,8 @@ pub async fn import(
 
 /// 取表单里的 `file` 字段（字段名与前端逐字一致）。
 pub(crate) async fn read_file(mp: &mut Multipart) -> Result<Vec<u8>, ApiError> {
-    while let Some(field) = mp
-        .next_field()
-        .await
-        .map_err(|e| ApiError::BadRequest(format!("上传表单解析失败: {e}")))?
+    while let Some(field) =
+        mp.next_field().await.map_err(|e| ApiError::BadRequest(format!("上传表单解析失败: {e}")))?
     {
         if field.name() == Some("file") {
             return field
@@ -161,8 +187,9 @@ pub(crate) async fn read_file(mp: &mut Multipart) -> Result<Vec<u8>, ApiError> {
 /// 字节 → 文本：去 BOM + 认 UTF-8。
 pub(crate) fn decode(bytes: &[u8]) -> Result<String, ApiError> {
     let body = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(bytes);
-    String::from_utf8(body.to_vec())
-        .map_err(|_| ApiError::BadRequest("文件不是 UTF-8 编码（Excel 请用「CSV UTF-8」另存）".into()))
+    String::from_utf8(body.to_vec()).map_err(|_| {
+        ApiError::BadRequest("文件不是 UTF-8 编码（Excel 请用「CSV UTF-8」另存）".into())
+    })
 }
 
 /// 校验全表：表头 → 预载参照数据 → 逐行。返回逐行报告（好行带待落库实体）。
@@ -174,20 +201,16 @@ pub(crate) async fn check_all(
 ) -> Result<Vec<Checked>, ApiError> {
     // flexible：列数不对的行也读得出来，好在报告里点名（而不是整份文件解析失败）
     let mut rdr = csv::ReaderBuilder::new().flexible(true).from_reader(text.as_bytes());
-    let head = rdr
-        .headers()
-        .map_err(|e| ApiError::BadRequest(format!("解析表头失败: {e}")))?
-        .clone();
+    let head =
+        rdr.headers().map_err(|e| ApiError::BadRequest(format!("解析表头失败: {e}")))?.clone();
     let want = kind.headers();
     let same = head.len() == want.len()
         && want.iter().zip(head.iter()).all(|(w, got)| w.trim() == got.trim());
     if !same {
-        return Err(ApiError::BadRequest(format!(
-            "表头与模板不一致，应为: {}",
-            want.join(",")
-        )));
+        return Err(ApiError::BadRequest(format!("表头与模板不一致，应为: {}", want.join(","))));
     }
 
+    let max_rows = kind.max_rows();
     let mut ctx = Ctx::load(state, kind).await?;
     let mut out: Vec<Checked> = Vec::new();
     for rec in rdr.records() {
@@ -195,8 +218,11 @@ pub(crate) async fn check_all(
         if rec.iter().all(|c| c.trim().is_empty()) {
             continue; // 空行（含末尾换行产生的幻影行）
         }
-        if out.len() >= MAX_ROWS {
-            return Err(ApiError::BadRequest(format!("一次最多导入 {MAX_ROWS} 行")));
+        if out.len() >= max_rows {
+            return Err(ApiError::BadRequest(match kind {
+                Kind::Admin => format!("管理员一次最多导入 {max_rows} 行（密码哈希耗时）"),
+                Kind::Dept | Kind::DictItem => format!("一次最多导入 {max_rows} 行"),
+            }));
         }
         let line = rec.position().map(|p| p.line()).unwrap_or(0);
         let r = match kind {

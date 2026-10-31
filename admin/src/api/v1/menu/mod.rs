@@ -226,9 +226,11 @@ pub async fn update(
         .await
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
-    // B5 写路径闸（非超管）：**只在权限码真的变了**时校验 —— 编辑是整批提交、会带上菜单原有的
-    // perm，改名 / 挪位 / 排序不该被挡；能造提权的只有「引入一个自己没有的 perm」。
-    if body.perm != m.perm {
+    // B5 写路径闸（非超管）：改权限码或改状态都会动权限集合，旧 perm 也要验
+    // （尤其新 perm 置空时不能只验新的，否则等于放任改/停自己管不了的码）。
+    // 改名 / 挪位 / 排序等其余字段不变的操作维持原样放行。
+    if body.perm != m.perm || body.status != m.status {
+        datascope::ensure_perm_writable(&auth, &m.perm)?;
         datascope::ensure_perm_writable(&auth, &body.perm)?;
     }
     if !parent_exists(&state, body.parent_id).await? {

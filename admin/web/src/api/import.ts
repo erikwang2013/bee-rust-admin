@@ -9,6 +9,7 @@ export const importApi = {
   upload: (kind: ImportKind, file: File) => {
     const form = new FormData();
     form.append('file', file);
-    return http.post<ImportReport>(`/imports?kind=${kind}`, form);
+    // 逐行校验可能超过全局 15s；导入专用长超时，别让大 CSV 传到一半被前端掐断
+    return http.post<ImportReport>(`/imports?kind=${kind}`, form, { timeout: 120000 });
   },
 };

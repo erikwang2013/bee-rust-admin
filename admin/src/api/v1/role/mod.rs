@@ -459,6 +459,8 @@ pub async fn set_depts(
     // B5 写路径闸（非超管）：scope=5 的角色对非超管即不可动 —— 否则他自己那档
     // 「自定义」范围就能被改成全公司可见
     datascope::ensure_role_writable(&auth, &state.db, &role, None).await?;
+    // 同 set_menus：悬空部门 id 不落库；非超管只能挂自己范围内的部门
+    datascope::ensure_depts_attachable(&auth, &state.db, &body.dept_ids).await?;
     state
         .db
         .set_relations("role_dept", ("role_id", id), "dept_id", &dedup_ids(body.dept_ids))

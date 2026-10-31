@@ -3,19 +3,19 @@ use crate::api::{PagingExt, check_len, csv, dedup_ids, page_size};
 use crate::audit::{AuditDetail, Diff, masked_changed};
 use crate::auth::Auth;
 use crate::datascope;
-use crate::hid;
 use crate::error::{ApiError, AppJson, AppPath, AppQuery, ok};
+use crate::hid;
 use crate::models::{Admin, Dept, Role};
+use crate::relations::RelationsExt;
 use crate::state::AppState;
 use crate::util::{hash_password, now};
 use axum::Json;
 use axum::extract::State;
 use axum::response::Response;
-use bee_orm::{Model, OrmError, QuerySet};
+use bee_orm::{Model, OrmError, QuerySet, Value as DbValue};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
-use crate::relations::RelationsExt;
 
 mod manage;
 
@@ -192,17 +192,36 @@ async fn decorate(state: &AppState, rows: Vec<Admin>) -> Result<Vec<Value>, ApiE
         .map(|r| (r.id, r.name))
         .collect();
 
+    // 本批 admin_id 一次查关联：列表页 10 行从 10 次查询降到 1 次，导出每批 5000 行同理。
+    // ORDER BY admin_id, role_id 与逐行 `WHERE admin_id = ?` 走主键的返回顺序一致，
+    // role_ids / role_names 的顺序保持不变。
+    let ids_by_admin: HashMap<i64, Vec<i64>> = if rows.is_empty() {
+        HashMap::new()
+    } else {
+        let placeholders = vec!["?"; rows.len()].join(", ");
+        let sql = format!(
+            "SELECT admin_id, role_id FROM admin_role WHERE admin_id IN ({placeholders}) \
+             ORDER BY admin_id, role_id"
+        );
+        let params: Vec<DbValue> = rows.iter().map(|a| DbValue::from(a.id)).collect();
+        let mut map: HashMap<i64, Vec<i64>> = HashMap::new();
+        for row in state.db.query(&sql, &params).await.map_err(ApiError::from)? {
+            if let (Some(admin_id), Some(role_id)) = (
+                row.get("admin_id").and_then(|v| v.as_i64()),
+                row.get("role_id").and_then(|v| v.as_i64()),
+            ) {
+                map.entry(admin_id).or_default().push(role_id);
+            }
+        }
+        map
+    };
+
     let mut list = Vec::with_capacity(rows.len());
     for a in rows {
-        // ponytail: 每行一次关联查询（页 10 行 = 11 次查询）；行数大改批量查
-        let ids = state
-            .db
-            .get_relations("admin_role", ("admin_id", a.id), "role_id")
-            .await
-            .map_err(ApiError::from)?;
+        let ids = ids_by_admin.get(&a.id).cloned().unwrap_or_default();
         let names: Vec<String> = ids.iter().filter_map(|i| role_names.get(i).cloned()).collect();
-        let mut v = serde_json::to_value(&a)
-            .map_err(|e| ApiError::internal(format!("序列化失败: {e}")))?;
+        let mut v =
+            serde_json::to_value(&a).map_err(|e| ApiError::internal(format!("序列化失败: {e}")))?;
         // email / phone 落库是密文，对外一律明文（列表 / 导出共用这条路径）
         crate::crypto::plain_json(&state.crypto, &mut v)?;
         // avatar 列存的是插件的 saved_path（内部地址），对外换成可用的 URL（无头像仍是空串）
@@ -218,7 +237,9 @@ async fn decorate(state: &AppState, rows: Vec<Admin>) -> Result<Vec<Value>, ApiE
 
 /// 列表：筛选 + 数据权限 + 分页；补 dept_name / role_names。
 #[apidoc::title("管理员列表")]
-#[apidoc::desc("筛选 + 数据权限 + 分页，列表补 dept_name / role_names / role_ids（email / phone 出口解密为明文）")]
+#[apidoc::desc(
+    "筛选 + 数据权限 + 分页，列表补 dept_name / role_names / role_ids（email / phone 出口解密为明文）"
+)]
 #[apidoc::url("/api/v1/admins")]
 #[apidoc::method("GET")]
 #[apidoc::tag("管理员")]
@@ -227,7 +248,11 @@ async fn decorate(state: &AppState, rows: Vec<Admin>) -> Result<Vec<Value>, ApiE
 #[apidoc::query(name = "size", ty = "int", desc = "每页条数，默认 10，上限 100", mock = "10")]
 #[apidoc::query(name = "username", ty = "string", desc = "用户名模糊匹配")]
 #[apidoc::query(name = "status", ty = "int", desc = "状态：1 启用 / 0 禁用")]
-#[apidoc::query(name = "dept_id", ty = "string", desc = "部门短串：**精确匹配该部门**（不展开子部门）")]
+#[apidoc::query(
+    name = "dept_id",
+    ty = "string",
+    desc = "部门短串：**精确匹配该部门**（不展开子部门）"
+)]
 #[apidoc::response_status("200")]
 #[apidoc::returned(name = "data", ty = "object", desc = "分页结果", children = [
             {name = "list", ty = "array", required, desc = "管理员列表", children = [
