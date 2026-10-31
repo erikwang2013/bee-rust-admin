@@ -60,7 +60,7 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        # 导入/导出是长耗时请求：前端给 /api/v1/imports 120s、后端放宽到 180s，
+        # 导入/导出是长耗时请求：前端与后端都给 /api/v1/imports 180s，
         # nginx 默认 proxy_read_timeout 60s 会先断开，这里按 180s 留足余量。
         proxy_read_timeout 180s;
         proxy_send_timeout 180s;

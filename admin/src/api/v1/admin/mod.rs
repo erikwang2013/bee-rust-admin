@@ -8,7 +8,7 @@ use crate::hid;
 use crate::models::{Admin, Dept, Role};
 use crate::relations::RelationsExt;
 use crate::state::AppState;
-use crate::util::{hash_password, now};
+use crate::util::now;
 use axum::Json;
 use axum::extract::State;
 use axum::response::Response;

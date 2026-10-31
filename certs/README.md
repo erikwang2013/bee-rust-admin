@@ -13,7 +13,7 @@ certs/privkey.pem     # 私钥
 2. `./compose-up.sh` 运行（它会自动检测证书并叠加 `docker-compose.tls.yml`，
    把 80 跳转到 443）；也可以手动：
    ```bash
-   docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d
+   HTTP_PORT=80 docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d
    ```
 3. 宿主机 80/443 没有被其他服务占用。
 

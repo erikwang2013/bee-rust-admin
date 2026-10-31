@@ -71,13 +71,15 @@ async fn sys_config_and_public() {
     assert_eq!(st, 200, "超管可读配置列表: {v}");
     let list = v["data"]["list"].as_array().expect("list 数组").clone();
     assert_eq!(v["data"]["total"], json!(list.len()), "total 与 list 一致: {v}");
-    // 种子 14 个键（site 4 + 通知 10），但列表**只回 13**：项 6 的 SMTP 口令键
-    // 被 `is_secret_key` 挡在管理页外（列出来等于让每个能读配置的人改它的值，
-    // 「加密存」就白做了）。口令键的存在只在「通知设置」页看得到。
-    assert_eq!(list.len(), 13, "种子 14 个键 - 1 个口令键: {v}");
+    // 种子 14 个键（site 4 + 通知 10），但列表**只回 4**：`notify.*` 整个命名空间
+    // 由「通知设置」页维护（其中口令/签名密钥还单独受 is_secret_key 保护），
+    // 通用配置页不列、不增、不改、不删。
+    assert_eq!(list.len(), 4, "只剩 4 个 site 键: {v}");
     assert!(
-        !list.iter().any(|x| x["key"] == "notify.smtp_password"),
-        "口令键不上通用配置页: {v}"
+        !list.iter().any(|x| {
+            x["key"].as_str().unwrap_or("").starts_with("notify.")
+        }),
+        "notify.* 不上通用配置页: {v}"
     );
     // 通知键一律私有：`/configs/public` 免登录，公开等于把内部地址抖出去
     let (_, v) = call(&c, Method::GET, format!("{base}{CONFIGS}/public"), None, None).await;
@@ -94,25 +96,31 @@ async fn sys_config_and_public() {
     assert_eq!(sub["is_public"], 1);
     assert_eq!(find(&list, "site.footer_enabled")["value_type"], "bool");
 
-    // ── M4：`notify.*` 一律不许公开 —— 写入侧拒 + 读侧兜底 ─────────
-    // 公开读免登录，notify 键里是 SMTP 服务器/账号、Webhook 地址这类内部信息。
-    let hook_id = common::as_id(&find(&list, "notify.webhook_url")["id"]);
+    // ── 安全边界：`notify.*` 全部由通知设置页维护 —— 通用配置 API 读写都拒 ──
+    // 不列、不建、不改；免登录公开口也兜底过滤。否则有 config:edit 的角色可以
+    // 绕开 notify:edit 改 SMTP / Webhook。
+    let pool = sqlx::MySqlPool::connect(&dsn).await.unwrap();
+    let hook_row_id: i64 =
+        sqlx::query_scalar("SELECT id FROM sys_config WHERE config_key = 'notify.webhook_url'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let hook_id = common::enc_id(hook_row_id as u64);
     let (st, v) = call(
         &c, Method::PUT, format!("{base}{CONFIGS}/{hook_id}"), Some(&admin),
         Some(json!({ "is_public": 1 })),
     )
     .await;
-    assert_eq!(st, 400, "notify.* 标记公开要拒: {v}");
-    assert!(v["msg"].as_str().unwrap_or("").contains("不能设为公开"), "{v}");
+    assert_eq!(st, 400, "通用配置接口不能改 notify.*: {v}");
+    assert!(v["msg"].as_str().unwrap_or("").contains("通知设置"), "{v}");
     let (st, v) = call(
         &c, Method::POST, format!("{base}{CONFIGS}"), Some(&admin),
         Some(json!({"key": "notify.sneaky", "value": "x", "is_public": 1})),
     )
     .await;
-    assert_eq!(st, 400, "新建 notify.* 公开也要拒: {v}");
+    assert_eq!(st, 400, "通用配置接口不能新建 notify.*: {v}");
 
     // 读侧兜底：直改库把 is_public 置 1（绕开接口），免登录口依然不能吐出来
-    let pool = sqlx::MySqlPool::connect(&dsn).await.unwrap();
     sqlx::query("UPDATE sys_config SET is_public = 1 WHERE config_key = 'notify.webhook_url'")
         .execute(&pool)
         .await

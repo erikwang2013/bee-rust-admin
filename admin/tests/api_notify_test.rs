@@ -293,7 +293,10 @@ async fn notify_webhook_events_and_smtp_test_mail() {
     let keys: Vec<&str> =
         v["data"]["list"].as_array().unwrap().iter().filter_map(|r| r["key"].as_str()).collect();
     assert!(!keys.contains(&"notify.smtp_password"), "通用配置页不列口令键: {keys:?}");
-    assert!(keys.contains(&"notify.webhook_url"), "其余通知键照常可见: {keys:?}");
+    assert!(
+        !keys.iter().any(|k| k.starts_with("notify.")),
+        "通用配置页不列任何 notify.*（整组由通知设置页维护）: {keys:?}"
+    );
 
     let pw_id: i64 = sqlx::query_scalar("SELECT id FROM sys_config WHERE config_key = 'notify.smtp_password'")
         .fetch_one(&pool)

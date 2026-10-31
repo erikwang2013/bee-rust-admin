@@ -6,7 +6,7 @@ use crate::hid;
 use crate::error::{ApiError, AppJson, CAPTCHA_FAILED, ok};
 use crate::models::{Admin, AdminLoginDevice, LoginLog, Menu};
 use crate::state::AppState;
-use crate::util::{hash_password, now, now_unix, verify_password};
+use crate::util::{now, now_unix};
 use axum::Json;
 use axum::extract::State;
 use axum::http::HeaderMap;
@@ -258,7 +258,7 @@ mod tests {
             .expect("占位哈希必须是合法 argon2id PHC 串");
         assert_eq!(h.algorithm.as_str(), "argon2id");
         // 且真的会跑一遍校验（不 panic、不提前返回）
-        assert!(!verify_password("not-the-dummy-plaintext", DUMMY_PASSWORD_HASH));
+        assert!(!crate::util::verify_password("not-the-dummy-plaintext", DUMMY_PASSWORD_HASH));
     }
 
     #[test]
