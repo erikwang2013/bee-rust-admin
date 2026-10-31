@@ -46,21 +46,23 @@ fn is_secret_key(key: &str) -> bool {
     SECRET_KEYS.contains(&key)
 }
 
-/// 一律不许公开的键前缀：`/configs/public` 免登录，`notify.*` 里是 SMTP 服务器/账号、
-/// Webhook 地址这些内部信息，抖给匿名访问者等于把内网拓扑送人。前缀匹配 —— 以后
-/// 新增 `notify.*` 键自动在内，不用记得往名单里补。
-const NEVER_PUBLIC_PREFIXES: [&str; 1] = ["notify."];
-
-fn never_public(key: &str) -> bool {
-    NEVER_PUBLIC_PREFIXES.iter().any(|p| key.starts_with(p))
+/// `notify.*` 由「通知设置」页维护（读写收口在 `crate::notify`）：通用配置 API
+/// 不列、不建、不改、不删 —— 否则有 `system:config:edit` 的人绕开
+/// `system:notify:edit` 就能改 Webhook / SMTP。前缀匹配，新增 `notify.*` 键自动在内。
+/// 顺带兜住免登录的 `/configs/public`：里面是 SMTP 服务器/账号、Webhook 地址，
+/// 抖给匿名访问者等于把内网拓扑送人。
+fn is_notify_managed(key: &str) -> bool {
+    key.starts_with("notify.")
 }
-
-/// 标记 `notify.*` 公开时的拒绝文案（create / update 共用）。
-const PUBLIC_BANNED: &str = "notify 下的配置不能设为公开（免登录接口会泄露 SMTP / Webhook 信息）";
 
 /// 命中敏感键的统一拒绝文案（改/删共用）。
 fn secret_key_rejected() -> ApiError {
     ApiError::BadRequest("该配置项由「通知设置」页维护，不能在这里修改".into())
+}
+
+/// 命中 `notify.*` 托管键的统一拒绝文案（建/改/删共用）。
+fn notify_key_rejected() -> ApiError {
+    ApiError::BadRequest("该配置项由「通知设置」页维护，不能在这里新增、修改或删除".into())
 }
 
 /// 公开读的值转换：`bool` → JSON 布尔（`"1"` 也认，大小写不敏感、先 trim —— 库里被
@@ -149,7 +151,8 @@ pub async fn list(
         qs = qs.filter_eq("group_name", g.trim()).map_err(ApiError::from)?;
     }
     let mut rows = qs.order_by("config_key ASC").all(&state.db).await.map_err(ApiError::from)?;
-    rows.retain(|c| !is_secret_key(&c.key)); // 口令键不上这一页（见 SECRET_KEYS）
+    // 口令键（见 SECRET_KEYS）与 `notify.*` 托管键都不上这一页
+    rows.retain(|c| !is_secret_key(&c.key) && !is_notify_managed(&c.key));
     let total = rows.len();
     Ok(ok(json!({ "list": rows, "total": total })))
 }
@@ -173,9 +176,9 @@ pub async fn public_list(State(state): State<AppState>) -> Result<Json<Value>, A
         .map_err(ApiError::from)?;
     let mut map = Map::new();
     for c in rows {
-        // 写入侧已拦 `notify.*` 标记公开（见 never_public），这里再滤一道：
+        // 写入侧已整体拒掉 `notify.*`（见 is_notify_managed），这里再滤一道：
         // 库被手改过、或旧数据里已经标成 1 的，免登录口也不能吐出去。
-        if never_public(&c.key) {
+        if is_notify_managed(&c.key) {
             continue;
         }
         map.insert(c.key, public_value(&c.value_type, &c.value));
@@ -209,13 +212,14 @@ pub async fn create(
             "配置键只能是小写字母、数字、下划线与点号分段，长度 2~128".into(),
         ));
     }
+    // 通知设置的键整体归「通知设置」页，通用配置页连建都不许建
+    if is_notify_managed(key) {
+        return Err(notify_key_rejected());
+    }
     check_value(&body.value)?;
     check_type(&body.value_type)?;
     if !valid_group(&body.group) {
         return Err(ApiError::BadRequest("分组名只能是小写字母、数字、下划线，最长 64".into()));
-    }
-    if body.is_public == 1 && never_public(key) {
-        return Err(ApiError::BadRequest(PUBLIC_BANNED.into()));
     }
     check_len("remark", &body.remark, 255)?;
 
@@ -277,6 +281,10 @@ pub async fn update(
     if is_secret_key(&c.key) {
         return Err(secret_key_rejected());
     }
+    // 改通知设置得走「通知设置」页（`system:notify:edit`），通用配置页不许代劳
+    if is_notify_managed(&c.key) {
+        return Err(notify_key_rejected());
+    }
 
     if let Some(v) = body.value {
         c.value = v;
@@ -285,9 +293,6 @@ pub async fn update(
         c.value_type = t;
     }
     if let Some(p) = body.is_public {
-        if p == 1 && never_public(&c.key) {
-            return Err(ApiError::BadRequest(PUBLIC_BANNED.into()));
-        }
         c.is_public = p;
     }
     if let Some(r) = body.remark {
@@ -326,6 +331,10 @@ pub async fn remove(
     if is_secret_key(&key) {
         return Err(secret_key_rejected());
     }
+    // 删 `notify.*` 同样归「通知设置」页（删了下次启动种子会补默认值回来）
+    if is_notify_managed(&key) {
+        return Err(notify_key_rejected());
+    }
     let n = SysConfig::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
@@ -355,6 +364,19 @@ mod tests {
         assert!(!valid_key("site."), "尾点");
         assert!(!valid_key("site copyright"));
         assert!(!valid_key("站点.版权"));
+    }
+
+    #[test]
+    fn notify_namespace_is_managed_but_site_is_not() {
+        assert!(is_notify_managed("notify.webhook_url"));
+        assert!(is_notify_managed("notify.smtp_host"));
+        assert!(is_notify_managed("notify.any_future_key"), "前缀匹配：新增键自动在内");
+        assert!(!is_notify_managed("site.copyright"));
+        assert!(!is_notify_managed("notify"), "没有点号不是 notify 命名空间");
+        assert!(!is_notify_managed("notifyx.webhook_url"), "必须是 notify. 前缀");
+        assert!(!is_notify_managed(""));
+        // 口令键仍是敏感键（两套判定各自独立，别互相替代）
+        assert!(SECRET_KEYS.iter().all(|k| is_secret_key(k) && is_notify_managed(k)));
     }
 
     #[test]

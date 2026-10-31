@@ -199,8 +199,8 @@ pub async fn type_update(
     Ok((changes, ok(Value::Null)))
 }
 
-/// 删类型连带删它的字典项，同一事务：中途失败回滚，不留「类型没了项还在」的孤儿行。
-/// 项数按字典量级（一条几到几十个）逐条删够用。
+/// 删类型连带删它的字典项，同一事务：先按 `type_code` 一条 DELETE 清项，再删类型，
+/// 中途失败回滚，不留「类型没了项还在」的孤儿行。
 #[apidoc::title("删除字典类型")]
 #[apidoc::desc("连带删它的字典项，**同一事务**（不留「类型没了项还在」的孤儿行）")]
 #[apidoc::url("/api/v1/dicts/{id}")]
@@ -225,35 +225,29 @@ pub async fn type_remove(
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
 
-    let items = DictItem::query()
-        .filter_eq("type_code", &t.code)
-        .map_err(ApiError::from)?
-        .all(&state.db)
-        .await
-        .map_err(ApiError::from)?;
-
     // Db 层没有事务：事务开在 Pool::get() 拿到的连接上（语句走连接，不能走池）
     let mut conn = state.db.get().await.map_err(ApiError::from)?;
     conn.begin().await.map_err(ApiError::from)?;
     let result = async {
-        for it in &items {
-            conn.execute("DELETE FROM dict_item WHERE id = ?", &[DbValue::from(it.id)])
-                .await?;
-        }
-        conn.execute("DELETE FROM dict_type WHERE id = ?", &[DbValue::from(t.id)])
+        let items_deleted = conn
+            .execute("DELETE FROM dict_item WHERE type_code = ?", &[DbValue::from(t.code.as_str())])
             .await?;
-        Ok::<(), OrmError>(())
+        conn.execute("DELETE FROM dict_type WHERE id = ?", &[DbValue::from(t.id)]).await?;
+        Ok::<u64, OrmError>(items_deleted)
     }
     .await;
-    match result {
-        Ok(()) => conn.commit().await.map_err(ApiError::from)?,
+    let items_deleted = match result {
+        Ok(n) => {
+            conn.commit().await.map_err(ApiError::from)?;
+            n
+        }
         Err(e) => {
             let _ = conn.rollback().await;
             return Err(e.into());
         }
-    }
+    };
 
-    Ok(ok(json!({ "items_deleted": items.len() })))
+    Ok(ok(json!({ "items_deleted": items_deleted })))
 }
 
 /// 类型必须存在：不建外键，至少别让手滑的 `type_code` 造出孤儿项（下拉里永远看不到）。

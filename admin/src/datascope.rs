@@ -209,6 +209,17 @@ pub async fn ensure_role_writable(
     Ok(())
 }
 
+/// 非超管**新建**角色（`role::create`）时的数据范围闸：规则与
+/// `ensure_role_writable` 的新范围判同一份 —— 只允许 3/4。否则有
+/// `system:role:add` 的人建一个 1/2/5 的角色再授出去，绕开「更宽的角色只有
+/// 超管能授」的限制。新建时还没有角色行，不查库。
+pub fn ensure_role_scope_creatable(auth: &Auth, data_scope: i8) -> Result<(), ApiError> {
+    if auth.is_super || matches!(data_scope, 3 | 4) {
+        return Ok(());
+    }
+    Err(block_err(Block::Wider))
+}
+
 /// 非超管给角色挂菜单（`set_menus`）时的闸：
 /// ① 每个 `menu_id` 必须真实存在 —— 悬空 id 写进关联表就是谁也解释不清的脏行；
 /// ② 这批菜单的权限码必须是操作者权限码的子集（口径同 `block_reason` 的 `ExtraPerm`，
@@ -468,5 +479,34 @@ mod tests {
             s.condition("dept_id", "id").unwrap(),
             "(dept_id IN (3, 4) OR id = 9)"
         );
+    }
+
+    fn auth(is_super: bool) -> Auth {
+        let t = now();
+        Auth {
+            admin: Admin {
+                id: 1, username: "u".into(), password: String::new(), nickname: String::new(),
+                email: String::new(), phone: String::new(), sex: 0, avatar: String::new(),
+                dept_id: 0, status: 1, is_super: is_super as i8, totp_secret: String::new(),
+                totp_enabled: 0, totp_last_step: None, token_version: 0, last_login_at: None,
+                last_login_ip: String::new(), remark: String::new(), created_at: t, updated_at: t,
+            },
+            roles: Vec::new(),
+            perms: HashSet::new(),
+            is_super,
+            device_id: 0,
+        }
+    }
+
+    #[test]
+    fn non_super_can_only_create_scope_3_or_4() {
+        for scope in [3, 4] {
+            assert!(ensure_role_scope_creatable(&auth(false), scope).is_ok());
+        }
+        for scope in [1, 2, 5] {
+            let err = ensure_role_scope_creatable(&auth(false), scope).unwrap_err();
+            assert!(matches!(err, ApiError::Forbidden(_)), "非超管建更宽范围要 403: {err:?}");
+        }
+        assert!(ensure_role_scope_creatable(&auth(true), 1).is_ok(), "超管不受限");
     }
 }

@@ -215,7 +215,7 @@ fn code_taken(e: OrmError) -> ApiError {
 }
 
 #[apidoc::title("新建角色")]
-#[apidoc::desc("角色标识唯一；标识重复回 400（专属文案 role.code_taken）")]
+#[apidoc::desc("角色标识唯一；标识重复回 400（专属文案 role.code_taken）。非超管只能建 data_scope 为 3/4 的角色（1/2/5 只有超管能建，防提权）")]
 #[apidoc::url("/api/v1/roles")]
 #[apidoc::method("POST")]
 #[apidoc::tag("角色")]
@@ -238,6 +238,8 @@ pub async fn create(
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:add")?;
     validate_body(&body)?;
+    // 新建同样受数据范围限制：非超管建 1/2/5 等于凭空造一个比自己的角色更宽的角色
+    datascope::ensure_role_scope_creatable(&auth, body.data_scope)?;
 
     let r = Role {
         id: state.next_id()?,
