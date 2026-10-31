@@ -1,5 +1,6 @@
-// 逐个走深路径而不是从 '@ant-design/icons' 桶导入：桶同时被下面的动态 import 引用，
-// Rolldown 会把静态桶和整个懒加载包并成同一个首屏 chunk（实测 797 个图标 ~968 kB）。
+/// <reference types="vite/client" />
+// 逐个走深路径而不是从 '@ant-design/icons' 桶导入：桶会把全部图标模块并进首屏
+// chunk（实测 797 个图标 ~968 kB）。映射外的名字走下面的 import.meta.glob。
 import ApiOutlined from '@ant-design/icons/es/icons/ApiOutlined';
 import ApartmentOutlined from '@ant-design/icons/es/icons/ApartmentOutlined';
 import AppstoreOutlined from '@ant-design/icons/es/icons/AppstoreOutlined';
@@ -148,18 +149,44 @@ const ICONS: Record<string, ComponentType> = {
   StarOutlined,
 };
 
+/**
+ * 映射外名字的懒加载入口：每个图标模块各自成一个 chunk。不能动态 import 整包桶
+ * （那会产出 ~868 kB 的 es-*.js，菜单 icon 写错一个字母就要下载解析整包）。
+ *
+ * 代价是首屏多一张约 25 kB gzip 的名称→加载器表（含 Vite 预加载表），
+ * 换来误填名字只下载一个几 kB 的分块。
+ *
+ * exhaustive 让 glob 匹配 node_modules（默认忽略）；`es/icons/*.js` 是
+ * @ant-design/icons 6 的目录布局，升级图标包大版本时需确认。
+ */
+const ICON_MODULES = import.meta.glob<ComponentType>(
+  // 排除 icons/index.js（整包桶本身），它不是图标名字，混进来会多出一个 29 kB 懒分块
+  ['/node_modules/@ant-design/icons/es/icons/*.js', '!/node_modules/@ant-design/icons/es/icons/index.js'],
+  { import: 'default', exhaustive: true },
+);
+
+/** '…/icons/AlertOutlined.js' → 'AlertOutlined'。 */
+const lazyIcons: Record<string, () => Promise<ComponentType>> = {};
+for (const [path, load] of Object.entries(ICON_MODULES)) {
+  lazyIcons[path.slice(path.lastIndexOf('/') + 1, -'.js'.length)] = load;
+}
+
+/**
+ * 名字 → 懒加载的图标模块；只有图标包里确实没有这个名字才回落默认图标。
+ * 导出仅供测试，生产调用方统一走 menuIcon。
+ */
+export function loadIcon(name: string): Promise<{ default: ComponentType }> {
+  const load = lazyIcons[name];
+  return load ? load().then((Icon) => ({ default: Icon })) : Promise.resolve({ default: AppstoreOutlined });
+}
+
 /** 名字 → 兜底组件。同一个名字只构建一次，重复渲染拿到的是同一引用。 */
 const fallbackCache = new Map<string, ComponentType>();
 
 function unmappedIcon(name: string): ComponentType {
   let Cmp = fallbackCache.get(name);
   if (!Cmp) {
-    const Lazy = lazy(() =>
-      import('@ant-design/icons').then((m) => ({
-        // 库里根本没有这个名字也仍然给个能渲染的默认图标，不抛错
-        default: (m as unknown as Record<string, ComponentType>)[name] ?? AppstoreOutlined,
-      })),
-    );
+    const Lazy = lazy(() => loadIcon(name));
     // Suspense 放在图标自己内部，调用方（侧边栏）不必再包一层边界；
     // 懒加载分包没到位时先渲染空，到位后自动补上
     Cmp = () => createElement(Suspense, { fallback: null }, createElement(Lazy));
