@@ -265,7 +265,7 @@ system                   目录
 
 ### 5.3 API（/api/v1，统一信封 `{code, msg, err, args, data}`，code 0=成功，非 0 同 HTTP 状态码）
 
-路由在 `admin/src/main.rs` 里以 `.ns()` 命名空间注册，共 **93 条**（91 个业务接口 +
+路由在 `admin/src/main.rs` 里以 `.ns()` 命名空间注册，共 **95 条**（93 个业务接口 +
 `/api/v1/health` 探活 + `/api/v1/version` 版本）；**不在这里逐条抄录** ——
 完整契约（路径、请求体、响应字段、示例）**以 `/apidoc/api.json` 为准**：该文件由 apidoc 在
 启动时物化，开启方式见 README「接口文档站（apidoc-rust）」（`[apidoc] enabled = true` +
