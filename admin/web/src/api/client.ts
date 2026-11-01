@@ -93,18 +93,28 @@ async function unwrap<T>(p: Promise<{ data: ApiResult<T> }>): Promise<T> {
   return res.data.data;
 }
 
-export const http = {
-  /** `cfg` 只用来传 `silent` 或长超时这类请求级选项，别当透传口子用。 */
-  get: <T>(url: string, params?: object, cfg?: AxiosRequestConfig) =>
-    unwrap<T>(client.get(url, { params, ...cfg })),
-  post: <T>(url: string, data?: object, cfg?: AxiosRequestConfig) =>
-    unwrap<T>(client.post(url, data, cfg)),
-  put: <T>(url: string, data?: object) => unwrap<T>(client.put(url, data)),
-  del: <T>(url: string, params?: object) => unwrap<T>(client.delete(url, { params })),
-  /**
-   * 导出等二进制响应：不走 unwrap（响应体不是 JSON 信封）。
-   * timeout: 0 关掉全局 15s —— 数据量大时同步导出会被提前掐断。
-   */
-  blob: (url: string, params?: object) =>
-    client.get<Blob>(url, { params, responseType: 'blob', timeout: 0 }),
-};
+/**
+ * 按 API 版本建一组请求方法。版本在路径前缀上（`/api/v1`、`/api/v2`），
+ * 请求级 `baseURL` 覆盖实例默认值；业务调用方只选 `http` / `httpV2`，别再手拼前缀。
+ */
+function makeHttp(baseURL: '/api/v1' | '/api/v2') {
+  return {
+    /** `cfg` 只用来传 `silent` 或长超时这类请求级选项，别当透传口子用。 */
+    get: <T>(url: string, params?: object, cfg?: AxiosRequestConfig) =>
+      unwrap<T>(client.get(url, { ...cfg, params, baseURL })),
+    post: <T>(url: string, data?: object, cfg?: AxiosRequestConfig) =>
+      unwrap<T>(client.post(url, data, { ...cfg, baseURL })),
+    put: <T>(url: string, data?: object) => unwrap<T>(client.put(url, data, { baseURL })),
+    del: <T>(url: string, params?: object) => unwrap<T>(client.delete(url, { params, baseURL })),
+    /**
+     * 导出等二进制响应：不走 unwrap（响应体不是 JSON 信封）。
+     * timeout: 0 关掉全局 15s —— 数据量大时同步导出会被提前掐断。
+     */
+    blob: (url: string, params?: object) =>
+      client.get<Blob>(url, { params, responseType: 'blob', timeout: 0, baseURL }),
+  };
+}
+
+export const http = makeHttp('/api/v1');
+/** 公告模块用 v2：列表/未读是摘要，v1 则保留完整行。 */
+export const httpV2 = makeHttp('/api/v2');

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
-//! 公告列表/未读只回摘要（正文按详情取），草稿详情不向无列表权限的人披露，
-//! 发布/取消发布走窄接口 `PUT /notices/{id}/status`。
+//! `/api/v2` 公告列表/未读只回摘要（正文按详情取），草稿详情不向无列表权限的人披露，
+//! 发布/取消发布走窄接口 `PUT /notices/{id}/status`；
+//! `/api/v1` 保持完整行契约（列表/未读含正文），验证破坏性变更没有漏进旧版本。
 mod common;
 
 use reqwest::Method;
@@ -81,7 +82,8 @@ async fn notice_summary_detail_and_status() {
     let Some(dsn) = common::dsn() else { return };
     common::reset_db(&dsn).await;
     let (_server, base) = common::start_server().await;
-    let api = |p: &str| format!("{base}/api/v1{p}");
+    let v1 = |p: &str| format!("{base}/api/v1{p}");
+    let api = |p: &str| format!("{base}/api/v2{p}");
     let c = reqwest::Client::new();
     let pool = sqlx::MySqlPool::connect(&dsn).await.unwrap();
     let admin = common::login(&base, "admin", "admin123").await.expect("超管登录");
@@ -126,11 +128,20 @@ async fn notice_summary_detail_and_status() {
     assert_eq!(v["data"]["total"], 1, "状态筛选不变: {v}");
     assert_eq!(v["data"]["list"][0]["id"], json!(n2), "{v}");
 
+    // v1 兼容契约：列表仍是完整行（含正文 / created_by），不随 v2 摘要化
+    let (st, v) = call(&c, Method::GET, v1("/notices"), Some(&admin), None).await;
+    assert_eq!(st, 200, "v1 公告列表: {v}");
+    assert_eq!(v["data"]["total"], 2, "{v}");
+    for row in v["data"]["list"].as_array().unwrap() {
+        assert!(row.get("content").is_some(), "v1 列表保留正文: {row}");
+        assert!(row.get("created_by").is_some(), "v1 列表保留 created_by: {row}");
+    }
+
     // ── 普通用户（空权限）：未读只有已发布且不带正文 ───────────
     let (st, v) = call(
         &c,
         Method::POST,
-        api("/roles"),
+        v1("/roles"),
         Some(&admin),
         Some(json!({"name": "notice_none", "code": "notice_none", "data_scope": 4, "status": 1})),
     )
@@ -140,7 +151,7 @@ async fn notice_summary_detail_and_status() {
     let (st, v) = call(
         &c,
         Method::POST,
-        api("/admins"),
+        v1("/admins"),
         Some(&admin),
         Some(
             json!({"username": "notice_plain", "password": "plain12345", "role_ids": [empty_role]}),
@@ -160,6 +171,12 @@ async fn notice_summary_detail_and_status() {
     for k in ["id", "title", "status", "published_at", "created_at", "updated_at"] {
         assert!(unread[0].get(k).is_some(), "未读摘要缺字段 {k}: {v}");
     }
+
+    // v1 未读仍是完整行，外部调用方不会被这次摘要化打断
+    let (st, v) = call(&c, Method::GET, v1("/notices/unread"), Some(&plain), None).await;
+    assert_eq!(st, 200, "v1 未读: {v}");
+    assert_eq!(v["data"]["total"], 1, "{v}");
+    assert_eq!(v["data"]["list"][0]["content"], "今晚 22:00 停机维护\n请提前保存工作", "{v}");
 
     // ── 详情：已发布登录即可；草稿只对有 list 权限的人可见 ─────
     let (st, v) = call(&c, Method::GET, api(&format!("/notices/{n1}")), Some(&plain), None).await;
@@ -183,11 +200,11 @@ async fn notice_summary_detail_and_status() {
     assert_eq!(st, 401, "详情要登录");
 
     // 非超管但挂了 system:notice:list：草稿详情可见
-    let (st, v) = call(&c, Method::GET, api("/menus/tree"), Some(&admin), None).await;
+    let (st, v) = call(&c, Method::GET, v1("/menus/tree"), Some(&admin), None).await;
     assert_eq!(st, 200, "菜单树: {v}");
-    let list_menu = find_perm(&v["data"], "system:notice:list").expect("种子里有 system:notice:list");
-    let lister =
-        user_with_perm(&c, &api, &base, &admin, "notice_lister", list_menu).await;
+    let list_menu =
+        find_perm(&v["data"], "system:notice:list").expect("种子里有 system:notice:list");
+    let lister = user_with_perm(&c, &v1, &base, &admin, "notice_lister", list_menu).await;
     let (st, v) = call(&c, Method::GET, api(&format!("/notices/{n2}")), Some(&lister), None).await;
     assert_eq!(st, 200, "有 list 权限（非超管）能看草稿详情: {v}");
     assert_eq!(v["data"]["content"], "还没想好", "{v}");
@@ -292,4 +309,25 @@ async fn notice_summary_detail_and_status() {
     .await
     .unwrap();
     assert_eq!(n, 5, "状态变更全部留痕: {n}");
+
+    // v2 的其余公告别名也必须真实可达（同一 handler，路由不能漏挂）
+    let (st, v) = call(
+        &c,
+        Method::PUT,
+        api(&format!("/notices/{n1}")),
+        Some(&admin),
+        Some(json!({
+            "title": "系统维护",
+            "content": "今晚 22:00 停机维护\n请提前保存工作",
+            "status": 1,
+        })),
+    )
+    .await;
+    assert_eq!(st, 200, "v2 编辑公告: {v}");
+    let (st, v) =
+        call(&c, Method::POST, api(&format!("/notices/{n1}/read")), Some(&plain), None).await;
+    assert_eq!(st, 200, "v2 标记已读: {v}");
+    let (st, v) =
+        call(&c, Method::DELETE, api(&format!("/notices/{n2}")), Some(&admin), None).await;
+    assert_eq!(st, 200, "v2 删除公告: {v}");
 }

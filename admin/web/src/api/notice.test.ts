@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// 拦掉 client（axios/antd 拦截器都不拉起）：只钉路径与请求体
+// 拦掉 client（axios/antd 拦截器都不拉起）：只钉路径与请求体。
+// 公告走 v2 方法组；路径仍以 /notices 开头，版本前缀由 httpV2 负责。
 const { get, post, put, del } = vi.hoisted(() => ({
   get: vi.fn(), post: vi.fn(), put: vi.fn(), del: vi.fn(),
 }));
-vi.mock('./client', () => ({ http: { get, post, put, del } }));
+vi.mock('./client', () => ({ httpV2: { get, post, put, del } }));
 
 import { noticeApi } from './notice';
 

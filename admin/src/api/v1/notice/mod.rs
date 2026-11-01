@@ -1,6 +1,12 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 //! 通知公告（v1.6.0 C2b）：管理侧增删改查 + 每个登录用户的未读/标记已读。
 //! `unread` / `{id}/read` 只认登录（和字典下拉同理：每个登录用户都要有的能力，不挂权限码）。
+//!
+//! 版本化：摘要列表/未读挂在 `/api/v2/notices`；`compat` 保留 `/api/v1` 的完整行契约。
+//! 其余公告接口（CRUD / 详情 / 状态 / 已读）在 v1、v2 两个前缀下都可用。
+pub mod compat;
+mod summary;
+
 use crate::api::{PagingExt, check_len, page_size};
 use crate::auth::Auth;
 use crate::error::{ApiError, AppJson, AppPath, AppQuery, ok};
@@ -11,10 +17,11 @@ use crate::state::AppState;
 use crate::util::now;
 use axum::Json;
 use axum::extract::State;
-use bee_orm::{Model, OrmError, Row, Value as DbValue};
+use bee_orm::{Model, OrmError, Value as DbValue};
 use chrono::NaiveDateTime;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{Value, json};
+use summary::NoticeSummary;
 
 /// 未读列表一次最多回多少条（角标用 `total`，不是这个长度）。
 const UNREAD_LIMIT: i64 = 50;
@@ -82,52 +89,9 @@ pub struct NoticeStatus {
     pub status: i8,
 }
 
-/// 列表 / 未读行：**不带正文**。正文最长 20k 字（64KB），列表最多 100 行、
-/// 铃铛 50 行，整篇下发既费带宽又没必要 —— 编辑和「查看全文」按需走详情。
-#[derive(Serialize)]
-pub struct NoticeSummary {
-    #[serde(serialize_with = "crate::hid::ser_id")]
-    id: i64,
-    title: String,
-    status: i8,
-    #[serde(serialize_with = "crate::util::ser_opt_dt")]
-    published_at: Option<NaiveDateTime>,
-    #[serde(serialize_with = "crate::util::ser_dt")]
-    created_at: NaiveDateTime,
-    #[serde(serialize_with = "crate::util::ser_dt")]
-    updated_at: NaiveDateTime,
-}
-
-impl NoticeSummary {
-    /// 未读列表走裸 SQL 只查摘要列，连库里的正文都不读。
-    fn from_row(row: &Row) -> Result<Self, OrmError> {
-        Ok(Self {
-            id: bee_orm::decode(row, "id")?,
-            title: bee_orm::decode(row, "title")?,
-            status: bee_orm::decode(row, "status")?,
-            published_at: bee_orm::decode(row, "published_at")?,
-            created_at: bee_orm::decode(row, "created_at")?,
-            updated_at: bee_orm::decode(row, "updated_at")?,
-        })
-    }
-}
-
-impl From<Notice> for NoticeSummary {
-    fn from(n: Notice) -> Self {
-        Self {
-            id: n.id,
-            title: n.title,
-            status: n.status,
-            published_at: n.published_at,
-            created_at: n.created_at,
-            updated_at: n.updated_at,
-        }
-    }
-}
-
-#[apidoc::title("公告列表")]
+#[apidoc::title("公告列表（v2）")]
 #[apidoc::desc("标题模糊 + 状态筛选 + 分页（管理页）；行是摘要，不含正文（编辑时取详情）")]
-#[apidoc::url("/api/v1/notices")]
+#[apidoc::url("/api/v2/notices")]
 #[apidoc::method("GET")]
 #[apidoc::tag("公告")]
 #[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
@@ -413,11 +377,11 @@ pub async fn detail(
 /// 当前用户的未读列表：已发布 + 自己没读过，按 id DESC 取最近 50 条。
 /// `total` 是**未读总数**（铃铛角标用它，不能拿 `list.length`——超过 50 条就少报了）。
 /// 行是摘要（不含正文）：正文只在点开「查看全文」时按 id 取。
-#[apidoc::title("我的未读公告")]
+#[apidoc::title("我的未读公告（v2）")]
 #[apidoc::desc(
     "登录即可。已发布 + 自己没读过，按 id DESC 取最近 50 条；total 是**未读总数**（铃铛角标用它）；行是摘要，不含正文"
 )]
-#[apidoc::url("/api/v1/notices/unread")]
+#[apidoc::url("/api/v2/notices/unread")]
 #[apidoc::method("GET")]
 #[apidoc::tag("公告")]
 #[apidoc::header(name = "Authorization", desc = "Bearer <token>")]

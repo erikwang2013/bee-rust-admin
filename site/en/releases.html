@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Releases · BRA</title>
-<meta name="description" content="BRA release log: from v1.0.0 to v2.18.1, features, security fixes and deployment changes.">
+<meta name="description" content="BRA release log: from v1.0.0 to v2.18.2, features, security fixes and deployment changes.">
 <meta name="keywords" content="BRA, Bee Rust Admin, Rust admin, RBAC, permissions, data scope, audit logs">
 <meta name="theme-color" content="#fff9ec">
 <link rel="canonical" href="https://package.erik.xyz/bra/en/releases.html">
@@ -23,7 +23,7 @@
 <meta property="og:image:alt" content="BRA · Bee Rust Admin preview">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Releases · BRA">
-<meta name="twitter:description" content="BRA release log: from v1.0.0 to v2.18.1, features, security fixes and deployment changes.">
+<meta name="twitter:description" content="BRA release log: from v1.0.0 to v2.18.2, features, security fixes and deployment changes.">
 <meta name="twitter:image" content="https://package.erik.xyz/bra/en/assets/img/en/og.png">
 
 <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
@@ -61,19 +61,24 @@
 <section class="release-hero">
   <div class="container">
     <p class="eyebrow">Releases</p>
-    <h1>40 releases, one continuous line</h1>
-    <p class="lead">From the first complete RBAC admin to the latest payload and build cleanup. Every version says what changed and whether an upgrade is needed. Full notes are in Chinese on GitHub.</p>
+    <h1>41 releases, one continuous line</h1>
+    <p class="lead">From the first complete RBAC admin to the latest API versioning fix. Every version says what changed and whether an upgrade is needed. Full notes are in Chinese on GitHub.</p>
     <div class="release-meta">
-      <span class="badge badge--honey">Latest v2.18.1</span>
+      <span class="badge badge--honey">Latest v2.18.2</span>
       <span class="badge">2026-11-01</span>
-      <span class="badge badge--cyan">40 releases</span>
+      <span class="badge badge--cyan">41 releases</span>
       <a class="badge" href="https://github.com/erikwang2013/bee-rust-admin/releases" target="_blank" rel="noopener">GitHub Releases ↗</a>
     </div>
   </div>
 </section>
 <div class="container"><div class="release-list">
 <article class="release-item">
-  <div class="release-head"><span class="ver">v2.18.1</span><time class="date" datetime="2026-11-01">2026-11-01</time> <span class="latest">LATEST</span></div>
+  <div class="release-head"><span class="ver">v2.18.2</span><time class="date" datetime="2026-11-01">2026-11-01</time> <span class="latest">LATEST</span></div>
+  <h2 class="rel-title">API versioning compatibility fix</h2>
+  <p class="rel-summary">Restores the full-row contract for <code>GET /api/v1/notices</code> and <code>/api/v1/notices/unread</code> (including <code>content</code>) and moves summaries to <code>/api/v2/notices</code>; v2 also carries detail, status, CRUD and mark-read endpoints. The frontend notice module uses v2 while every other module stays on v1. API docs list 97 entries and the README documents the version rules. No database changes; v1 clients need no code changes.</p>
+  <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.18.2" target="_blank" rel="noopener">Full release notes on GitHub →</a>
+</article><article class="release-item">
+  <div class="release-head"><span class="ver">v2.18.1</span><time class="date" datetime="2026-11-01">2026-11-01</time></div>
   <h2 class="rel-title">Notice payload + build cleanup</h2>
   <p class="rel-summary">Notice list/unread now return summaries, with detail and status endpoints; edit and the bell's View full fetch the body on demand. Unknown menu icons fall back to a default icon, cutting the build from 806 JS files to 39 and the entry back to ~212KB. Adds temp-cleanup tests, a stable password-too-long error code, and refreshed site docs. Compatibility: <code>GET /notices</code> and <code>/notices/unread</code> no longer include <code>content</code>; external clients should use the detail endpoint.</p>
   <a class="gh-link" href="https://github.com/erikwang2013/bee-rust-admin/releases/tag/v2.18.1" target="_blank" rel="noopener">Full release notes on GitHub →</a>

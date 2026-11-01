@@ -6,10 +6,12 @@ use bee_orm::{Model, OrmError, QuerySet, Value};
 
 pub mod csv;
 pub mod v1;
+pub mod v2;
 
-/// 版本化入口：业务接口全部挂在 `v1` 下（HTTP 面 `/api/v1`）。
+/// 版本化入口：默认业务接口挂在 `v1` 下（HTTP 面 `/api/v1`），
+/// 发生破坏性变更的模块在 `v2` 下单独入口（HTTP 面 `/api/v2`）。
 /// 这里 `pub use` 只为保持既有 `crate::api::<module>` 引用路径（含 `main.rs` 的路由
-/// 注册）零改动；新代码请直接写 `api::v1::<module>`。
+/// 注册）零改动；新代码请直接写 `api::v1::<module>` / `api::v2::<module>`。
 pub use v1::*;
 
 /// 按 id 分批删；返回**实际**删除条数。

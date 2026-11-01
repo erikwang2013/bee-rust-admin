@@ -1,4 +1,4 @@
-import { http } from './client';
+import { httpV2 as http } from './client';
 import type { Notice, NoticeSummary, NoticeUnread, Page } from './types';
 
 export interface NoticeQuery { page?: number; size?: number; title?: string; status?: number }

@@ -263,10 +263,13 @@ system                   目录
 └─ system:attach         菜单 /system/attach     list add edit remove
 ```
 
-### 5.3 API（/api/v1，统一信封 `{code, msg, err, args, data}`，code 0=成功，非 0 同 HTTP 状态码）
+### 5.3 API（/api/v1、/api/v2，统一信封 `{code, msg, err, args, data}`，code 0=成功，非 0 同 HTTP 状态码）
 
-路由在 `admin/src/main.rs` 里以 `.ns()` 命名空间注册，共 **95 条**（93 个业务接口 +
-`/api/v1/health` 探活 + `/api/v1/version` 版本）；**不在这里逐条抄录** ——
+路由在 `admin/src/main.rs` 里以 `.ns()` 命名空间注册，共 **103 条**（101 个业务路由 +
+`/api/v1/health` 探活 + `/api/v1/version` 版本；其中 `/api/v2/notices` 的 8 条公告路由与 v1
+复用实现）；apidoc 收录 **97 条**条目（v2 的 6 个公告写接口复用 v1 handler，不重复注解）。
+版本化约定：破坏性变更只进新前缀，`/api/v1` 公告列表/未读保持完整行，`/api/v2` 列表/未读
+返回摘要。**不在这里逐条抄录** ——
 完整契约（路径、请求体、响应字段、示例）**以 `/apidoc/api.json` 为准**：该文件由 apidoc 在
 启动时物化，开启方式见 README「接口文档站（apidoc-rust）」（`[apidoc] enabled = true` +
 `password`）。本节只给模块清单与权限码前缀，历史各版新增接口的契约同样以 api.json 为准。

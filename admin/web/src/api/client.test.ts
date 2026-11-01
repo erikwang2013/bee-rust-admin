@@ -6,7 +6,7 @@ import { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 
 const { toast } = vi.hoisted(() => ({ toast: vi.fn() }));
 vi.mock('antd', () => ({ message: { error: toast } }));
 
-import { TOKEN_KEY, client, envelopeError, errCodeOf, http } from './client';
+import { TOKEN_KEY, client, envelopeError, errCodeOf, http, httpV2 } from './client';
 import { importApi } from './import';
 
 describe('errCodeOf', () => {
@@ -153,5 +153,25 @@ describe('长请求超时', () => {
     const timeout = capture({ code: 0, msg: 'ok', data: { kind: 'admin', created: 0, rows: [] } });
     await importApi.upload('admin', new File(['id\n'], 'a.csv', { type: 'text/csv' }));
     expect(timeout()).toBe(180000);
+  });
+});
+
+describe('API 版本前缀', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', { getItem: () => null, removeItem: vi.fn() });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('http 用 /api/v1，httpV2 用 /api/v2，业务路径不手拼版本', async () => {
+    let seen: { url?: string; baseURL?: string } = {};
+    client.defaults.adapter = async (cfg: InternalAxiosRequestConfig): Promise<AxiosResponse> => {
+      seen = { url: cfg.url, baseURL: cfg.baseURL };
+      return { data: { code: 0, msg: 'ok', data: null }, status: 200, statusText: 'OK', headers: {}, config: cfg };
+    };
+
+    await http.get('/notices');
+    expect(seen).toEqual({ url: '/notices', baseURL: '/api/v1' });
+    await httpV2.get('/notices');
+    expect(seen).toEqual({ url: '/notices', baseURL: '/api/v2' });
   });
 });

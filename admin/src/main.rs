@@ -48,10 +48,12 @@ async fn version() -> axum::Json<serde_json::Value> {
     axum::Json(serde_json::json!({ "version": env!("BEE_ADMIN_VERSION") }))
 }
 
-/// 路由级兜底只改 `/api/v1` 树内的响应形状；树外的路径保持 axum 原样
+/// 路由级兜底只改 `/api/v1`、`/api/v2` 树内的响应形状；树外的路径保持 axum 原样
 /// （树外将来可能挂静态资源/别的服务，不该替它们改响应）。
 fn in_api(path: &str) -> bool {
-    path == "/api/v1" || path.starts_with("/api/v1/")
+    matches!(path, "/api/v1" | "/api/v2")
+        || path.starts_with("/api/v1/")
+        || path.starts_with("/api/v2/")
 }
 
 /// 路由级 404（A1）：未匹配的路径也回 `{code,msg,data}` 信封。
@@ -108,7 +110,7 @@ fn apidoc_config(cfg: &AppConfig) -> apidoc::ApidocConfig {
     apidoc::ApidocConfig {
         title: format!("{} 接口文档", cfg.app_name),
         description: Some(
-            "bee-rust-admin 后台接口（/api/v1）。数据路由需带 token：先 POST /apidoc/auth（body {\"password\":\"…\"}）换 token，再以 ?token=… 访问。".into(),
+            "bee-rust-admin 后台接口（/api/v1、/api/v2）。数据路由需带 token：先 POST /apidoc/auth（body {\"password\":\"…\"}）换 token，再以 ?token=… 访问。".into(),
         ),
         auth: Some(apidoc::auth::AuthConfig {
             enable: true,
@@ -376,16 +378,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .delete("/{id}", api::export::remove)
         })
         .ns("/api/v1/job-logs", |ns| ns.get("", api::job::log_list))
+        // v1 公告：列表/未读保持完整行（兼容契约）；其余接口与 v2 共用 handler。
         .ns("/api/v1/notices", |ns| {
-            ns.get("", api::notice::list)
+            ns.get("", api::notice::compat::list)
                 .post("", api::notice::create)
                 // 未读/标记已读：登录即可（不挂权限码），静态段优先于 /{id}
-                .get("/unread", api::notice::unread)
+                .get("/unread", api::notice::compat::unread)
                 .get("/{id}", api::notice::detail)
                 .post("/{id}/read", api::notice::read)
                 .put("/{id}/status", api::notice::set_status)
                 .put("/{id}", api::notice::update)
                 .delete("/{id}", api::notice::remove)
+        })
+        // v2 公告：列表/未读改为摘要；其余接口同 v1，客户端可整体切到 v2。
+        .ns("/api/v2/notices", |ns| {
+            ns.get("", api::v2::notice::list)
+                .post("", api::v2::notice::create)
+                .get("/unread", api::v2::notice::unread)
+                .get("/{id}", api::v2::notice::detail)
+                .post("/{id}/read", api::v2::notice::read)
+                .put("/{id}/status", api::v2::notice::set_status)
+                .put("/{id}", api::v2::notice::update)
+                .delete("/{id}", api::v2::notice::remove)
         })
         // 通知渠道（项 6）：Webhook 出站配置 + SMTP 测试邮件。口令只进不出（见 api::notify）
         .ns("/api/v1/notify", |ns| {
@@ -449,14 +463,19 @@ mod tests {
         assert_eq!(parse_level(""), Level::INFO);
     }
 
-    /// 兜底的作用域护栏：只认 `/api/v1` 树内，别把 `/api/v10` 这种兄弟路径也算进来。
+    /// 兜底的作用域护栏：只认 `/api/v1`、`/api/v2` 树内，别把 `/api/v10` 这种兄弟路径也算进来。
     #[test]
-    fn fallback_scope_is_api_v1_only() {
+    fn fallback_scope_is_api_v1_and_v2() {
         assert!(in_api("/api/v1"));
         assert!(in_api("/api/v1/"));
         assert!(in_api("/api/v1/nope"));
+        assert!(in_api("/api/v2"));
+        assert!(in_api("/api/v2/"));
+        assert!(in_api("/api/v2/notices"));
         assert!(!in_api("/api/v10"));
         assert!(!in_api("/api/v10/nope"));
+        assert!(!in_api("/api/v20"));
+        assert!(!in_api("/api/v20/nope"));
         assert!(!in_api("/"));
         assert!(!in_api("/static/app.js"));
     }

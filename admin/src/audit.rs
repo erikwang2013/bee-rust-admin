@@ -176,7 +176,8 @@ pub(crate) async fn actor(state: &AppState, headers: &axum::http::HeaderMap) -> 
 /// path + method →（模块, 动作）。只列会改数据的接口（中间件也只记 POST/PUT/DELETE）；
 /// 未列出的路径归 `other`，动作用 `METHOD /path`，方便事后发现可疑探测。
 fn module_action(method: &Method, path: &str) -> (String, String) {
-    let rest = path.strip_prefix("/api/v1/").unwrap_or(path);
+    let rest =
+        path.strip_prefix("/api/v1/").or_else(|| path.strip_prefix("/api/v2/")).unwrap_or(path);
     let seg: Vec<&str> = rest.split('/').filter(|s| !s.is_empty()).collect();
     let (module, action) = match (method.as_str(), seg.as_slice()) {
         ("POST", ["admins"]) => ("admin", "新增管理员"),
@@ -333,6 +334,15 @@ mod tests {
         assert_eq!(
             module_action(&Method::DELETE, "/api/v1/notices/9"),
             ("notice".into(), "删除公告".into())
+        );
+        // v2 前缀同样要归到 notice，不能掉进 other
+        assert_eq!(
+            module_action(&Method::PUT, "/api/v2/notices/9/status"),
+            ("notice".into(), "修改公告状态".into())
+        );
+        assert_eq!(
+            module_action(&Method::POST, "/api/v2/notices"),
+            ("notice".into(), "新增公告".into())
         );
     }
 

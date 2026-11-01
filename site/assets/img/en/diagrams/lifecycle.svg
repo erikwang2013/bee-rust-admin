@@ -78,7 +78,7 @@
   
   <rect class="box-backend" x="120" y="440" width="420" height="50" rx="7"/>
   <text class="t-name" x="136" y="462">⑥ Listen on 127.0.0.1:8080</text>
-  <text class="t-sub"  x="136" y="479">bee_router (axum) registers 95 endpoints; /api/v1/health for probes</text>
+  <text class="t-sub"  x="136" y="479">bee_router (axum) registers 97 endpoints; /api/v1/health for probes</text>
 
   
   <rect class="box-backend" x="120" y="508" width="420" height="50" rx="7"/>
