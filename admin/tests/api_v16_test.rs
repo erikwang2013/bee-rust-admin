@@ -200,10 +200,19 @@ async fn v16_job_notice_features() {
         .fetch_one(&pool)
         .await
         .unwrap();
+    // 孤儿清理有 5 分钟保护期（上传先落盘、后落库）；测试文件写入后要显式做旧，
+    // 否则会被 too_fresh 跳过，测不到「该删的孤儿」。
+    let age_file = |name: &str| {
+        let path = dir.join(name);
+        let file = std::fs::File::options().write(true).open(&path).unwrap();
+        file.set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(600))
+            .unwrap();
+    };
 
     // 老形态：列里是 4b 之前的 URL，落盘是老路径 `{id}.{ext}` → 必须留着（存量头像在用）
     let legacy_name = format!("{admin_id}.png");
     std::fs::write(dir.join(&legacy_name), b"x").unwrap();
+    age_file(&legacy_name);
     sqlx::query("UPDATE admin SET avatar = ? WHERE id = ?")
         .bind("/api/v1/avatar/legacy-short-id")
         .bind(admin_id)
@@ -218,6 +227,10 @@ async fn v16_job_notice_features() {
         "头像.png",     // 名字里带中文不再豁免：只看扩展名（png 且没人引用 → 删）
     ] {
         std::fs::write(dir.join(name), b"x").unwrap();
+    }
+    // 只把真正的孤儿做旧；`half.png.part` 保持新鲜，验证清理任务不碰进行中的临时文件。
+    for name in ["999999.png", "头像.png"] {
+        age_file(name);
     }
     let mark = common::last_log_id(&pool, "avatar_orphan_clean").await;
     common::trigger(&c, &base, &avatar_id, &admin).await;

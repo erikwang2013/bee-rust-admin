@@ -276,7 +276,10 @@ pub async fn set_status(
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:notice:edit")?;
     let id = hid::dec(&id)?;
-    let mut n = Notice::query()
+    if !matches!(body.status, 0 | 1) {
+        return Err(ApiError::BadRequest("公告状态只能是 0 或 1".into()));
+    }
+    let n = Notice::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
         .one(&state.db)
@@ -285,11 +288,23 @@ pub async fn set_status(
         .ok_or(ApiError::NotFound)?;
 
     let was_published = n.status == 1;
-    n.status = body.status;
-    n.published_at = publish_at(body.status, n.published_at);
-    n.updated_at = now();
-    n.update(&state.db).await.map_err(ApiError::from)?;
-    if !was_published && n.status == 1 {
+    let published_at = publish_at(body.status, n.published_at);
+    // 只写状态相关的三列：整行 update 会把读快照里的 title/content/created_by 写回去，
+    // 抹掉并发编辑。published_at 仍遵守「首次发布才写」的旧语义。
+    state
+        .db
+        .execute(
+            "UPDATE notice SET status = ?, published_at = ?, updated_at = ? WHERE id = ?",
+            &[
+                DbValue::from(body.status),
+                DbValue::from(published_at),
+                DbValue::from(now()),
+                DbValue::from(id),
+            ],
+        )
+        .await
+        .map_err(ApiError::from)?;
+    if !was_published && body.status == 1 {
         notify::emit(
             &state,
             notify::EVENT_NOTICE_PUBLISHED,
