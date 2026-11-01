@@ -13,6 +13,11 @@
 use crate::state::AppState;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+/// mysqldump 的硬超时：一小时。全库 dump 通常分钟级，超过这条线基本是库被锁死 /
+/// 客户端挂住 —— 必须收掉，否则备份任务会一直占着 `Busy` 闸，后续调度全被跳过。
+const DUMP_TIMEOUT: Duration = Duration::from_secs(3600);
 
 /// `[db] dsn` 解析结果（mysqldump 需要的五项）。
 #[derive(Debug, PartialEq)]
@@ -124,8 +129,8 @@ pub async fn run(state: AppState) -> Result<String, String> {
         .open(&tmp)
         .map_err(|e| format!("创建 {} 失败: {e}", tmp.display()))?;
 
-    let out = tokio::process::Command::new("mysqldump")
-        .arg(format!("--host={}", dsn.host))
+    let mut cmd = tokio::process::Command::new("mysqldump");
+    cmd.arg(format!("--host={}", dsn.host))
         .arg(format!("--port={}", dsn.port))
         .arg(format!("--user={}", dsn.user))
         // 一致性快照（InnoDB），不锁表；--no-tablespaces：没有 PROCESS 权限的账号
@@ -135,10 +140,15 @@ pub async fn run(state: AppState) -> Result<String, String> {
         .arg(format!("--result-file={}", tmp.display()))
         .arg(&dsn.db)
         .env("MYSQL_PWD", &dsn.password)
-        .stdin(std::process::Stdio::null())
-        .output()
-        .await
-        .map_err(|e| format!("执行 mysqldump 失败（mysql 客户端装了吗）: {e}"))?;
+        .stdin(std::process::Stdio::null());
+    let out = match run_dump(cmd, DUMP_TIMEOUT).await {
+        Ok(out) => out,
+        Err(e) => {
+            // spawn 失败 / 超时都别留半成品：`.part` 会被当成「中断的 dump」占着目录
+            let _ = tokio::fs::remove_file(&tmp).await;
+            return Err(e);
+        }
+    };
 
     if !out.status.success() {
         let _ = tokio::fs::remove_file(&tmp).await;
@@ -166,6 +176,21 @@ pub async fn run(state: AppState) -> Result<String, String> {
     Ok(format!(
         "备份 {name}（{size} 字节）；清理旧备份 {removed} 份、残留临时文件 {stale_parts} 个"
     ))
+}
+
+/// 跑 mysqldump，带硬超时。`kill_on_drop` 是超时路径的关键：`timeout` 到点后
+/// `output()` 的 future 被 drop，Child 跟着 drop 时把子进程杀掉，不会留一个还在
+/// 写 `.part` 的 mysqldump 在后台跑。
+async fn run_dump(
+    mut cmd: tokio::process::Command,
+    limit: Duration,
+) -> Result<std::process::Output, String> {
+    cmd.kill_on_drop(true);
+    match tokio::time::timeout(limit, cmd.output()).await {
+        Ok(Ok(out)) => Ok(out),
+        Ok(Err(e)) => Err(format!("执行 mysqldump 失败（mysql 客户端装了吗）: {e}")),
+        Err(_) => Err(format!("mysqldump 超时：超过 {} 秒未完成，已终止", limit.as_secs())),
+    }
 }
 
 /// 删最旧的备份，保最新 `keep` 份。文件名里时间戳（`YYYYmmdd_HHMMSS`）在前，
@@ -371,6 +396,26 @@ mod tests {
         assert!(dir.join("manual.sql.part").exists());
         assert!(dir.join("backup_20260109_000000.sql.part.bak").exists());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 超时：到点必须返回错误（调用方据此删 `.part`），且子进程被 kill_on_drop 收掉。
+    /// `sleep 5` 配 50ms 超时：正常情况下测试 2 秒内就该返回，不会留 5 秒的尾巴。
+    #[tokio::test]
+    async fn dump_times_out_and_kills_the_child() {
+        let mut cmd = tokio::process::Command::new("sleep");
+        cmd.arg("5");
+        let start = std::time::Instant::now();
+        let err = run_dump(cmd, Duration::from_millis(50)).await.unwrap_err();
+        assert!(err.contains("超时"), "超时要给清楚的错误: {err}");
+        assert!(start.elapsed() < Duration::from_secs(2), "超时不能拖到子进程自然结束");
+    }
+
+    /// spawn 失败（mysql 客户端没装）也是 Err，调用方删 `.part` 后把消息写进 job_log。
+    #[tokio::test]
+    async fn dump_spawn_failure_is_an_error() {
+        let cmd = tokio::process::Command::new("bee-admin-no-such-mysqldump");
+        let err = run_dump(cmd, Duration::from_secs(1)).await.unwrap_err();
+        assert!(err.contains("mysqldump"), "错误要说清是哪一步失败: {err}");
     }
 
     /// stderr 尾巴：超长只留结尾；不是按字节切（多字节字符不炸）。

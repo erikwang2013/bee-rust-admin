@@ -15,6 +15,7 @@
 
 use crate::audit;
 use crate::error::{ApiError, SECURITY_BLOCKED};
+use crate::log_gate;
 use crate::models::AuditLog;
 use crate::state::AppState;
 use crate::util::now;
@@ -151,30 +152,35 @@ pub async fn scan_mw(State(state): State<AppState>, req: Request, next: Next) ->
 
     // 先留痕再放行/拦截：审计失败不影响业务（与 audit_mw 同一个态度）。
     // 拦截时请求不会走到 audit_mw，这条就是唯一的记录，所以带操作者。
-    let (admin_id, username) = audit::actor(&state, req.headers()).await;
-    match state.next_id() {
-        Ok(id) => {
-            let row = AuditLog {
-                id,
-                admin_id,
-                username,
-                module: "security".into(),
-                action: "安全扫描命中".into(),
-                method: method.to_string(),
-                path: path.chars().take(255).collect(),
-                status: if blocked { 0 } else { 1 },
-                // 只记等级与检测器名：审计日志长期保留，原始 payload 不进库
-                msg: hit.detail().chars().take(255).collect(),
-                changes: String::new(),
-                duration_ms: 0,
-                ip: crate::api::auth::client_ip(req.headers()),
-                created_at: now(),
-            };
-            if let Err(e) = row.insert(&state.db).await {
-                tracing::error!("写安全扫描日志失败: {e}");
+    // 命中行按 IP 采样（每个窗口限条数）：扫描是纯计算，不采样的话一个请求循环
+    // 就是一条审计行。拦截判定在采样之外，不受影响。
+    let ip = crate::api::auth::client_ip(req.headers());
+    if log_gate::allow(format!("scan:{ip}")) {
+        let (admin_id, username) = audit::actor(&state, req.headers()).await;
+        match state.next_id() {
+            Ok(id) => {
+                let row = AuditLog {
+                    id,
+                    admin_id,
+                    username,
+                    module: "security".into(),
+                    action: "安全扫描命中".into(),
+                    method: method.to_string(),
+                    path: path.chars().take(255).collect(),
+                    status: if blocked { 0 } else { 1 },
+                    // 只记等级与检测器名：审计日志长期保留，原始 payload 不进库
+                    msg: hit.detail().chars().take(255).collect(),
+                    changes: String::new(),
+                    duration_ms: 0,
+                    ip,
+                    created_at: now(),
+                };
+                if let Err(e) = row.insert(&state.db).await {
+                    tracing::error!("写安全扫描日志失败: {e}");
+                }
             }
+            Err(e) => tracing::error!("生成安全扫描日志 id 失败: {e:?}"),
         }
-        Err(e) => tracing::error!("生成安全扫描日志 id 失败: {e:?}"),
     }
 
     if blocked {

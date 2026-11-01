@@ -296,23 +296,39 @@ pub async fn remove(
         return Err(ApiError::BadRequest("不能删除超级管理员".into()));
     }
     datascope::ensure_admin_in_scope(&auth, &state.db, &a).await?;
-    state
-        .db
-        .del_relations("admin_role", "admin_id", id)
-        .await
-        .map_err(ApiError::from)?;
-    // 设备行与备用码是这个人自己的附属数据，不跟着删就是永久孤儿（没有管理员能认领）
-    state
-        .db
-        .del_relations("admin_login_device", "admin_id", id)
-        .await
-        .map_err(ApiError::from)?;
-    state
-        .db
-        .del_relations("admin_backup_code", "admin_id", id)
-        .await
-        .map_err(ApiError::from)?;
-    a.delete(&state.db).await.map_err(ApiError::from)?;
+    // 附属数据与本人行同一事务：角色关系、设备、备用码、已读记录都是这个人的私产，
+    // 不跟着删就是永久孤儿（没有管理员能认领；`notice_read` 还会让公告的已读统计失真）。
+    // `notice_read` 是复合主键，按主键删不适用，走带参裸 SQL。
+    //
+    // 只删**未绑定**的附件（`entity_type = ''` 或 `entity_id = 0`）：行没了，
+    // `attach_orphan_clean` 才会回收盘上的文件。绑在公告上的附件是公开配图，**保留**
+    // —— 公告还在，删了图就裂了；这类文件由删除公告的路径负责回收。
+    let mut conn = state.db.get().await.map_err(ApiError::from)?;
+    conn.begin().await.map_err(ApiError::from)?;
+    let result = async {
+        conn.execute("DELETE FROM admin_role WHERE admin_id = ?", &[DbValue::from(id)]).await?;
+        conn.execute("DELETE FROM admin_login_device WHERE admin_id = ?", &[DbValue::from(id)])
+            .await?;
+        conn.execute("DELETE FROM admin_backup_code WHERE admin_id = ?", &[DbValue::from(id)])
+            .await?;
+        conn.execute("DELETE FROM notice_read WHERE admin_id = ?", &[DbValue::from(id)])
+            .await?;
+        conn.execute(
+            "DELETE FROM attachment WHERE admin_id = ? AND (entity_type = '' OR entity_id = 0)",
+            &[DbValue::from(id)],
+        )
+        .await?;
+        conn.execute("DELETE FROM admin WHERE id = ?", &[DbValue::from(id)]).await?;
+        Ok::<(), OrmError>(())
+    }
+    .await;
+    match result {
+        Ok(()) => conn.commit().await.map_err(ApiError::from)?,
+        Err(e) => {
+            let _ = conn.rollback().await;
+            return Err(e.into());
+        }
+    }
     Ok(ok(Value::Null))
 }
 

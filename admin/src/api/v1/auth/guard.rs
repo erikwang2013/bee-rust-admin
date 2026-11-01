@@ -44,6 +44,12 @@ pub async fn write_login_log(
     status: i8,
     msg: &str,
 ) {
+    let ip = client_ip(headers);
+    // 失败留痕按 IP 采样：匿名爆破每个窗口只留有限条。成功登录 / 退出照常全量 ——
+    // 那是正常业务记录，不是攻击面。
+    if status != 1 && !crate::log_gate::allow(format!("login-fail:{ip}")) {
+        return;
+    }
     // 发号失败 = 这条记录留不下（登录本身的成败不受影响）
     let Ok(id) = state.next_id() else {
         tracing::error!("生成登录记录 id 失败，跳过本次留档");
@@ -53,7 +59,7 @@ pub async fn write_login_log(
         id,
         admin_id,
         username: username.chars().take(64).collect(),
-        ip: client_ip(headers),
+        ip,
         user_agent: user_agent(headers),
         status,
         msg: msg.chars().take(255).collect(),

@@ -3,6 +3,7 @@
 //! 审计失败绝不影响业务请求（只打错误日志）。
 use crate::api::auth::client_ip;
 use crate::auth::verify_token;
+use crate::log_gate;
 use crate::models::{Admin, AuditLog};
 use crate::state::AppState;
 use bee_orm::Model;
@@ -81,6 +82,12 @@ pub async fn audit_mw(State(state): State<AppState>, req: Request, next: Next) -
 
     let ip = client_ip(req.headers());
     let (admin_id, username) = actor(&state, req.headers()).await;
+
+    // 匿名写操作按 IP 采样：同一来源每个窗口只留有限条。未鉴权的写请求大多是探测 /
+    // 爆破，逐条落库就是写放大；已鉴权的业务写不受影响（那才是审计要保的东西）。
+    if admin_id == 0 && !log_gate::allow(format!("audit:{ip}")) {
+        return next.run(req).await;
+    }
 
     let started = Instant::now();
     let mut resp = next.run(req).await;

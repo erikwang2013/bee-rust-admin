@@ -10,6 +10,7 @@ mod error;
 mod export;
 mod hid;
 mod jobs;
+mod log_gate;
 mod metrics;
 mod models;
 mod notify;

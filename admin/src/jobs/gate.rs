@@ -2,6 +2,16 @@
 //! 进程内「已在跑」闸与任务执行体。
 
 use super::*;
+use bee_orm::Value as DbValue;
+
+/// 抢占：**只写 `last_run_at`**。整行 update 会把读快照写回 job 行，撤销管理员在
+/// 执行期间改的 cron / status（任务跑一半时点「停用」会被悄悄改回启用）。
+const CLAIM_SQL: &str = "UPDATE job SET last_run_at = ? WHERE id = ?";
+
+/// 收尾：**只写执行结果三列**，同样不能整行 update —— 读快照里的 cron / status /
+/// last_run_at 都可能已被并发编辑或下一轮抢占改过。
+const FINISH_SQL: &str =
+    "UPDATE job SET last_status = ?, last_msg = ?, updated_at = ? WHERE id = ?";
 
 /// 同进程内的「已在跑」闸：手动触发改成**后台执行**后（api::job::run 里 spawn），
 /// 光靠 `last_run_at` 拦不住并发 —— 它只在调度 tick 内部串行有效，连点几次触发就是
@@ -51,11 +61,13 @@ pub async fn run_holding(
     _permit: Busy,
 ) -> (i8, String, i64) {
     let started = now();
-    // 抢占：先把 last_run_at 落库，同一进程的下一 tick 不会再选它
-    let mut claimed = job.clone();
-    claimed.last_run_at = Some(started);
-    claimed.updated_at = started;
-    if let Err(e) = claimed.update(&state.db).await {
+    // 抢占：先把 last_run_at 落库，同一进程的下一 tick 不会再选它。
+    // 只写这一列（见 [`CLAIM_SQL`]）。
+    if let Err(e) = state
+        .db
+        .execute(CLAIM_SQL, &[DbValue::from(started), DbValue::from(job.id)])
+        .await
+    {
         tracing::warn!("抢占任务 {} 失败: {e}", job.code);
     }
 
@@ -86,12 +98,41 @@ pub async fn run_holding(
         Err(e) => tracing::warn!("生成任务记录 id 失败: {e:?}"),
     }
 
-    let mut done = claimed;
-    done.last_status = Some(status);
-    done.last_msg = msg.clone();
-    done.updated_at = now();
-    if let Err(e) = done.update(&state.db).await {
+    // 收尾：只回写执行结果（见 [`FINISH_SQL`]），不碰 cron / status / last_run_at
+    if let Err(e) = state
+        .db
+        .execute(
+            FINISH_SQL,
+            &[
+                DbValue::from(status),
+                DbValue::from(msg.clone()),
+                DbValue::from(now()),
+                DbValue::from(job.id),
+            ],
+        )
+        .await
+    {
         tracing::warn!("回写任务 {} 状态失败: {e}", job.code);
     }
     (status, msg, duration_ms)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 任务执行只写自己负责的列：整行 update 会撤销并发编辑 / 下一轮抢占。
+    /// 这里把 SQL 钉死（回归时改回 `job.update()` 会立刻在这里红）。
+    #[test]
+    fn job_execution_writes_only_its_own_columns() {
+        assert_eq!(CLAIM_SQL, "UPDATE job SET last_run_at = ? WHERE id = ?");
+        assert_eq!(
+            FINISH_SQL,
+            "UPDATE job SET last_status = ?, last_msg = ?, updated_at = ? WHERE id = ?"
+        );
+        for sql in [CLAIM_SQL, FINISH_SQL] {
+            assert!(!sql.contains("cron"), "执行路径不能回写 cron: {sql}");
+            assert!(!sql.contains("name"), "执行路径不能回写 name: {sql}");
+        }
+    }
 }

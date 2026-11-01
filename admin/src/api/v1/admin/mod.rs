@@ -53,23 +53,20 @@ pub struct AdminCreateBody {
     pub role_ids: Vec<i64>,
 }
 
+/// 编辑是**全量覆盖**：字段全部必填，没有 serde default。缺字段的 PUT 在反序列化
+/// 阶段就 400 —— 否则省略 `status` 会默认回 1（把禁用的人重新启用）、省略
+/// `role_ids` / `dept_id` 会清空角色与部门。要单改某一列走 `/status`、`/roles` 等专用接口。
 #[derive(Deserialize)]
 pub struct AdminUpdateBody {
-    #[serde(default)]
     pub nickname: String,
-    #[serde(default)]
     pub email: String,
-    #[serde(default)]
     pub phone: String,
-    #[serde(default)]
     pub sex: i8,
-    #[serde(default, deserialize_with = "crate::hid::de_id")]
+    #[serde(deserialize_with = "crate::hid::de_id")]
     pub dept_id: i64,
-    #[serde(default = "status_default")]
     pub status: i8,
-    #[serde(default)]
     pub remark: String,
-    #[serde(default, deserialize_with = "crate::hid::de_vec_id")]
+    #[serde(deserialize_with = "crate::hid::de_vec_id")]
     pub role_ids: Vec<i64>,
 }
 
@@ -407,5 +404,26 @@ mod tests {
         assert_eq!(args["field"], "new_password");
         assert_eq!(args["max"], PASSWORD_MAX);
         assert!(msg.contains("新密码"), "msg 仍是中文原文: {msg}");
+    }
+
+    /// PUT 必须是全量覆盖：少任何一个字段都在反序列化阶段被拒（400），
+    /// 不能拿默认值把 status 改回 1 / 把 dept_id 清 0 / 把 role_ids 清空。
+    #[test]
+    fn admin_update_requires_the_full_body() {
+        let full = json!({
+            "nickname": "n", "email": "", "phone": "", "sex": 1,
+            "dept_id": 0, "status": 1, "remark": "", "role_ids": [],
+        });
+        assert!(serde_json::from_value::<AdminUpdateBody>(full.clone()).is_ok());
+        for field in ["nickname", "email", "phone", "sex", "dept_id", "status", "remark", "role_ids"] {
+            let mut partial = full.clone();
+            partial.as_object_mut().unwrap().remove(field);
+            assert!(
+                serde_json::from_value::<AdminUpdateBody>(partial).is_err(),
+                "缺少 {field} 必须拒绝，不能走默认值"
+            );
+        }
+        // 审计里最危险的那条：只带 status 的「部分更新」
+        assert!(serde_json::from_value::<AdminUpdateBody>(json!({"status": 0})).is_err());
     }
 }

@@ -11,7 +11,7 @@ use crate::state::AppState;
 use crate::util::now;
 use axum::Json;
 use axum::extract::State;
-use bee_orm::Model;
+use bee_orm::Value as DbValue;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -30,6 +30,10 @@ pub struct JobUpdate {
     pub cron: String,
     pub status: i8,
 }
+
+/// 编辑只写这三列。整行 update 会把读快照里的 last_run_at / last_status / last_msg
+/// 写回去，撤销并发执行刚落的执行结果（cron 与 status 之外都不是这个接口的职责）。
+const UPDATE_SQL: &str = "UPDATE job SET cron = ?, status = ?, updated_at = ? WHERE id = ?";
 
 /// 间隔秒数校验：非数字 / 0 / 负数一律 400。
 /// 0 会让任务每个 tick 都跑，所以不接受（要停就置 status=0）。
@@ -96,7 +100,7 @@ pub async fn update(
     let id = hid::dec(&id)?;
     let cron = check_cron(&body.cron)?;
 
-    let mut job = Job::query()
+    let job = Job::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
         .one(&state.db)
@@ -104,10 +108,20 @@ pub async fn update(
         .map_err(ApiError::from)?
         .ok_or(ApiError::NotFound)?;
 
-    job.cron = cron;
-    job.status = body.status;
-    job.updated_at = now();
-    job.update(&state.db).await.map_err(ApiError::from)?;
+    let updated_at = now();
+    state
+        .db
+        .execute(
+            UPDATE_SQL,
+            &[
+                DbValue::from(cron),
+                DbValue::from(body.status),
+                DbValue::from(updated_at),
+                DbValue::from(job.id),
+            ],
+        )
+        .await
+        .map_err(ApiError::from)?;
     Ok(ok(Value::Null))
 }
 
@@ -223,6 +237,15 @@ mod tests {
         assert_eq!(check_cron(" 2 ").unwrap(), "2");
         for bad in ["", "abc", "0", "-5", "3.5", "1h"] {
             assert!(check_cron(bad).is_err(), "{bad:?} 必须拒绝");
+        }
+    }
+
+    /// 编辑只写 cron / status / updated_at：整行 update 会撤销并发执行的结果。
+    #[test]
+    fn job_edit_writes_only_editable_columns() {
+        assert_eq!(UPDATE_SQL, "UPDATE job SET cron = ?, status = ?, updated_at = ? WHERE id = ?");
+        for col in ["last_run_at", "last_status", "last_msg"] {
+            assert!(!UPDATE_SQL.contains(col), "编辑不能回写 {col}: {UPDATE_SQL}");
         }
     }
 }
