@@ -1,5 +1,7 @@
 # 管理后台前端（M5）实现计划
 
+> **历史归档**：本文记录 2026-10-05 的实施决策，其中 React 18 / antd 5 等版本已过时；当前技术栈以仓库 README 为准（React 19 / Ant Design 6 / Vite 8）。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 > **复选框状态不维护**：本文件的 `- [ ]` 写于计划当时，勾选状态不可信；进度以代码与 git 历史为准。
