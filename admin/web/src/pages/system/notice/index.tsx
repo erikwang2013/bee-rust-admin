@@ -12,6 +12,7 @@ import type { AttachmentRow, Notice, NoticeSummary } from '../../../api/types';
 import Auth from '../../../auth/Auth';
 import { useAuth } from '../../../auth/AuthContext';
 import { useI18n } from '../../../i18n';
+import { latestGuard } from './latest';
 
 /** 公告配图（项 5 附件中心的第一个消费方）：白名单与头像同一套，只在编辑时可用（要先有 id） */
 const IMG_ACCEPT = '.png,.jpg,.jpeg,.gif,.webp,.bmp';
@@ -24,6 +25,9 @@ export default function NoticePage() {
   const canSeeImages = has('system:attach:list');
   const [form] = Form.useForm<Pick<NoticeForm, 'title' | 'content'>>();
   const fileRef = useRef<HTMLInputElement>(null);
+  /** 列表 / 弹窗各自一条代际线：换查询、刷新、换篇、关闭时丢弃在途的旧响应 */
+  const listGuard = useRef(latestGuard()).current;
+  const editGuard = useRef(latestGuard()).current;
   const [query, setQuery] = useState<NoticeQuery>({ page: 1, size: 10 });
   const [rows, setRows] = useState<NoticeSummary[]>([]);
   const [total, setTotal] = useState(0);
@@ -42,19 +46,23 @@ export default function NoticePage() {
   );
 
   const load = useCallback(async (q: NoticeQuery) => {
+    const token = listGuard.begin();
     setLoading(true);
     try {
       const res = await noticeApi.list(q);
+      // 换查询 / 手动刷新后，旧请求的响应不能盖掉新结果，loading 也只归最新那条管
+      if (!listGuard.isCurrent(token)) return;
       setRows(res.list);
       setTotal(res.total);
     } finally {
-      setLoading(false);
+      if (listGuard.isCurrent(token)) setLoading(false);
     }
-  }, []);
+  }, [listGuard]);
 
   useEffect(() => { void load(query); }, [query, load]);
 
   const openCreate = () => {
+    editGuard.invalidate();
     setEditing(null);
     setImages([]);
     form.resetFields();
@@ -63,17 +71,21 @@ export default function NoticePage() {
 
   /** 列表只有摘要：打开编辑弹窗前先取全文，避免拿 undefined 把正文清空 */
   const openEdit = async (row: NoticeSummary) => {
+    const token = editGuard.begin();
     const detail = await noticeApi.detail(row.id);
+    // 连点两行 / 期间切了新建：晚到的详情不许改写当前弹窗
+    if (!editGuard.isCurrent(token)) return;
     setEditing(detail);
     setImages([]);
     form.setFieldsValue({ title: detail.title, content: detail.content });
     setModal(true);
-    if (canSeeImages) void loadImages(detail.id);
+    if (canSeeImages) void loadImages(detail.id, token);
   };
 
   /** 这篇公告已绑的配图。列表接口按 `entity_id` 收窄（不分页：配图不会有几十张） */
-  const loadImages = async (id: string) => {
+  const loadImages = async (id: string, token: number) => {
     const res = await attachApi.list({ entity_type: 'notice', entity_id: id, size: 100 });
+    if (!editGuard.isCurrent(token)) return;
     setImages(res.list);
   };
 
@@ -81,13 +93,14 @@ export default function NoticePage() {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file || !editing) return;
+    const token = editGuard.begin();
     setUploading(true);
     try {
       const row = await uploadAttachment(file, { locale: lang === 'zh-CN' ? 'zh' : 'en' });
       // 传完立刻绑到这篇公告：绑已发布的公告后，所有登录用户都能看到这张图
       await attachApi.bind(row.id, { entity_type: 'notice', entity_id: editing.id, sort: images.length });
       message.success(t('attach.uploaded', { name: row.name }));
-      await loadImages(editing.id);
+      await loadImages(editing.id, token);
     } catch (err) {
       if (err instanceof UploadError) message.error(err.message);
     } finally {
@@ -96,9 +109,10 @@ export default function NoticePage() {
   };
 
   const removeImage = async (row: AttachmentRow) => {
+    const token = editGuard.begin();
     await attachApi.remove(row.id);
     message.success(t('common.deleted'));
-    if (editing) await loadImages(editing.id);
+    if (editing) await loadImages(editing.id, token);
   };
 
   /** 新建一律先落草稿（发布是列表上的独立动作）；编辑保留原状态，后端对已发布的不会重复盖章 */
@@ -113,6 +127,7 @@ export default function NoticePage() {
       message.success(t('notice.saved_as_draft'));
     }
     setModal(false);
+    editGuard.invalidate();
     void load(query);
   };
 
@@ -213,7 +228,7 @@ export default function NoticePage() {
       <Modal
         title={editing ? t('notice.edit_title', { title: editing.title }) : t('notice.create_title')}
         open={modal}
-        onCancel={() => setModal(false)}
+        onCancel={() => { editGuard.invalidate(); setModal(false); }}
         onOk={() => void submit()}
         destroyOnHidden
         width={640}
