@@ -32,8 +32,8 @@ pnpm analyze      # ANALYZE=1 vite build + 按 chunk 列出每个模块的体积
   **新增首屏组件（布局 / 登录页 / 错误页用到的）要补进这个数组**；列表页才用的
   重组件（Table / DatePicker / Tree / Modal…）**不要**列进去 —— 列进去就会跟着上首屏。
 - 别把 `@ant-design/icons` 整包装进 `codeSplitting.groups`（会把整棵图标树拖进首屏）；
-  映射内图标走逐个 `@ant-design/icons/es/icons/*` 深路径导入，映射外名字走
-  `import.meta.glob` 的逐图标懒加载（每个图标独立 chunk），原因见 `src/icons.ts` 注释。
+  菜单图标只走 `src/icons.ts` 里逐个 `@ant-design/icons/es/icons/*` 深路径导入的静态映射，
+  映射外名字按设计回落到 `AppstoreOutlined`，新增图标要补进该映射，原因见文件内注释。
 
 ## 部署
 
