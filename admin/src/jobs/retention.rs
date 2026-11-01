@@ -275,3 +275,109 @@ fn in_ext_whitelist(path: &std::path::Path, exts: &[&str]) -> bool {
         .map(str::to_ascii_lowercase)
         .is_some_and(|ext| exts.contains(&ext.as_str()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{clean_temp_files, clean_upload_temps, is_part_file};
+    use crate::backup::{TEMP_MAX_AGE_SECS, is_stale};
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    /// 每个测试独占一个临时根（pid + 自增序号）：同进程并行跑测试也不会互相踩。
+    fn temp_root(tag: &str) -> PathBuf {
+        static SEQ: AtomicU32 = AtomicU32::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "bee_job_temps_{}_{tag}_{}",
+            std::process::id(),
+            SEQ.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn touch(path: &Path) {
+        std::fs::write(path, b"x").unwrap();
+    }
+
+    /// 把 mtime 拨到 24 小时年龄线之外 —— 不用 sleep，测试保持确定且快。
+    fn age(path: &Path) {
+        let old =
+            std::time::SystemTime::now() - std::time::Duration::from_secs(TEMP_MAX_AGE_SECS + 60);
+        std::fs::File::options().write(true).open(path).unwrap().set_modified(old).unwrap();
+    }
+
+    /// 上传临时文件按年龄收：`_header` 整目录收，分组目录只收 `.part`；
+    /// 24 小时内的、非 `.part` 的手工文件、另一分组的东西都不碰。
+    #[test]
+    fn clean_upload_temps_collects_stale_header_and_part_only() {
+        let root = temp_root("upload");
+        let (header, avatar, attach) =
+            (root.join("_header"), root.join("avatar"), root.join("attach"));
+        for dir in [&header, &avatar, &attach] {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        // _header 是插件独占目录：整目录按年龄收，不看扩展名
+        touch(&header.join("fresh.hdr"));
+        touch(&header.join("stale.hdr"));
+        age(&header.join("stale.hdr"));
+        // avatar：只收 `.part`；`.txt` / `.bak` 是手工文件，即使超龄也不碰
+        touch(&avatar.join("fresh.png.part"));
+        touch(&avatar.join("stale.png.part"));
+        touch(&avatar.join("notes.txt"));
+        touch(&avatar.join("old.bak"));
+        for name in ["stale.png.part", "notes.txt", "old.bak"] {
+            age(&avatar.join(name));
+        }
+        // attach：同一条 `.part` 规则，留给附件那一趟
+        touch(&attach.join("fresh.png.part"));
+        touch(&attach.join("stale.png.part"));
+        age(&attach.join("stale.png.part"));
+
+        let root = root.to_str().unwrap();
+        // 头像任务：收 `_header` 的超龄断点 + avatar 的超龄半成品，不扫 attach
+        assert_eq!(clean_upload_temps(root, "avatar"), 2);
+        assert!(!header.join("stale.hdr").exists(), "超龄断点要删");
+        assert!(header.join("fresh.hdr").exists(), "24 小时内的断点不能删");
+        assert!(!avatar.join("stale.png.part").exists(), "超龄半成品要删");
+        assert!(avatar.join("fresh.png.part").exists(), "进行中的上传不能删");
+        assert!(avatar.join("notes.txt").exists(), "非 .part 的手工文件不碰");
+        assert!(avatar.join("old.bak").exists(), "非 .part 的手工文件不碰");
+        assert!(attach.join("stale.png.part").exists(), "另一分组这一趟不扫");
+
+        // 附件任务：收 attach 的超龄半成品（_header 已空）
+        assert_eq!(clean_upload_temps(root, "attach"), 1);
+        assert!(!attach.join("stale.png.part").exists());
+        assert!(attach.join("fresh.png.part").exists(), "进行中的上传不能删");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// `clean_temp_files` 的缺目录 / 新文件 / 读不到 mtime 三条护栏：
+    /// 任何一条失守都会删掉上游正在用的文件。
+    #[test]
+    fn clean_temp_files_keeps_fresh_and_unreadable_entries() {
+        let root = temp_root("single");
+        let dir = root.join("avatar");
+        std::fs::create_dir_all(&dir).unwrap();
+        touch(&dir.join("fresh.png.part")); // 刚写：留
+        touch(&dir.join("stale.png.part")); // 超龄：删
+        touch(&dir.join("stale.txt")); // 谓词不匹配：留
+        age(&dir.join("stale.png.part"));
+        age(&dir.join("stale.txt"));
+
+        assert_eq!(clean_temp_files(&dir, is_part_file), 1);
+        assert!(dir.join("fresh.png.part").exists(), "新文件在保护期内");
+        assert!(!dir.join("stale.png.part").exists());
+        assert!(dir.join("stale.txt").exists(), "不是临时文件命名，不碰");
+
+        // 目录不存在不是错：两趟任务都会扫 `_header`，缺目录必须安静返回 0
+        assert_eq!(clean_temp_files(&root.join("_header"), |_| true), 0);
+        assert_eq!(clean_upload_temps(root.to_str().unwrap(), "attach"), 0, "分组目录缺失也不报错");
+
+        // 读不到 mtime（文件已被并发删掉）一律当「新」：宁可晚一轮收，不可删错
+        assert!(!is_stale(&dir.join("gone.png.part")));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}
