@@ -8,7 +8,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { attachApi, uploadAttachment, type AttachQuery } from '../../../api/attach';
 import { UploadError } from '../../../api/chunkedUpload';
 import { noticeApi } from '../../../api/notice';
-import type { AttachmentRow, Notice } from '../../../api/types';
+import type { AttachmentRow, NoticeSummary } from '../../../api/types';
 import Auth from '../../../auth/Auth';
 import { useI18n } from '../../../i18n';
 import { sizeText } from '../export/format';
@@ -27,7 +27,7 @@ export default function AttachPage() {
   const [uploading, setUploading] = useState(false);
   const [percent, setPercent] = useState(0);
   const [binding, setBinding] = useState<AttachmentRow | null>(null);
-  const [notices, setNotices] = useState<Notice[]>([]);
+  const [notices, setNotices] = useState<NoticeSummary[]>([]);
   const [target, setTarget] = useState<string | undefined>(undefined);
   const [sort, setSort] = useState(0);
 

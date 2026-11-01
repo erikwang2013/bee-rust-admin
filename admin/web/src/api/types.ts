@@ -147,14 +147,19 @@ export interface JobLog {
 /** 手动触发：**后台执行**，接口只回「已触发」（跑完的结果去任务列表/执行记录看） */
 export interface JobRunResult { triggered: boolean }
 
-export interface Notice {
-  id: string; title: string; content: string;
+/** 列表 / 未读行：不带正文（正文可达 64KB，按需从详情接口取） */
+export interface NoticeSummary {
+  id: string; title: string;
   /** 0 草稿 / 1 已发布。取消发布不清 published_at（留痕：曾发布过） */
-  status: number; created_by: string; published_at: string | null;
+  status: number; published_at: string | null;
   created_at: string; updated_at: string;
+  /** 可选短摘要：后端目前不下发，有则铃铛直接展示，没有就只显示标题 + 查看全文 */
+  preview?: string;
 }
-/** 未读接口：total 是未读总数（铃铛角标用它），list 只给最近 50 条 */
-export interface NoticeUnread { total: number; list: Notice[] }
+/** 单条详情：编辑弹窗回填 / 铃铛「查看全文」 */
+export interface Notice extends NoticeSummary { content: string; created_by: string }
+/** 未读接口：total 是未读总数（铃铛角标用它），list 只给最近 50 条摘要 */
+export interface NoticeUnread { total: number; list: NoticeSummary[] }
 
 /** CSV 导入（项 3）：三种导入共用一套逐行报告。 */
 export type ImportKind = 'admin' | 'dept' | 'dict-item';

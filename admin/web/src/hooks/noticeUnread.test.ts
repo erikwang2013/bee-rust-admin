@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { applyRead } from './noticeUnread';
-import type { Notice, NoticeUnread } from '../api/types';
+import type { NoticeSummary, NoticeUnread } from '../api/types';
 
-const notice = (id: string): Notice => ({
-  id, title: `t${id}`, content: '', status: 1, created_by: '1',
+const notice = (id: string): NoticeSummary => ({
+  id, title: `t${id}`, status: 1,
   published_at: '2026-10-06 10:00:00', created_at: '', updated_at: '',
 });
 

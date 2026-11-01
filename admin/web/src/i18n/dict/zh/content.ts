@@ -3,7 +3,7 @@ export const content = {
   // ---- 未读公告铃铛 ----
   'notice.unread_title': '未读公告（{n}）',
   'notice.unread_empty': '暂无未读公告',
-  'notice.mark_read': '标记已读',
+  'notice.view_full': '查看全文',
   'notice.unread_rest': '还有 {n} 条未读，这里只列出最近 50 条。',
 
   // ---- 通知公告 ----

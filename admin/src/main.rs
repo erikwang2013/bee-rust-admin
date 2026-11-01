@@ -381,7 +381,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .post("", api::notice::create)
                 // 未读/标记已读：登录即可（不挂权限码），静态段优先于 /{id}
                 .get("/unread", api::notice::unread)
+                .get("/{id}", api::notice::detail)
                 .post("/{id}/read", api::notice::read)
+                .put("/{id}/status", api::notice::set_status)
                 .put("/{id}", api::notice::update)
                 .delete("/{id}", api::notice::remove)
         })

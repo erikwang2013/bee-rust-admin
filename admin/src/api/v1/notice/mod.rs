@@ -11,9 +11,9 @@ use crate::state::AppState;
 use crate::util::now;
 use axum::Json;
 use axum::extract::State;
-use bee_orm::{Model, OrmError, Value as DbValue};
+use bee_orm::{Model, OrmError, Row, Value as DbValue};
 use chrono::NaiveDateTime;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 /// 未读列表一次最多回多少条（角标用 `total`，不是这个长度）。
@@ -76,8 +76,57 @@ pub struct NoticeUpdate {
     pub status: i8,
 }
 
+#[derive(Deserialize)]
+pub struct NoticeStatus {
+    /// 0 草稿 / 1 已发布
+    pub status: i8,
+}
+
+/// 列表 / 未读行：**不带正文**。正文最长 20k 字（64KB），列表最多 100 行、
+/// 铃铛 50 行，整篇下发既费带宽又没必要 —— 编辑和「查看全文」按需走详情。
+#[derive(Serialize)]
+pub struct NoticeSummary {
+    #[serde(serialize_with = "crate::hid::ser_id")]
+    id: i64,
+    title: String,
+    status: i8,
+    #[serde(serialize_with = "crate::util::ser_opt_dt")]
+    published_at: Option<NaiveDateTime>,
+    #[serde(serialize_with = "crate::util::ser_dt")]
+    created_at: NaiveDateTime,
+    #[serde(serialize_with = "crate::util::ser_dt")]
+    updated_at: NaiveDateTime,
+}
+
+impl NoticeSummary {
+    /// 未读列表走裸 SQL 只查摘要列，连库里的正文都不读。
+    fn from_row(row: &Row) -> Result<Self, OrmError> {
+        Ok(Self {
+            id: bee_orm::decode(row, "id")?,
+            title: bee_orm::decode(row, "title")?,
+            status: bee_orm::decode(row, "status")?,
+            published_at: bee_orm::decode(row, "published_at")?,
+            created_at: bee_orm::decode(row, "created_at")?,
+            updated_at: bee_orm::decode(row, "updated_at")?,
+        })
+    }
+}
+
+impl From<Notice> for NoticeSummary {
+    fn from(n: Notice) -> Self {
+        Self {
+            id: n.id,
+            title: n.title,
+            status: n.status,
+            published_at: n.published_at,
+            created_at: n.created_at,
+            updated_at: n.updated_at,
+        }
+    }
+}
+
 #[apidoc::title("公告列表")]
-#[apidoc::desc("标题模糊 + 状态筛选 + 分页（管理页）")]
+#[apidoc::desc("标题模糊 + 状态筛选 + 分页（管理页）；行是摘要，不含正文（编辑时取详情）")]
 #[apidoc::url("/api/v1/notices")]
 #[apidoc::method("GET")]
 #[apidoc::tag("公告")]
@@ -87,6 +136,10 @@ pub struct NoticeUpdate {
 #[apidoc::query(name = "title", ty = "string", desc = "标题模糊匹配")]
 #[apidoc::query(name = "status", ty = "int", desc = "状态：1 已发布 / 0 草稿")]
 #[apidoc::response_status("200")]
+#[apidoc::returned(name = "data", ty = "object", desc = "分页结果（行不含正文）", children = [
+            {name = "list", ty = "array", desc = "公告摘要：id / title / status / published_at / created_at / updated_at"},
+            {name = "total", ty = "int", desc = "总数"},
+        ])]
 pub async fn list(
     State(state): State<AppState>,
     auth: Auth,
@@ -103,7 +156,8 @@ pub async fn list(
     }
     let (rows, total) =
         qs.order_by("id DESC").fetch_page(&state.db, page, size).await.map_err(ApiError::from)?;
-    Ok(ok(json!({ "list": rows, "total": total })))
+    let list: Vec<NoticeSummary> = rows.into_iter().map(Into::into).collect();
+    Ok(ok(json!({ "list": list, "total": total })))
 }
 
 #[apidoc::title("新建公告")]
@@ -201,6 +255,51 @@ pub async fn update(
     Ok(ok(Value::Null))
 }
 
+/// 只切状态（发布 / 取消发布）。列表行已不带正文，前端不能再拿 list 行的
+/// title + content 走整篇 update —— 这里补一条窄接口，发布语义与 update 一致。
+#[apidoc::title("发布 / 取消发布公告")]
+#[apidoc::desc("只改状态：发布时补 publish_at（已发布过的保留旧值），状态跃迁才发通知事件")]
+#[apidoc::url("/api/v1/notices/{id}/status")]
+#[apidoc::method("PUT")]
+#[apidoc::tag("公告")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "公告对外 id（hashids 短串）")]
+#[apidoc::param(name = "status", ty = "int", required, desc = "状态：1 发布 / 0 草稿")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("404")]
+#[apidoc::returned(name = "data", ty = "null", desc = "无数据（成功时固定为 null）")]
+pub async fn set_status(
+    State(state): State<AppState>,
+    auth: Auth,
+    AppPath(id): AppPath<String>,
+    AppJson(body): AppJson<NoticeStatus>,
+) -> Result<Json<Value>, ApiError> {
+    auth.require("system:notice:edit")?;
+    let id = hid::dec(&id)?;
+    let mut n = Notice::query()
+        .filter_eq("id", id)
+        .map_err(ApiError::from)?
+        .one(&state.db)
+        .await
+        .map_err(ApiError::from)?
+        .ok_or(ApiError::NotFound)?;
+
+    let was_published = n.status == 1;
+    n.status = body.status;
+    n.published_at = publish_at(body.status, n.published_at);
+    n.updated_at = now();
+    n.update(&state.db).await.map_err(ApiError::from)?;
+    if !was_published && n.status == 1 {
+        notify::emit(
+            &state,
+            notify::EVENT_NOTICE_PUBLISHED,
+            json!({ "id": hid::enc(n.id), "title": n.title }),
+            Some(auth.admin.id), // 邮件推送要排除发布者本人
+        );
+    }
+    Ok(ok(Value::Null))
+}
+
 /// 删公告连带删它的已读记录**和配图附件行**，**同一事务**（与字典的级联删一致）：
 /// 残留的已读行/附件行都是指向已删对象的垃圾。文件本身不删 —— 交给
 /// `attach_orphan_clean` 定时收（那里有保护期，能兜住落盘与落库之间的缝）。
@@ -256,11 +355,52 @@ pub async fn remove(
 
 // ── 登录用户 ────────────────────────────────────────────────
 
+/// 已发布公告登录即可看；草稿只有带 `system:notice:list` 的人（含超管）能看。
+/// 没权限时回 404 而不是 403 —— 403 等于承认「这里有一篇草稿」。
+#[apidoc::title("公告详情")]
+#[apidoc::desc("登录即可读已发布公告（正文）；草稿只对有列表权限的人可见，其余按 404 处理")]
+#[apidoc::url("/api/v1/notices/{id}")]
+#[apidoc::method("GET")]
+#[apidoc::tag("公告")]
+#[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
+#[apidoc::route_param(name = "id", ty = "string", required, desc = "公告对外 id（hashids 短串）")]
+#[apidoc::response_status("200")]
+#[apidoc::response_status("404")]
+#[apidoc::returned(name = "data", ty = "object", desc = "公告完整对象（含正文）", children = [
+            {name = "id", ty = "string", required, desc = "对外 id（hashids 短串）"},
+            {name = "title", ty = "string", required, desc = "标题"},
+            {name = "content", ty = "string", required, desc = "正文（纯文本）"},
+            {name = "status", ty = "int", desc = "状态：1 已发布 / 0 草稿"},
+            {name = "created_by", ty = "string", desc = "创建人对外 id"},
+            {name = "published_at", ty = "string", desc = "首次发布时间（草稿可能为空）"},
+            {name = "created_at", ty = "string", desc = "创建时间"},
+            {name = "updated_at", ty = "string", desc = "更新时间"},
+        ])]
+pub async fn detail(
+    State(state): State<AppState>,
+    auth: Auth,
+    AppPath(id): AppPath<String>,
+) -> Result<Json<Value>, ApiError> {
+    let id = hid::dec(&id)?;
+    let n = Notice::query()
+        .filter_eq("id", id)
+        .map_err(ApiError::from)?
+        .one(&state.db)
+        .await
+        .map_err(ApiError::from)?
+        .ok_or(ApiError::NotFound)?;
+    if n.status != 1 && auth.require("system:notice:list").is_err() {
+        return Err(ApiError::NotFound);
+    }
+    Ok(ok(n))
+}
+
 /// 当前用户的未读列表：已发布 + 自己没读过，按 id DESC 取最近 50 条。
 /// `total` 是**未读总数**（铃铛角标用它，不能拿 `list.length`——超过 50 条就少报了）。
+/// 行是摘要（不含正文）：正文只在点开「查看全文」时按 id 取。
 #[apidoc::title("我的未读公告")]
 #[apidoc::desc(
-    "登录即可。已发布 + 自己没读过，按 id DESC 取最近 50 条；total 是**未读总数**（铃铛角标用它）"
+    "登录即可。已发布 + 自己没读过，按 id DESC 取最近 50 条；total 是**未读总数**（铃铛角标用它）；行是摘要，不含正文"
 )]
 #[apidoc::url("/api/v1/notices/unread")]
 #[apidoc::method("GET")]
@@ -268,7 +408,7 @@ pub async fn remove(
 #[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
 #[apidoc::response_status("200")]
 #[apidoc::returned(name = "data", ty = "object", desc = "未读结果", children = [
-            {name = "list", ty = "array", desc = "最近 50 条未读公告"},
+            {name = "list", ty = "array", desc = "最近 50 条未读摘要：id / title / status / published_at / created_at / updated_at"},
             {name = "total", ty = "int", desc = "未读总数（不受 50 条上限影响）"},
         ])]
 pub async fn unread(State(state): State<AppState>, auth: Auth) -> Result<Json<Value>, ApiError> {
@@ -292,7 +432,7 @@ pub async fn unread(State(state): State<AppState>, auth: Auth) -> Result<Json<Va
     let rows = state
         .db
         .query(
-            "SELECT n.* FROM notice n \
+            "SELECT n.id, n.title, n.status, n.published_at, n.created_at, n.updated_at FROM notice n \
              LEFT JOIN notice_read r ON r.notice_id = n.id AND r.admin_id = ? \
              WHERE n.status = 1 AND r.notice_id IS NULL \
              ORDER BY n.id DESC LIMIT ?",
@@ -300,8 +440,11 @@ pub async fn unread(State(state): State<AppState>, auth: Auth) -> Result<Json<Va
         )
         .await
         .map_err(ApiError::from)?;
-    let list =
-        rows.iter().map(Notice::from_row).collect::<Result<Vec<_>, _>>().map_err(ApiError::from)?;
+    let list = rows
+        .iter()
+        .map(NoticeSummary::from_row)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(ApiError::from)?;
     Ok(ok(json!({ "total": total, "list": list })))
 }
 
@@ -349,47 +492,4 @@ pub async fn read(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn at(s: &str) -> NaiveDateTime {
-        NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").unwrap()
-    }
-
-    #[test]
-    fn published_at_only_set_on_first_publish() {
-        let was = at("2026-01-01 08:00:00");
-        // 首次发布：写
-        assert!(publish_at(1, None).is_some());
-        // 重复发布：保留旧值（不是 now()）
-        assert_eq!(publish_at(1, Some(was)), Some(was));
-        // 撤回：不清空（留痕：曾发布过）
-        assert_eq!(publish_at(0, Some(was)), Some(was));
-        // 草稿从未发布过：保持空
-        assert_eq!(publish_at(0, None), None);
-    }
-
-    #[test]
-    fn title_and_content_rejected_when_blank_or_oversize() {
-        assert!(check_title("  ").is_err());
-        assert!(check_title("维护通知").is_ok());
-        assert!(check_title(&"x".repeat(129)).is_err());
-        assert!(check_title(&"x".repeat(128)).is_ok());
-        assert!(check_content(" ").is_err());
-        assert!(check_content("今晚停机").is_ok());
-        assert!(check_content(&"x".repeat(CONTENT_MAX + 1)).is_err());
-    }
-
-    /// 字符数没超、字节数超了也必须拒：4 字节 emoji × 16384 = 65536 字节 > TEXT 上限。
-    #[test]
-    fn content_byte_limit_rejects_multibyte_overflow() {
-        let emoji = "😀".repeat(CONTENT_MAX_BYTES / 4 + 1);
-        assert!(emoji.chars().count() < CONTENT_MAX, "字符数本身没超，超的是字节数");
-        match check_content(&emoji) {
-            Err(ApiError::BadRequest(msg)) => assert!(msg.contains("字节"), "{msg}"),
-            other => panic!("应返回 400 字节超限，实际: {other:?}"),
-        }
-        // 中文 3 字节：正常长度仍能过
-        assert!(check_content("今晚停机维护，预计两小时").is_ok());
-    }
-}
+mod tests;

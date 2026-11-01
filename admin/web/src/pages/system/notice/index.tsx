@@ -8,7 +8,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { attachApi, uploadAttachment } from '../../../api/attach';
 import { UploadError } from '../../../api/chunkedUpload';
 import { noticeApi, type NoticeForm, type NoticeQuery } from '../../../api/notice';
-import type { AttachmentRow, Notice } from '../../../api/types';
+import type { AttachmentRow, Notice, NoticeSummary } from '../../../api/types';
 import Auth from '../../../auth/Auth';
 import { useAuth } from '../../../auth/AuthContext';
 import { useI18n } from '../../../i18n';
@@ -25,7 +25,7 @@ export default function NoticePage() {
   const [form] = Form.useForm<Pick<NoticeForm, 'title' | 'content'>>();
   const fileRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState<NoticeQuery>({ page: 1, size: 10 });
-  const [rows, setRows] = useState<Notice[]>([]);
+  const [rows, setRows] = useState<NoticeSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState<Notice | null>(null);
@@ -61,12 +61,14 @@ export default function NoticePage() {
     setModal(true);
   };
 
-  const openEdit = (row: Notice) => {
-    setEditing(row);
+  /** 列表只有摘要：打开编辑弹窗前先取全文，避免拿 undefined 把正文清空 */
+  const openEdit = async (row: NoticeSummary) => {
+    const detail = await noticeApi.detail(row.id);
+    setEditing(detail);
     setImages([]);
-    form.setFieldsValue({ title: row.title, content: row.content });
+    form.setFieldsValue({ title: detail.title, content: detail.content });
     setModal(true);
-    if (canSeeImages) void loadImages(row.id);
+    if (canSeeImages) void loadImages(detail.id);
   };
 
   /** 这篇公告已绑的配图。列表接口按 `entity_id` 收窄（不分页：配图不会有几十张） */
@@ -114,19 +116,19 @@ export default function NoticePage() {
     void load(query);
   };
 
-  const setStatus = async (row: Notice, status: number) => {
-    await noticeApi.update(row.id, { title: row.title, content: row.content, status });
+  const setStatus = async (row: NoticeSummary, status: number) => {
+    await noticeApi.setStatus(row.id, status);
     message.success(status === 1 ? t('notice.published') : t('notice.unpublish_done'));
     void load(query);
   };
 
-  const remove = async (row: Notice) => {
+  const remove = async (row: NoticeSummary) => {
     await noticeApi.remove(row.id);
     message.success(t('common.deleted'));
     void load(query);
   };
 
-  const columns: ColumnsType<Notice> = [
+  const columns: ColumnsType<NoticeSummary> = [
     { title: t('field.id'), dataIndex: 'id', width: 70 },
     { title: t('field.title'), dataIndex: 'title' },
     { title: t('field.status'), dataIndex: 'status', width: 90, render: statusTag },
@@ -141,7 +143,7 @@ export default function NoticePage() {
       render: (_, row) => (
         <Space>
           <Auth code="system:notice:edit">
-            <Button size="small" type="link" onClick={() => openEdit(row)}>{t('common.edit')}</Button>
+            <Button size="small" type="link" onClick={() => void openEdit(row)}>{t('common.edit')}</Button>
           </Auth>
           {row.status === 1 ? (
             <Auth code="system:notice:edit">
@@ -195,7 +197,7 @@ export default function NoticePage() {
         {t('notice.hint')}
       </Typography.Paragraph>
 
-      <Table<Notice>
+      <Table<NoticeSummary>
         rowKey="id"
         size="small"
         loading={loading}

@@ -3,7 +3,7 @@ export const content = {
   // ---- Unread notice bell ----
   'notice.unread_title': 'Unread notices ({n})',
   'notice.unread_empty': 'No unread notices',
-  'notice.mark_read': 'Mark as read',
+  'notice.view_full': 'View full',
   'notice.unread_rest': '{n} more unread; only the latest 50 are listed here.',
 
   // ---- Notices ----

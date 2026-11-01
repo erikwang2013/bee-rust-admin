@@ -223,6 +223,7 @@ fn module_action(method: &Method, path: &str) -> (String, String) {
         ("POST", ["jobs", _, "run"]) => ("job", "手动执行定时任务"),
 
         ("POST", ["notices"]) => ("notice", "新增公告"),
+        ("PUT", ["notices", _, "status"]) => ("notice", "修改公告状态"),
         ("PUT", ["notices", _]) => ("notice", "编辑公告"),
         ("POST", ["notices", _, "read"]) => ("notice", "标记公告已读"),
         ("DELETE", ["notices", _]) => ("notice", "删除公告"),
@@ -324,6 +325,10 @@ mod tests {
         assert_eq!(
             module_action(&Method::POST, "/api/v1/notices/9/read"),
             ("notice".into(), "标记公告已读".into())
+        );
+        assert_eq!(
+            module_action(&Method::PUT, "/api/v1/notices/9/status"),
+            ("notice".into(), "修改公告状态".into())
         );
         assert_eq!(
             module_action(&Method::DELETE, "/api/v1/notices/9"),

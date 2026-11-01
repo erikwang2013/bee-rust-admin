@@ -287,8 +287,11 @@ async fn v16_job_notice_features() {
     let (_st, v) = call(&c, Method::GET, api("/notices?status=0"), Some(&admin), None).await;
     assert_eq!(v["data"]["total"], 1, "status 筛选: {v}");
     assert_eq!(v["data"]["list"][0]["title"], "草稿箱", "{v}");
-    // 列表行必须带 content：没有单条详情接口，前端编辑弹窗靠它回填，缺了就只能把正文清空
-    assert_eq!(v["data"]["list"][0]["content"], "还没想好", "列表行要带 content（编辑回填用）: {v}");
+    // 列表行只回摘要：正文按需从详情接口取（20k 正文 × 100 行不再随列表下发）
+    assert!(v["data"]["list"][0].get("content").is_none(), "列表不带 content: {v}");
+    let (st, v) = call(&c, Method::GET, api(&format!("/notices/{n2}")), Some(&admin), None).await;
+    assert_eq!(st, 200, "公告详情: {v}");
+    assert_eq!(v["data"]["content"], "还没想好", "详情要带 content（编辑回填用）: {v}");
     let (_st, v) = call(&c, Method::GET, api("/notices?title=维护"), Some(&admin), None).await;
     assert_eq!(v["data"]["total"], 1, "title 模糊筛选: {v}");
     for bad in ["", "  ", &"x".repeat(129)] {
@@ -323,6 +326,7 @@ async fn v16_job_notice_features() {
     assert_eq!(unread.len(), 1, "{v}");
     assert_eq!(unread[0]["id"], json!(n1), "{v}");
     assert_eq!(unread[0]["title"], "系统维护", "{v}");
+    assert!(unread[0].get("content").is_none(), "未读行是摘要，不带 content: {v}");
 
     // 未登录 → 401（不是 403）
     let (st, v) = call(&c, Method::GET, api("/notices/unread"), None, None).await;
@@ -357,6 +361,7 @@ async fn v16_job_notice_features() {
         (Method::GET, "/notices".to_string(), None),
         (Method::POST, "/notices".to_string(), Some(json!({"title": "x", "content": "x", "status": 1}))),
         (Method::PUT, format!("/notices/{n1}"), Some(json!({"title": "x", "content": "x", "status": 1}))),
+        (Method::PUT, format!("/notices/{n1}/status"), Some(json!({"status": 1}))),
         (Method::DELETE, format!("/notices/{n1}"), None),
         (Method::GET, "/jobs".to_string(), None),
         (Method::PUT, format!("/jobs/{retention_id}"), Some(json!({"cron": "60", "status": 1}))),
