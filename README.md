@@ -1,5 +1,7 @@
 # BRA · Bee Rust Admin
 
+简体中文 · [English](README.en.md)
+
 基于 bee-rust 框架的 RBAC 管理后台 —— Rust 服务端 + React 前端，建库即用。
 
 > 项目站点：[https://package.erik.xyz/bra/](https://package.erik.xyz/bra/)
