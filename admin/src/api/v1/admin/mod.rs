@@ -114,12 +114,15 @@ pub(crate) const PASSWORD_MAX: usize = 1024;
 /// 前端 `admin/web/src/password.ts` 必须同口径（`/[a-z]/`、`/[A-Z]/`、`/[0-9]/`、`/[^a-zA-Z0-9]/`）。
 /// 只作用于**新设 / 新改**密码，登录路径不校验（存量密码照常能登）。
 ///
-/// `label` 是消息里对密码的称呼（`"密码"` / `"新密码"`）。拼出来的 msg 必须与
-/// `error.rs` 的 `ERR_TABLE` 逐字对上，否则 `err` 静默消失、前端译不了。
+/// `label` 是消息里对密码的称呼（`"密码"` / `"新密码"`），同时决定 `args.field` 的
+/// 字段键。弱密码那条的 msg 必须与 `error.rs` 的 `ERR_TABLE` 逐字对上，否则 `err`
+/// 静默消失、前端译不了；超长走 [`ApiError::too_long`]（自带稳定码与 args）。
 pub(crate) fn validate_password(p: &str, label: &str) -> Result<(), ApiError> {
+    // 字段键给前端查 `field.<键>`：改密叫「新密码」，建号 / 重置叫「密码」
+    let field = if label == "新密码" { "new_password" } else { "password" };
     // 上限先判：超长输入连分类统计都不该做，更不该进 argon2
     if p.chars().count() > PASSWORD_MAX {
-        return Err(ApiError::BadRequest(format!("{label}长度不能超过 {PASSWORD_MAX} 个字符")));
+        return Err(ApiError::too_long(field, PASSWORD_MAX));
     }
     let classes = [
         p.chars().any(|c| c.is_ascii_lowercase()),
@@ -383,12 +386,26 @@ mod tests {
     use super::*;
 
     /// 新密码策略的上限：1024 字符照收（存量 / 长口令），1025 字符拒绝；
-    /// 不依赖数据库，纯策略函数。
+    /// 不依赖数据库，纯策略函数。超长必须带稳定码 + 字段键，前端才译得了。
     #[test]
     fn password_policy_has_an_upper_bound() {
         let max = format!("Aa1{}", "x".repeat(PASSWORD_MAX - 3));
         assert_eq!(max.chars().count(), PASSWORD_MAX);
         assert!(validate_password(&max, "密码").is_ok());
-        assert!(validate_password(&format!("{max}x"), "密码").is_err());
+
+        let too_long = format!("{max}x");
+        let e = validate_password(&too_long, "密码").unwrap_err();
+        let ApiError::Coded { err, msg, args, .. } = &e else { panic!("应是 Coded: {e:?}") };
+        assert_eq!(*err, "common.too_long");
+        assert_eq!(args["field"], "password", "建号 / 重置路径的字段键");
+        assert_eq!(args["max"], PASSWORD_MAX);
+        assert!(msg.contains("密码"), "msg 仍是中文原文: {msg}");
+
+        // 改密路径用 new_password，前端 `field.new_password` 才译成「新密码」
+        let e = validate_password(&too_long, "新密码").unwrap_err();
+        let ApiError::Coded { msg, args, .. } = &e else { panic!("应是 Coded: {e:?}") };
+        assert_eq!(args["field"], "new_password");
+        assert_eq!(args["max"], PASSWORD_MAX);
+        assert!(msg.contains("新密码"), "msg 仍是中文原文: {msg}");
     }
 }

@@ -188,6 +188,8 @@ fn code_of(msg: &str) -> Option<&'static str> {
 fn field_label(key: &str) -> &str {
     match key {
         "nickname" => "昵称",
+        "password" => "密码",
+        "new_password" => "新密码",
         "email" => "邮箱",
         "phone" => "手机号",
         "remark" => "备注",
