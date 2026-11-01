@@ -252,7 +252,7 @@ Disabled jobs are not scheduled, but **Trigger once** still works. Jobs run seri
 
 New notices are drafts and invisible to users until **Publish**. Unpublish removes them from unread lists (read records remain). The first publish time is preserved across unpublish/republish.
 Title max 128 chars; body is plain text with newlines preserved. The edit dialog has an **images** section (upload binds to the notice; save a new notice first). Deleting a notice cascades
-to read records and attachment rows in the same transaction (files are handled by orphan cleanup). The top-bar bell shows unread count; each notice can be marked read; only the latest 50 are listed.
+to read records and attachment rows in the same transaction (files are handled by orphan cleanup). The list API returns summaries without the body; Edit fetches the full notice by id, and publish/unpublish sends only the status. The top-bar bell shows the unread count; each row has **View full**, which fetches the body and marks it read; only the latest 50 are listed.
 
 ### 3.8 Login logs (system:loginlog)
 
