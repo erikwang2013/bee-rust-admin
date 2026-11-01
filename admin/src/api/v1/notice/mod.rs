@@ -7,7 +7,7 @@
 pub mod compat;
 mod summary;
 
-use crate::api::{PagingExt, check_len, page_size};
+use crate::api::{check_len, page_size};
 use crate::auth::Auth;
 use crate::error::{ApiError, AppJson, AppPath, AppQuery, ok};
 use crate::hid;
@@ -17,7 +17,7 @@ use crate::state::AppState;
 use crate::util::now;
 use axum::Json;
 use axum::extract::State;
-use bee_orm::{Model, OrmError, Value as DbValue};
+use bee_orm::{Model, OrmError, Row, Value as DbValue};
 use chrono::NaiveDateTime;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -35,6 +35,15 @@ const CONTENT_MAX_BYTES: usize = 65_535;
 /// 发布语义：置 1 时**只在还是 NULL 时**写 `published_at`；从 1 改回 0 不清空（留痕：曾发布过）。
 fn publish_at(status: i8, current: Option<NaiveDateTime>) -> Option<NaiveDateTime> {
     if status == 1 && current.is_none() { Some(now()) } else { current }
+}
+
+/// 状态唯一取值：0 草稿 / 1 已发布。create / update / set_status 共用一条口径，
+/// 别让某个入口漏校验把 2 之类的值写进列里。
+fn check_status(status: i8) -> Result<(), ApiError> {
+    if !matches!(status, 0 | 1) {
+        return Err(ApiError::BadRequest("公告状态只能是 0 或 1".into()));
+    }
+    Ok(())
 }
 
 fn check_title(title: &str) -> Result<(), ApiError> {
@@ -89,6 +98,51 @@ pub struct NoticeStatus {
     pub status: i8,
 }
 
+/// 公告列表筛选的唯一口径（v1 完整行 / v2 摘要共用）：title 模糊 + status 等值。
+/// 返回 `WHERE` 片段与按位绑定的参数；用户输入不进 SQL 文本。
+fn notice_filter(q: &NoticeQuery) -> (String, Vec<DbValue>) {
+    let mut conds: Vec<&str> = Vec::new();
+    let mut params: Vec<DbValue> = Vec::new();
+    if let Some(t) = q.title.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        conds.push("title LIKE ?");
+        params.push(format!("%{t}%").into());
+    }
+    if let Some(s) = q.status {
+        conds.push("status = ?");
+        params.push(s.into());
+    }
+    let where_sql =
+        if conds.is_empty() { String::new() } else { format!(" WHERE {}", conds.join(" AND ")) };
+    (where_sql, params)
+}
+
+/// 列表取数：筛选 / 排序 / 分页只有这一处实现，v1/v2 只差 SELECT 的列
+/// （v1 完整行 `*`，v2 摘要列），所以语义不会漂。`columns` 只收调用方写死的常量。
+async fn fetch_notice_page(
+    state: &AppState,
+    q: &NoticeQuery,
+    columns: &str,
+) -> Result<(Vec<Row>, i64), ApiError> {
+    let (page, size) = page_size(q.page, q.size);
+    let (where_sql, mut params) = notice_filter(q);
+    let total = state
+        .db
+        .query(&format!("SELECT COUNT(*) AS n FROM notice{where_sql}"), &params)
+        .await
+        .map_err(ApiError::from)?
+        .first()
+        .and_then(|r| r.get("n"))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    // 与 `PagingExt::fetch_page` 相同的偏移口径
+    let offset = page.saturating_sub(1).saturating_mul(size);
+    params.push(DbValue::from(size as i64));
+    params.push(DbValue::from(offset as i64));
+    let sql = format!("SELECT {columns} FROM notice{where_sql} ORDER BY id DESC LIMIT ? OFFSET ?");
+    let rows = state.db.query(&sql, &params).await.map_err(ApiError::from)?;
+    Ok((rows, total))
+}
+
 #[apidoc::title("公告列表（v2）")]
 #[apidoc::desc("标题模糊 + 状态筛选 + 分页（管理页）；行是摘要，不含正文（编辑时取详情）")]
 #[apidoc::url("/api/v2/notices")]
@@ -110,17 +164,18 @@ pub async fn list(
     AppQuery(q): AppQuery<NoticeQuery>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:notice:list")?;
-    let (page, size) = page_size(q.page, q.size);
-    let mut qs = Notice::query();
-    if let Some(t) = q.title.as_deref().filter(|s| !s.trim().is_empty()) {
-        qs = qs.filter_contains("title", t.trim()).map_err(ApiError::from)?;
-    }
-    if let Some(s) = q.status {
-        qs = qs.filter_eq("status", s).map_err(ApiError::from)?;
-    }
-    let (rows, total) =
-        qs.order_by("id DESC").fetch_page(&state.db, page, size).await.map_err(ApiError::from)?;
-    let list: Vec<NoticeSummary> = rows.into_iter().map(Into::into).collect();
+    // 只查摘要列：正文最大 64KB，列表取完就丢，没必要从 MySQL 读出来。
+    let (rows, total) = fetch_notice_page(
+        &state,
+        &q,
+        "id, title, status, published_at, created_at, updated_at",
+    )
+    .await?;
+    let list = rows
+        .iter()
+        .map(NoticeSummary::from_row)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(ApiError::from)?;
     Ok(ok(json!({ "list": list, "total": total })))
 }
 
@@ -143,6 +198,7 @@ pub async fn create(
     auth.require("system:notice:add")?;
     check_title(&body.title)?;
     check_content(&body.content)?;
+    check_status(body.status)?;
 
     let n = Notice {
         id: state.next_id()?,
@@ -190,6 +246,7 @@ pub async fn update(
     let id = hid::dec(&id)?;
     check_title(&body.title)?;
     check_content(&body.content)?;
+    check_status(body.status)?;
 
     let mut n = Notice::query()
         .filter_eq("id", id)
@@ -240,9 +297,7 @@ pub async fn set_status(
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:notice:edit")?;
     let id = hid::dec(&id)?;
-    if !matches!(body.status, 0 | 1) {
-        return Err(ApiError::BadRequest("公告状态只能是 0 或 1".into()));
-    }
+    check_status(body.status)?;
     let n = Notice::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?

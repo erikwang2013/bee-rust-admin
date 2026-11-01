@@ -196,6 +196,10 @@ pub(crate) async fn finish(
 
     // 配额按**实测** size 复查：预检那道只看客户端声明的 resource_size，声明 1 字节即可绕过。
     // 这里拒掉时行不落库，成品文件成孤儿 —— `attach_orphan_clean` 会连秒传索引一起清掉。
+    //
+    // 「查已用 + 插新行」必须串行：并发两份上传都会看到同一份剩余额度，双双通过（TOCTOU）。
+    // ponytail: 锁在进程内，单实例假设（本项目 admin 单实例）；多实例部署要换 DB 行锁。
+    let _quota = quota_lock(*admin_id).lock().await;
     check_quota_bytes(state, *admin_id, size as u64).await?;
 
     let ext = Path::new(saved_path)
@@ -246,6 +250,14 @@ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
         let _ = write!(out, "{b:02x}");
     }
     out
+}
+
+/// 每管理员一把进程内锁：`finish` 的「查配额 + 落行」要原子，否则两份并发上传
+/// 会各自通过同一份剩余额度。按 id 取模 64 把（碰撞只是多等一下），内存有界。
+fn quota_lock(admin_id: i64) -> &'static tokio::sync::Mutex<()> {
+    static LOCKS: [tokio::sync::Mutex<()>; 64] =
+        [const { tokio::sync::Mutex::const_new(()) }; 64];
+    &LOCKS[admin_id.rem_euclid(64) as usize]
 }
 
 /// 单文件上限（`attach.too_large`）：自己拦一道，给稳定码与准确文案；插件那道
@@ -315,4 +327,41 @@ pub(crate) async fn sum_size(state: &AppState, admin_id: i64) -> Result<u64, Api
         .and_then(|r| r.get("total"))
         .and_then(|v| v.as_u64().or_else(|| v.as_i64().map(|n| n.max(0) as u64)))
         .unwrap_or(0))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::quota_lock;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::time::Duration;
+
+    /// 同管理员的「查用量 → 写库」必须串行；不加锁时两个任务会读到同一个旧值（TOCTOU）。
+    #[tokio::test]
+    async fn quota_lock_serializes_same_admin_check_then_insert() {
+        let used = Arc::new(AtomicU32::new(0));
+        let mut tasks = Vec::new();
+        for _ in 0..2 {
+            let used = Arc::clone(&used);
+            tasks.push(tokio::spawn(async move {
+                let _guard = quota_lock(42).lock().await;
+                let current = used.load(Ordering::SeqCst);
+                tokio::task::yield_now().await;
+                used.store(current + 1, Ordering::SeqCst);
+            }));
+        }
+        for task in tasks {
+            task.await.unwrap();
+        }
+        assert_eq!(used.load(Ordering::SeqCst), 2, "并发通过同一份配额 = 丢更新");
+    }
+
+    /// 不同分片不互相阻塞：固定 64 把锁的代价只是碰撞时多等。
+    #[tokio::test]
+    async fn quota_lock_does_not_block_other_admins() {
+        let held = quota_lock(0).lock().await;
+        let other = quota_lock(1);
+        assert!(tokio::time::timeout(Duration::from_millis(100), other.lock()).await.is_ok());
+        drop(held);
+    }
 }

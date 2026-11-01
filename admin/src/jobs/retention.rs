@@ -5,14 +5,63 @@ use super::*;
 use crate::backup::is_stale;
 
 /// 日志保留：清 `login_log` / `audit_log` / `job_log` 里超过 `[log] retain_days` 的行。
-/// 沿用 A4 的实现；`retain_days = 0`（永久保留）时什么都不做。
+/// 沿用 A4 的实现；`retain_days = 0`（永久保留）时只跳过日志，仍跑关系表兜底清理。
+///
+/// 关系表兜底（#8）搭这趟每天的车：角色/部门/菜单删除是「先查引用再删」，
+/// 与并发的授权/建人之间有窗口，可能留下指向已删对象的关联行。清理按天跑，
+/// 所以是**最终一致**（窗口最长一个任务周期），不是删除瞬间的强一致；
+/// SQL 幂等，单实例与多实例都可安全执行。
 pub(super) async fn log_retention(state: AppState) -> Result<String, String> {
     let days = state.cfg.retain_days;
-    if days <= 0 {
-        return Ok("retain_days=0（永久保留），跳过".into());
+    let logs = if days <= 0 {
+        "retain_days=0（永久保留），跳过日志".to_string()
+    } else {
+        let n = crate::retention::purge_all(&state.db, days).await;
+        format!("清理过期日志 {n} 条（保留 {days} 天）")
+    };
+    let relations = relation_orphan_clean(&state).await?;
+    Ok(format!("{logs}；{relations}"))
+}
+
+/// 删悬挂关联行 + 修正指向已删部门的 `admin.dept_id`（见 [`log_retention`] 的说明）。
+async fn relation_orphan_clean(state: &AppState) -> Result<String, String> {
+    let deletes = [
+        (
+            "admin_role",
+            "DELETE ar FROM admin_role ar LEFT JOIN `role` r ON r.id = ar.role_id \
+             WHERE r.id IS NULL",
+        ),
+        (
+            "role_menu",
+            "DELETE rm FROM role_menu rm LEFT JOIN `role` r ON r.id = rm.role_id \
+             LEFT JOIN menu m ON m.id = rm.menu_id WHERE r.id IS NULL OR m.id IS NULL",
+        ),
+        (
+            "role_dept",
+            "DELETE rd FROM role_dept rd LEFT JOIN `role` r ON r.id = rd.role_id \
+             LEFT JOIN dept d ON d.id = rd.dept_id WHERE r.id IS NULL OR d.id IS NULL",
+        ),
+    ];
+    let mut counts = Vec::with_capacity(deletes.len());
+    for (table, sql) in deletes {
+        let n = state
+            .db
+            .execute(sql, &[])
+            .await
+            .map_err(|e| format!("清理 {table} 悬挂关联失败: {e}"))?;
+        counts.push(format!("{table} {n}"));
     }
-    let n = crate::retention::purge_all(&state.db, days).await;
-    Ok(format!("清理过期日志 {n} 条（保留 {days} 天）"))
+    // 部门已被删、管理员还挂着它：回根（0），别让管理员永远落在不存在的部门里
+    let admins = state
+        .db
+        .execute(
+            "UPDATE admin a LEFT JOIN dept d ON d.id = a.dept_id \
+             SET a.dept_id = 0 WHERE a.dept_id <> 0 AND d.id IS NULL",
+            &[],
+        )
+        .await
+        .map_err(|e| format!("修正悬挂部门失败: {e}"))?;
+    Ok(format!("清理悬挂关联 {}，修正管理员部门 {admins}", counts.join(" / ")))
 }
 
 /// 头像孤儿清理：删头像组目录（`{upload_dir}/avatar/`）下**不再被任何 admin 引用**的

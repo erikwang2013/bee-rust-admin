@@ -29,6 +29,38 @@ fn title_and_content_rejected_when_blank_or_oversize() {
     assert!(check_content(&"x".repeat(CONTENT_MAX + 1)).is_err());
 }
 
+/// 三个写入口（create / update / set_status）共用这一条：0/1 之外的都 400。
+#[test]
+fn status_must_be_draft_or_published() {
+    assert!(check_status(0).is_ok());
+    assert!(check_status(1).is_ok());
+    for bad in [-1, 2, 127] {
+        match check_status(bad) {
+            Err(ApiError::BadRequest(msg)) => assert!(msg.contains("0 或 1"), "{msg}"),
+            other => panic!("状态 {bad} 应返回 400，实际: {other:?}"),
+        }
+    }
+}
+
+/// v1/v2 列表共用的筛选口径：空白标题等于没筛，值仍走绑定参数。
+#[test]
+fn list_filter_keeps_title_and_status_semantics() {
+    let q = NoticeQuery {
+        page: None,
+        size: None,
+        title: Some("  维护 ".into()),
+        status: Some(0),
+    };
+    let (sql, params) = notice_filter(&q);
+    assert_eq!(sql, " WHERE title LIKE ? AND status = ?");
+    assert_eq!(params, vec![DbValue::Text("%维护%".into()), DbValue::Int(0)]);
+
+    let q = NoticeQuery { title: Some("   ".into()), status: None, ..q };
+    let (sql, params) = notice_filter(&q);
+    assert_eq!(sql, "", "空白标题不该变成 LIKE '%%'");
+    assert!(params.is_empty());
+}
+
 /// 字符数没超、字节数超了也必须拒：4 字节 emoji × 16384 = 65536 字节 > TEXT 上限。
 #[test]
 fn content_byte_limit_rejects_multibyte_overflow() {

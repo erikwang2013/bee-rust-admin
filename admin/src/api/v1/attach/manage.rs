@@ -67,7 +67,7 @@ pub async fn list(
     let (rows, total) =
         qs.order_by("id DESC").fetch_page(&state.db, page, size).await.map_err(ApiError::from)?;
 
-    let (names, labels) = row_labels(&state, &rows).await?;
+    let (names, labels) = row_labels(&state, &auth, &rows).await?;
     let list: Vec<Value> = rows.iter().map(|a| row_json(a, &names, &labels)).collect();
     Ok(ok(json!({ "list": list, "total": total })))
 }
@@ -80,6 +80,7 @@ pub(crate) type Labels = HashMap<i64, (String, bool)>;
 
 pub(crate) async fn row_labels(
     state: &AppState,
+    auth: &Auth,
     rows: &[Attachment],
 ) -> Result<(Names, Labels), ApiError> {
     let mut admin_ids: Vec<i64> = rows.iter().map(|a| a.admin_id).collect();
@@ -103,6 +104,9 @@ pub(crate) async fn row_labels(
         .collect();
     notice_ids.sort_unstable();
     notice_ids.dedup();
+    // 草稿标题只给公告管理端看：附件列表的读者可能只有 system:attach:list，
+    // 不能借 entity_label 绕过详情接口「草稿 404」的可见性口径。
+    let can_see_drafts = auth.require("system:notice:list").is_ok();
     let mut labels = Labels::new();
     if !notice_ids.is_empty() {
         // 只取展示要用的三列：content 单行最大 64KB，列表拿标题/状态不该把它整列读出来。
@@ -116,7 +120,10 @@ pub(crate) async fn row_labels(
                 row.get("title").and_then(|v| v.as_str()),
                 row.get("status").and_then(|v| v.as_i64()),
             ) {
-                labels.insert(id, (title.to_string(), status == 1));
+                // 已发布的一律带标题；草稿只在有公告列表权限时带（is_public 始终按状态）
+                if status == 1 || can_see_drafts {
+                    labels.insert(id, (title.to_string(), status == 1));
+                }
             }
         }
     }
@@ -350,7 +357,7 @@ pub async fn bind(
     row.updated_at = now();
     row.update(&state.db).await.map_err(ApiError::from)?;
 
-    let (names, labels) = row_labels(&state, std::slice::from_ref(&row)).await?;
+    let (names, labels) = row_labels(&state, &auth, std::slice::from_ref(&row)).await?;
     Ok(ok(row_json(&row, &names, &labels)))
 }
 

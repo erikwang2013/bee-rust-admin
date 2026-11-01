@@ -2,8 +2,7 @@
 //! `/api/v1` 公告列表 / 未读的兼容实现：保持 v2.18.1 之前的完整行（含正文）。
 //!
 //! 摘要化是破坏性变更，只能进 `/api/v2`；v1 调用方不应该因为升级被迫改字段。
-use super::{NoticeQuery, UNREAD_LIMIT};
-use crate::api::{PagingExt, page_size};
+use super::{NoticeQuery, UNREAD_LIMIT, fetch_notice_page};
 use crate::auth::Auth;
 use crate::error::{ApiError, AppQuery, ok};
 use crate::models::Notice;
@@ -35,17 +34,11 @@ pub async fn list(
     AppQuery(q): AppQuery<NoticeQuery>,
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:notice:list")?;
-    let (page, size) = page_size(q.page, q.size);
-    let mut qs = Notice::query();
-    if let Some(t) = q.title.as_deref().filter(|s| !s.trim().is_empty()) {
-        qs = qs.filter_contains("title", t.trim()).map_err(ApiError::from)?;
-    }
-    if let Some(s) = q.status {
-        qs = qs.filter_eq("status", s).map_err(ApiError::from)?;
-    }
-    let (rows, total) =
-        qs.order_by("id DESC").fetch_page(&state.db, page, size).await.map_err(ApiError::from)?;
-    Ok(ok(json!({ "list": rows, "total": total })))
+    // 与 v2 摘要列表共用筛选/分页口径，只有 SELECT 的列不同（v1 保持完整行）。
+    let (rows, total) = fetch_notice_page(&state, &q, "*").await?;
+    let list =
+        rows.iter().map(Notice::from_row).collect::<Result<Vec<_>, _>>().map_err(ApiError::from)?;
+    Ok(ok(json!({ "list": list, "total": total })))
 }
 
 /// v1 契约：未读行同样是完整公告（含 `content`）。
