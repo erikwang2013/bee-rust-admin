@@ -332,6 +332,8 @@ pub async fn remove(
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:remove")?;
     let id = hid::dec(&id)?;
+    // 与管理员授权/换角色串行，避免「计数为 0」之后又插入一条授权。
+    let _config = crate::config_lock::lock().await;
     let used = state.db.count_refs("admin_role", "role_id", id).await.map_err(ApiError::from)?;
     if used > 0 {
         return Err(ApiError::BadRequest("该角色已被管理员使用，不能删除".into()));
@@ -390,6 +392,7 @@ pub async fn set_menus(
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:edit")?;
     let id = hid::dec(&id)?;
+    let _config = crate::config_lock::lock().await;
     let role = Role::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
@@ -451,6 +454,7 @@ pub async fn set_depts(
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:role:edit")?;
     let id = hid::dec(&id)?;
+    let _config = crate::config_lock::lock().await;
     let role = Role::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?

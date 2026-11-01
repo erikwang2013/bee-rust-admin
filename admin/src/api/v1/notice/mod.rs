@@ -5,9 +5,13 @@
 //! 版本化：摘要列表/未读挂在 `/api/v2/notices`；`compat` 保留 `/api/v1` 的完整行契约。
 //! 其余公告接口（CRUD / 详情 / 状态 / 已读）在 v1、v2 两个前缀下都可用。
 pub mod compat;
+mod query;
 mod summary;
 
-use crate::api::{check_len, page_size};
+pub use query::NoticeQuery;
+pub(crate) use query::fetch_notice_page;
+
+use crate::api::check_len;
 use crate::auth::Auth;
 use crate::error::{ApiError, AppJson, AppPath, AppQuery, ok};
 use crate::hid;
@@ -17,7 +21,7 @@ use crate::state::AppState;
 use crate::util::now;
 use axum::Json;
 use axum::extract::State;
-use bee_orm::{Model, OrmError, Row, Value as DbValue};
+use bee_orm::{Model, OrmError, Value as DbValue};
 use chrono::NaiveDateTime;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -70,14 +74,6 @@ fn check_content(content: &str) -> Result<(), ApiError> {
 // ── 管理侧 ──────────────────────────────────────────────────
 
 #[derive(Deserialize)]
-pub struct NoticeQuery {
-    pub page: Option<u32>,
-    pub size: Option<u32>,
-    pub title: Option<String>,
-    pub status: Option<i8>,
-}
-
-#[derive(Deserialize)]
 pub struct NoticeCreate {
     pub title: String,
     pub content: String,
@@ -96,51 +92,6 @@ pub struct NoticeUpdate {
 pub struct NoticeStatus {
     /// 0 草稿 / 1 已发布
     pub status: i8,
-}
-
-/// 公告列表筛选的唯一口径（v1 完整行 / v2 摘要共用）：title 模糊 + status 等值。
-/// 返回 `WHERE` 片段与按位绑定的参数；用户输入不进 SQL 文本。
-fn notice_filter(q: &NoticeQuery) -> (String, Vec<DbValue>) {
-    let mut conds: Vec<&str> = Vec::new();
-    let mut params: Vec<DbValue> = Vec::new();
-    if let Some(t) = q.title.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-        conds.push("title LIKE ?");
-        params.push(format!("%{t}%").into());
-    }
-    if let Some(s) = q.status {
-        conds.push("status = ?");
-        params.push(s.into());
-    }
-    let where_sql =
-        if conds.is_empty() { String::new() } else { format!(" WHERE {}", conds.join(" AND ")) };
-    (where_sql, params)
-}
-
-/// 列表取数：筛选 / 排序 / 分页只有这一处实现，v1/v2 只差 SELECT 的列
-/// （v1 完整行 `*`，v2 摘要列），所以语义不会漂。`columns` 只收调用方写死的常量。
-async fn fetch_notice_page(
-    state: &AppState,
-    q: &NoticeQuery,
-    columns: &str,
-) -> Result<(Vec<Row>, i64), ApiError> {
-    let (page, size) = page_size(q.page, q.size);
-    let (where_sql, mut params) = notice_filter(q);
-    let total = state
-        .db
-        .query(&format!("SELECT COUNT(*) AS n FROM notice{where_sql}"), &params)
-        .await
-        .map_err(ApiError::from)?
-        .first()
-        .and_then(|r| r.get("n"))
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0);
-    // 与 `PagingExt::fetch_page` 相同的偏移口径
-    let offset = page.saturating_sub(1).saturating_mul(size);
-    params.push(DbValue::from(size as i64));
-    params.push(DbValue::from(offset as i64));
-    let sql = format!("SELECT {columns} FROM notice{where_sql} ORDER BY id DESC LIMIT ? OFFSET ?");
-    let rows = state.db.query(&sql, &params).await.map_err(ApiError::from)?;
-    Ok((rows, total))
 }
 
 #[apidoc::title("公告列表（v2）")]

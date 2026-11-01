@@ -25,6 +25,9 @@ pub(super) async fn log_retention(state: AppState) -> Result<String, String> {
 
 /// 删悬挂关联行 + 修正指向已删部门的 `admin.dept_id`（见 [`log_retention`] 的说明）。
 async fn relation_orphan_clean(state: &AppState) -> Result<String, String> {
+    // 与配置写串行：清理运行时不能有新的授权/建人落库，否则「查到孤儿→删除」之间
+    // 可能刚好插入有效关系。锁只覆盖这段低频清理，不阻塞业务读写。
+    let _config = crate::config_lock::lock().await;
     let deletes = [
         (
             "admin_role",

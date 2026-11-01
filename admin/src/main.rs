@@ -4,6 +4,7 @@ mod audit;
 mod auth;
 mod backup;
 mod config;
+mod config_lock;
 mod crypto;
 mod datascope;
 mod error;

@@ -240,7 +240,8 @@ async fn v14_backend_features() {
     let (st, v) = call(&c, Method::GET, api(&format!("/admins/{t1}")), Some(&op), None).await;
     assert_eq!(st, 200, "本部门详情: {v}");
     let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{t1}")), Some(&op), Some(json!({
-        "nickname": "本部门改的", "dept_id": dept_a, "status": 1, "role_ids": [],
+        "nickname": "本部门改的", "email": "", "phone": "", "sex": 0,
+        "dept_id": dept_a, "status": 1, "remark": "", "role_ids": [],
     }))).await;
     assert_eq!(st, 200, "本部门编辑（不授角色）: {v}");
 
@@ -249,7 +250,8 @@ async fn v14_backend_features() {
     for (m, path, body) in [
         (Method::GET, format!("/admins/{t2}"), None),
         (Method::PUT, format!("/admins/{t2}"),
-            Some(json!({"nickname": "越界", "dept_id": dept_a, "status": 1, "role_ids": []}))),
+            Some(json!({"nickname": "越界", "email": "", "phone": "", "sex": 0,
+                "dept_id": dept_a, "status": 1, "remark": "", "role_ids": []}))),
         (Method::PUT, format!("/admins/{t2}/status"), Some(json!({"status": 0}))),
         (Method::PUT, format!("/admins/{t2}/password"), Some(json!({"password": "hacked12345"}))),
         (Method::DELETE, format!("/admins/{t2}"), None),
@@ -262,7 +264,8 @@ async fn v14_backend_features() {
     }
     // 范围内的人也不能挪到范围外的部门去（否则能绕开上面的目标判定）
     let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{t1}")), Some(&op), Some(json!({
-        "nickname": "本部门改的", "dept_id": dept_b, "status": 1, "role_ids": [],
+        "nickname": "本部门改的", "email": "", "phone": "", "sex": 0,
+        "dept_id": dept_b, "status": 1, "remark": "", "role_ids": [],
     }))).await;
     assert_eq!(st, 403, "不能把人挪到范围外的部门: {v}");
     assert_eq!(v["msg"], "超出你的数据权限范围", "{v}");
@@ -330,7 +333,8 @@ async fn v14_backend_features() {
         Some(json!({"role_ids": [wide_role]}))).await;
     assert_eq!(st, 200, "超管先给 t1 授一个 scope=1 的角色: {v}");
     let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{t1}")), Some(&op), Some(json!({
-        "nickname": "改个昵称", "dept_id": dept_a, "status": 1, "role_ids": [wide_role],
+        "nickname": "改个昵称", "email": "", "phone": "", "sex": 0,
+        "dept_id": dept_a, "status": 1, "remark": "", "role_ids": [wide_role],
     }))).await;
     assert_eq!(st, 200, "原样带上已有的宽角色改昵称必须放行: {v}");
     let (st, v) = call(&c, Method::GET, api(&format!("/admins/{t1}")), Some(&op), None).await;
@@ -366,7 +370,8 @@ async fn v14_backend_features() {
     let (st, v) = call(&c, Method::GET, api(&format!("/admins/{t2}")), Some(&admin), None).await;
     assert_eq!(st, 200, "超管看 B 部的人: {v}");
     let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{t2}")), Some(&admin), Some(json!({
-        "nickname": "超管改的", "dept_id": dept_b, "status": 1, "role_ids": [wide_role],
+        "nickname": "超管改的", "email": "", "phone": "", "sex": 0,
+        "dept_id": dept_b, "status": 1, "remark": "", "role_ids": [wide_role],
     }))).await;
     assert_eq!(st, 200, "超管改 B 部的人并授 scope=1: {v}");
 

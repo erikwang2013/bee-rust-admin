@@ -138,6 +138,7 @@ pub async fn create(
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:dept:add")?;
     validate_body(&body)?;
+    let _config = crate::config_lock::lock().await;
     if !parent_exists(&state, body.parent_id).await? {
         return Err(ApiError::BadRequest("上级部门不存在".into()));
     }
@@ -185,6 +186,7 @@ pub async fn update(
     auth.require("system:dept:edit")?;
     let id = hid::dec(&id)?;
     validate_body(&body)?;
+    let _config = crate::config_lock::lock().await;
     if !parent_exists(&state, body.parent_id).await? {
         return Err(ApiError::BadRequest("上级部门不存在".into()));
     }
@@ -244,6 +246,8 @@ pub async fn remove(
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:dept:remove")?;
     let id = hid::dec(&id)?;
+    // 与建人/改人串行：避免检查完「无管理员」后，另一个请求把人挂进来。
+    let _config = crate::config_lock::lock().await;
     // 存在才做范围校验：不存在的 id 保持原来的「200、删 0 行」幂等语义
     if let Some(d) = Dept::query()
         .filter_eq("id", id)

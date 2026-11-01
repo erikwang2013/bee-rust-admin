@@ -116,16 +116,23 @@ async fn full_admin_flow() {
     assert_eq!(st, 200, "给角色补编辑按钮: {v}");
 
     // 有 edit 权限也不能禁用超管（否则前端编辑弹窗能藏掉超管）
-    let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{super_id}")), Some(&op1_token), Some(json!({"status": 0}))).await;
+    let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{super_id}")), Some(&op1_token), Some(json!({
+        "nickname": "超管", "email": "", "phone": "", "sex": 0,
+        "dept_id": 0, "status": 0, "remark": "", "role_ids": [],
+    }))).await;
     assert_eq!(st, 400, "不能修改超级管理员的状态: {v}");
     assert!(v["msg"].as_str().unwrap().contains("超级管理员"), "错误信息应说明原因: {v}");
     // 有 edit 权限也不能改自己的状态
     let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{op1_id}")), Some(&op1_token),
-        Some(json!({"status": 0}))).await;
+        Some(json!({
+            "nickname": "操作员2", "email": "", "phone": "", "sex": 0,
+            "dept_id": dept_id, "status": 0, "remark": "", "role_ids": [role_id],
+        }))).await;
     assert_eq!(st, 400, "不能修改自己的状态: {v}");
     // 状态不变时编辑照常可用
     let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{op1_id}")), Some(&op1_token), Some(json!({
-        "nickname": "操作员2", "dept_id": dept_id, "status": 1, "role_ids": [role_id]
+        "nickname": "操作员2", "email": "", "phone": "", "sex": 0,
+        "dept_id": dept_id, "status": 1, "remark": "", "role_ids": [role_id],
     }))).await;
     assert_eq!(st, 200, "状态不变时正常编辑: {v}");
     let (st, v) = call(&c, Method::GET, api(&format!("/admins/{op1_id}")), Some(&op1_token), None).await;

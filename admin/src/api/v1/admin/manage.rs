@@ -102,6 +102,8 @@ pub async fn create(
     validate_username(&body.username)?;
     validate_password(&body.password, "密码")?;
     validate_profile(&body.nickname, &body.email, &body.phone, &body.remark)?;
+    // 配置写锁：部门/角色可能正被删除，范围检查与插入必须和删除串行。
+    let _config = crate::config_lock::lock().await;
     // 建人也要在范围内：部门与角色都不能超出操作者自己（B5）
     datascope::ensure_dept_in_scope(&auth, &state.db, body.dept_id).await?;
     datascope::ensure_roles_grantable(&auth, &state.db, &body.role_ids).await?;
@@ -141,20 +143,20 @@ pub async fn create(
 }
 
 #[apidoc::title("编辑管理员")]
-#[apidoc::desc("本接口同样能改状态：禁用即踢下线；不能改自己 / 超管的状态，目标与要授的角色都不能超出操作者范围")]
+#[apidoc::desc("**全量覆盖**：所有字段必填，缺一个回 400；本接口同样能改状态，禁用即踢下线；不能改自己 / 超管的状态，目标与要授的角色都不能超出操作者范围")]
 #[apidoc::url("/api/v1/admins/{id}")]
 #[apidoc::method("PUT")]
 #[apidoc::tag("管理员")]
 #[apidoc::header(name = "Authorization", desc = "Bearer <token>")]
 #[apidoc::route_param(name = "id", ty = "string", required, desc = "管理员对外 id（hashids 短串）")]
-#[apidoc::param(name = "nickname", ty = "string", desc = "昵称，最长 64 字符")]
-#[apidoc::param(name = "email", ty = "string", desc = "邮箱（落库加密），最长 128 字符")]
-#[apidoc::param(name = "phone", ty = "string", desc = "手机号（落库加密），最长 20 字符")]
-#[apidoc::param(name = "sex", ty = "int", desc = "性别：0 未知 / 1 男 / 2 女")]
-#[apidoc::param(name = "dept_id", ty = "string", desc = "部门短串（0 = 无部门）")]
-#[apidoc::param(name = "status", ty = "int", desc = "状态：1 启用 / 0 禁用")]
-#[apidoc::param(name = "remark", ty = "string", desc = "备注，最长 255 字符")]
-#[apidoc::param(name = "role_ids", ty = "array", desc = "角色短串数组（整批覆盖）")]
+#[apidoc::param(name = "nickname", ty = "string", required, desc = "昵称（可为空串），最长 64 字符")]
+#[apidoc::param(name = "email", ty = "string", required, desc = "邮箱（落库加密，可为空串），最长 128 字符")]
+#[apidoc::param(name = "phone", ty = "string", required, desc = "手机号（落库加密，可为空串），最长 20 字符")]
+#[apidoc::param(name = "sex", ty = "int", required, desc = "性别：0 未知 / 1 男 / 2 女")]
+#[apidoc::param(name = "dept_id", ty = "string", required, desc = "部门短串（0 = 无部门）")]
+#[apidoc::param(name = "status", ty = "int", required, desc = "状态：1 启用 / 0 禁用")]
+#[apidoc::param(name = "remark", ty = "string", required, desc = "备注（可为空串），最长 255 字符")]
+#[apidoc::param(name = "role_ids", ty = "array", required, desc = "角色短串数组（整批覆盖，可为空数组）")]
 #[apidoc::response_status("200")]
 #[apidoc::response_status("400")]
 #[apidoc::returned(name = "data", ty = "null", desc = "无数据（成功时固定为 null）")]
@@ -167,6 +169,7 @@ pub async fn update(
     auth.require("system:admin:edit")?;
     let id = hid::dec(&id)?;
     validate_profile(&body.nickname, &body.email, &body.phone, &body.remark)?;
+    let _config = crate::config_lock::lock().await;
     let mut a = Admin::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
@@ -285,6 +288,8 @@ pub async fn remove(
     if id == auth.admin.id {
         return Err(ApiError::BadRequest("不能删除自己".into()));
     }
+    // 与角色/部门的删除及授权串行，避免检查后有人在关联表里插入一行。
+    let _config = crate::config_lock::lock().await;
     let a = Admin::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
@@ -460,6 +465,7 @@ pub async fn set_roles(
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:admin:edit")?;
     let id = hid::dec(&id)?;
+    let _config = crate::config_lock::lock().await;
     let target = Admin::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?

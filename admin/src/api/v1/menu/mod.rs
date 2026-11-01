@@ -164,6 +164,7 @@ pub async fn create(
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:menu:add")?;
     validate_body(&body)?;
+    let _config = crate::config_lock::lock().await;
     // B5 写路径闸（非超管）：权限码只能写自己已有的（超管不受管）
     datascope::ensure_perm_writable(&auth, &body.perm)?;
     if !parent_exists(&state, body.parent_id).await? {
@@ -219,6 +220,7 @@ pub async fn update(
     auth.require("system:menu:edit")?;
     let id = hid::dec(&id)?;
     validate_body(&body)?;
+    let _config = crate::config_lock::lock().await;
     let mut m = Menu::query()
         .filter_eq("id", id)
         .map_err(ApiError::from)?
@@ -274,6 +276,8 @@ pub async fn remove(
 ) -> Result<Json<Value>, ApiError> {
     auth.require("system:menu:remove")?;
     let id = hid::dec(&id)?;
+    // 与角色挂菜单/建子菜单串行，避免检查完引用后又插入一条。
+    let _config = crate::config_lock::lock().await;
     let children = Menu::query()
         .filter_eq("parent_id", id)
         .map_err(ApiError::from)?

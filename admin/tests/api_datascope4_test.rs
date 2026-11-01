@@ -259,7 +259,8 @@ async fn datascope4_self_only_visibility() {
     //     编辑那条的 dept_id 故意填范围内的 A部：目标在不在范围内是唯一拦截理由。
     for (m, path, body) in [
         (Method::PUT, format!("/admins/{t4_peer}"),
-            Some(json!({"nickname": "越界改的", "dept_id": a, "status": 1, "role_ids": []}))),
+            Some(json!({"nickname": "越界改的", "email": "", "phone": "", "sex": 0,
+                "dept_id": a, "status": 1, "remark": "", "role_ids": []}))),
         (Method::PUT, format!("/admins/{t4_peer}/status"), Some(json!({"status": 0}))),
         (Method::DELETE, format!("/admins/{t4_peer}"), None),
     ] {
@@ -274,7 +275,8 @@ async fn datascope4_self_only_visibility() {
     //     PUT /admins 是**全量覆盖**：role_ids 必须原样带上，否则等于清空自己的角色。
     let (st, v) = call(&c, Method::PUT, api(&format!("/admins/{t4_op}")), Some(&t4_op_token),
         Some(json!({
-            "nickname": "t4_op 自己改的", "dept_id": a, "status": 1, "role_ids": [role],
+            "nickname": "t4_op 自己改的", "email": "", "phone": "", "sex": 0,
+            "dept_id": a, "status": 1, "remark": "", "role_ids": [role],
         }))).await;
     assert_eq!(st, 200, "改自己的昵称必须 200: {v}");
 
