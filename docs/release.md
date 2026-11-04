@@ -77,7 +77,7 @@ bash scripts/release.sh v0.0.1-drycommit --notes-file /tmp/notes.md --commit 925
   数据在 `data/bra/`，日志轮转；域名证书放 `certs/` 后 `--tls`，不加 `--build`）这条路。
 - **`--skip-images`**：本机没有 docker daemon 时用它，只发前两个产物（镜像与 compose 包
   那一节整个跳过，`gh` 资产列表也只剩两个）。
-- **一定要 strip**：不 strip 的二进制 22MB，strip 掉符号表后 ~16.6MB。这是发布口径的一部分，不是可选优化。
+- **一定要 strip**：不 strip 的二进制约 28MB，strip 掉符号表后约 21MB（随依赖变化）。这是发布口径的一部分，不是可选优化。
 - **资产名固定**：`install.sh` 的 download 模式按上面这两个名字去
   `releases/download/<tag>/` 拉；改名 = 所有一键安装直接挂掉。
 - **tar 结构固定**：`tar czf … -C admin/web/dist .`，根下直接是 `./index.html` —— `install.sh`

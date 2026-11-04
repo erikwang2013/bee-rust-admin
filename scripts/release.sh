@@ -7,7 +7,7 @@
 #   bash scripts/release.sh v2.9.0 --notes-file /tmp/notes-v2.9.0.md --commit 92536ef
 #
 # 产物口径（**别自己另搞一套**：install.sh 的 download 模式按前两个名字认）：
-#   bee_admin                  ELF 可执行，**strip 过** —— 不 strip 是 22MB，发布口径 16.6MB
+#   bee_admin                  ELF 可执行，**strip 过** —— 不 strip 约 28MB，发布口径约 21MB（随依赖变化）
 #   bee-admin-web-dist.tar.gz  前端 dist，tar 根下必须是 ./index.html 与 ./assets/
 #   bra-images-$TAG.tar.gz     后端 + 前端镜像（bra-backend:$TAG / bra-web:$TAG 的 docker save）
 #   bra-compose-$TAG.tar.gz    离线 compose 包（docker-compose.yml + compose-up.sh + 预填
@@ -75,7 +75,7 @@ BRA 发版脚本
   （镜像与 compose 包另需本机 docker daemon —— 没有就用 --skip-images）
 
 产物（target/release-assets/，不入库）：
-  bee_admin                   strip 过的 ELF（22MB → 16.6MB）
+  bee_admin                   strip 过的 ELF（约 28MB → 21MB）
   bee-admin-web-dist.tar.gz   前端 dist，根下 ./index.html + ./assets/
   bra-images-vX.Y.Z.tar.gz    后端 + 前端镜像（docker save；--skip-images 时不产出）
   bra-compose-vX.Y.Z.tar.gz   离线 compose 包（compose 文件 + .env + 说明；同上）
