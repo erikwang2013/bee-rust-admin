@@ -34,13 +34,14 @@ use async_trait::async_trait;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::params_from_iter;
 
-use super::{Row, conn_err, query_err};
+use super::{PoolStatus, Row, conn_err, query_err};
 use crate::{Db, Dialect, Result, Value};
 
 /// A cloneable handle to an r2d2 SQLite pool.
 #[derive(Clone)]
 pub struct Pool {
     inner: r2d2::Pool<SqliteConnectionManager>,
+    max_size: u32,
 }
 
 impl Pool {
@@ -56,7 +57,7 @@ impl Pool {
             (SqliteConnectionManager::file(dsn), max_size.max(1))
         };
         let inner = r2d2::Pool::builder().max_size(max_size).build(manager).map_err(conn_err)?;
-        Ok(Self { inner })
+        Ok(Self { inner, max_size })
     }
 
     /// Check out one connection. Hold it for the length of a transaction
@@ -86,6 +87,16 @@ impl Pool {
     /// Pool statistics: `connections` (open), `idle_connections`.
     pub fn status(&self) -> r2d2::State {
         self.inner.state()
+    }
+
+    /// Pool occupancy in the crate-wide [`PoolStatus`] shape.
+    pub fn pool_status(&self) -> PoolStatus {
+        let state = self.inner.state();
+        PoolStatus {
+            max_size: self.max_size as usize,
+            size: Some(state.connections as usize),
+            available: Some(state.idle_connections as usize),
+        }
     }
 }
 
@@ -260,5 +271,16 @@ mod tests {
         let pool = Pool::connect(":memory:", 4).unwrap();
         let _conn = pool.get().unwrap();
         assert!(pool.status().connections >= 1);
+    }
+
+    #[test]
+    fn pool_status_reports_size_and_available() {
+        let pool = Pool::connect(":memory:", 4).unwrap();
+        let _conn = pool.get().unwrap();
+        let status = pool.pool_status();
+        // `:memory:` is clamped to one connection.
+        assert_eq!(status.max_size, 1);
+        assert_eq!(status.size, Some(1));
+        assert_eq!(status.available, Some(0));
     }
 }

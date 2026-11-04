@@ -3,8 +3,11 @@ use std::time::Duration;
 
 use axum::Router as AxumRouter;
 use axum::http::StatusCode;
+use axum::middleware::from_fn_with_state;
 use axum::response::{IntoResponse, Response};
 use axum::routing::MethodRouter;
+
+use crate::latency::{LatencyConfig, middleware as latency_middleware};
 
 /// 统一错误信封 `{code,msg,data}`，保证 /api/v1 的错误响应也是 JSON。
 fn error_response(status: StatusCode, msg: &'static str) -> Response {
@@ -33,6 +36,7 @@ pub struct Router<S = ()> {
     timeout: Duration,
     /// 按路径前缀覆盖的超时，匹配时取最长前缀。
     timeout_overrides: Vec<(String, Duration)>,
+    latency: Option<LatencyConfig>,
 }
 
 /// 选最长匹配前缀的超时；没有前缀命中时用 `default`。
@@ -51,6 +55,7 @@ impl<S> Router<S> {
             body_limit: 2 * 1024 * 1024,
             timeout: Duration::from_secs(30),
             timeout_overrides: Vec::new(),
+            latency: None,
         }
     }
 
@@ -78,17 +83,34 @@ impl<S> Router<S> {
         self
     }
 
+    /// Enable an opt-in latency budget for `GET`/`HEAD` requests.
+    ///
+    /// The handler gets [`LatencyConfig::deadline`] minus the configured
+    /// fallback reserve; on expiry a public cached response is replayed, or
+    /// the request returns `504`. Other methods (including all writes) keep
+    /// the router's existing 30-second timeout.
+    ///
+    /// The deadline bounds the response, not background work: SQLite blocking
+    /// queries cannot be cancelled, and Postgres/MySQL/Redis commands continue
+    /// server-side. Timed-out GET handlers can continue in a bounded
+    /// background task to warm the cache.
+    pub fn latency(mut self, config: LatencyConfig) -> Self {
+        self.latency = Some(config);
+        self
+    }
+
     /// Build the router without supplying state. Handlers using
     /// [`axum::extract::State`] require [`Router::with_state`] instead.
     ///
-    /// Every route gets a 2 MiB body limit (see [`Router::body_limit`]) and a
-    /// 30 s request timeout unless overridden per prefix (see
-    /// [`Router::timeout_for`]).
+    /// Every route gets the configured body limit (see [`Router::body_limit`])
+    /// and a 30 s request timeout unless overridden per prefix (see
+    /// [`Router::timeout_for`]). With [`Router::latency`], `GET`/`HEAD`
+    /// additionally get the configured deadline and stale-cache fallback.
     pub fn build(self) -> AxumRouter<S>
     where
         S: Clone + Send + Sync + 'static,
     {
-        let Router { routes, body_limit, timeout, timeout_overrides } = self;
+        let Router { routes, body_limit, timeout, timeout_overrides, latency } = self;
         let mut router = AxumRouter::new();
         for (path, method_router) in routes {
             let route_timeout = pick_timeout(timeout, &timeout_overrides, &path);
@@ -115,7 +137,14 @@ impl<S> Router<S> {
             );
         }
         // 请求体上限对整棵路由树生效，别下放到单条路由。
-        router.layer(axum::extract::DefaultBodyLimit::max(body_limit))
+        let router = router.layer(axum::extract::DefaultBodyLimit::max(body_limit));
+        // Added last, so it is the outermost layer: the latency deadline wins
+        // over the 30s timeout for GET/HEAD. A timed-out handler moved to the
+        // background still runs inside the inner 30s timeout.
+        match latency {
+            Some(config) => router.layer(from_fn_with_state(config, latency_middleware)),
+            None => router,
+        }
     }
 
     /// Build the router and attach `state`, yielding a fully constructed

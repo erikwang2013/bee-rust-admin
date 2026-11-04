@@ -2,9 +2,11 @@
 #![cfg(feature = "mysql")]
 //! §44/§47 tester falsification of the mysql table-level FK opt-in:
 //! the constraint is real (checked semantically, not by name — the CREATE-path
-//! clause is unnamed DDL), re-runs are no-ops, the default path keeps the
-//! round-4 ignore pin — and the orphan failure leaves a state whose documented
-//! "clean the data" remedy is measured below.
+//! clause is unnamed DDL), re-runs are no-ops, the default path's inline
+//! `REFERENCES` differs by server version (ignored on MySQL 5.7/8.x,
+//! enforced on MySQL 9+ and MariaDB) —
+//! and the orphan failure leaves a state whose documented "clean the data"
+//! remedy is measured below.
 //!
 //! Env-gated by `BEE_ORM_MYSQL_DSN` like the other mysql targets; each test
 //! owns its table set (no cross-test DROP races).
@@ -138,11 +140,24 @@ async fn opt_in_enforces_once_and_re_runs_are_no_ops() -> Result<(), OrmError> {
         "re-runs must not duplicate the constraint"
     );
 
-    // Control: the default path still parses-and-ignores the inline
-    // `REFERENCES` and takes the dangling row (round-4 pin, §44 default off).
+    // Control: the default path emits the inline `REFERENCES` only. MySQL
+    // 5.7/8.x parse-and-ignore it; MySQL 9 and MariaDB materialize and
+    // enforce it (measured: MariaDB 10.11 creates `{table}_ibfk_N`).
     migrate::create_table::<FkPlainMember, _>(&pool).await?;
-    assert!(fk_constraints(&pool, "it_fk_plain").await?.is_empty());
-    assert_eq!(FkPlainMember { id: 0, team_id: 999_999 }.insert(&pool).await?, 1);
+    let control = fk_constraints(&pool, "it_fk_plain").await?;
+    let dangling = FkPlainMember { id: 0, team_id: 999_999 };
+    let (major, is_mariadb) = common::mysql_vendor(&pool).await?;
+    if is_mariadb || major >= 9 {
+        assert_eq!(
+            control.len(),
+            1,
+            "MySQL 9 and MariaDB materialize the inline REFERENCES: {control:?}"
+        );
+        assert!(dangling.insert(&pool).await.is_err(), "this server enforces it");
+    } else {
+        assert!(control.is_empty(), "MySQL 5.7/8.x ignore it: {control:?}");
+        assert_eq!(dangling.insert(&pool).await?, 1);
+    }
     Ok(())
 }
 

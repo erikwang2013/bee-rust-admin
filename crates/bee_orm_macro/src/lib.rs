@@ -25,6 +25,11 @@
 //! - `soft_delete` — the soft-delete flag column, stored as a `bool`; stays an
 //!   ordinary writable column, and rows whose flag is NULL stay invisible to
 //!   default queries
+//! - `shard_key` — the field `Model::shard_key` returns as the routing key; at
+//!   most one per model. Its type must implement `Into<Value>` (the scalar
+//!   column spellings do; `Option<T>::None` becomes `Value::Null`, which the
+//!   derive returns as "no key"). It cannot be `ignore`d or database-assigned
+//!   (`auto` / `auto_now_add` / `auto_now`): routing happens before insert
 //! - `sql_type = "..."` — raw SQL type for `columns()`, bypassing the type
 //!   spelling table; required for spellings without a mapping (`u64`, custom
 //!   types) and for a non-integer `auto` primary key
@@ -62,6 +67,7 @@ use expand::expand;
 /// | `auto_now_add` | Unix-seconds timestamp column injected on insert; the field type must decode an integer (`i64` / `Option<i64>`). |
 /// | `auto_now` | Same, refreshed on insert and update. |
 /// | `soft_delete` | Soft-delete flag column, stored as a `bool`: rows whose flag is NULL stay invisible to default queries. At most one per model, never on the primary key. |
+/// | `shard_key` | The field `Model::shard_key` returns, for `ShardedPools` routing. At most one per model; the type must implement `Into<Value>` (`Option<T>::None` maps to `Value::Null` and is treated as no key), and the field cannot be `ignore`d or database-assigned (`auto` / `auto_now_add` / `auto_now`). |
 /// | `sql_type = "…"` | Raw SQL type for `columns()`, bypassing the type spelling table; required for spellings without a mapping and for a non-integer `auto` primary key. |
 /// | `fk = Target` | Foreign key: `columns()` records `Target`'s table and primary-key column, and `Target` must derive `Model`. |
 #[proc_macro_derive(Model, attributes(bee))]

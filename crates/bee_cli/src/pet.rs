@@ -165,7 +165,7 @@ const BASE: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 
 
   {EXTRA}
 
-  <text x="256" y="500" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="30" letter-spacing="7" fill="#1F1A17">bee-rust</text>
+  <text x="256" y="500" text-anchor="middle" font-family="'JetBrains Mono','Noto Sans Mono','DejaVu Sans Mono',ui-monospace,monospace" font-size="30" letter-spacing="7" fill="#1F1A17">bee-rust</text>
 </svg>
 "##;
 

@@ -227,9 +227,6 @@ docker-compose.yml      单机 MySQL + 初始化 + 后端 + 前端一键起栈
 docker-compose.tls.yml  HTTPS 叠加（certs/ + TLS nginx 模板）
 ```
 
-> `install.sql` 在仓库根目录，但**与本项目无关** —— 那是另一个工具的记忆库 schema，
-> 安装 BRA 不需要也不使用它，别被名字骗到。
-
 ## 使用说明
 
 > **想快点装起来？** 看 [`docs/install.md`](docs/install.md) —— 三种装法的完整命令、
@@ -252,6 +249,7 @@ docker-compose.tls.yml  HTTPS 叠加（certs/ + TLS nginx 模板）
 | 组件 | 版本 |
 |---|---|
 | Rust | 1.99+（edition 2024） |
+| bee-rust | 1.6.2（本仓 `crates/` 同步；保留本地路由/配置补丁） |
 | MySQL | 8.0+（开发于 8.4，utf8mb4） |
 | Node / pnpm | Node 22.12+ / pnpm 10+ |
 | nginx | 任意近期版本（仅生产部署需要） |
@@ -462,7 +460,7 @@ curl -G --data-urlencode "token=$TOKEN" http://127.0.0.1:8080/apidoc/api.json
 ```bash
 # 框架：单测 + 真库集成（未设 DSN 的集成测试跳过并打印原因）
 cargo test -p bee_orm
-BEE_ORM_TEST_DSN='mysql://user:pass@127.0.0.1:3306/bee_orm_test' cargo test -p bee_orm -- --nocapture
+BEE_ORM_MYSQL_DSN='mysql://user:pass@127.0.0.1:3306/bee_orm_test' cargo test -p bee_orm --features mysql,chrono -- --nocapture
 
 # 后台：单测（配置 / JWT / 数据权限 / 防环等纯函数）
 cargo test -p bee_admin --bins

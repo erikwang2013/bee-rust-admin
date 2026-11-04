@@ -3,7 +3,7 @@
 //! spellings, defaults, `REFERENCES`, the add-column diff and idempotency.
 
 use super::*;
-use crate::migrate;
+use crate::{MigrateOptions, migrate};
 
 const ARTICLE_SQLITE: &str = "CREATE TABLE IF NOT EXISTS articles \
     (id INTEGER PRIMARY KEY AUTOINCREMENT, author_id INTEGER NOT NULL REFERENCES authors (id), \
@@ -53,6 +53,45 @@ async fn non_auto_pk_and_boolean_defaults_render_per_dialect() {
 }
 
 #[tokio::test]
+async fn create_table_uses_the_resolved_names() {
+    let db = Mock::with_dialect_and_prefix(Dialect::Sqlite, "s0_");
+    migrate::create_table::<Article, _>(&db).await.unwrap();
+    let calls = db.calls();
+    let ddl = &calls[0].0;
+    assert!(ddl.starts_with("CREATE TABLE IF NOT EXISTS s0_articles"), "{ddl}");
+    assert!(ddl.contains("REFERENCES s0_authors (id)"), "{ddl}");
+}
+
+#[tokio::test]
+async fn the_mysql_table_level_paths_use_the_resolved_names() {
+    let db = Mock::with_dialect_and_prefix(Dialect::Mysql, "s0_");
+    migrate::create_table_with::<Article, _>(&db, MigrateOptions { table_level_fk: true })
+        .await
+        .unwrap();
+    let ddl = db.calls().remove(0).0;
+    assert!(ddl.contains("FOREIGN KEY (author_id) REFERENCES s0_authors (id)"), "{ddl}");
+
+    let db = Mock::with_dialect_and_prefix(Dialect::Mysql, "s0_");
+    migrate::add_missing_columns_with::<Article, _>(&db, MigrateOptions { table_level_fk: true })
+        .await
+        .unwrap();
+    let calls = db.calls();
+    let sql: Vec<&str> = calls.iter().map(|(sql, _)| sql.as_str()).collect();
+    assert!(
+        sql.contains(
+            &"ALTER TABLE s0_articles ADD CONSTRAINT s0_articles_author_id_fk \
+              FOREIGN KEY (author_id) REFERENCES s0_authors (id)"
+        ),
+        "{sql:?}"
+    );
+    let lookup = calls.iter().find(|(sql, _)| sql.contains("table_constraints")).unwrap();
+    assert_eq!(
+        lookup.1,
+        vec![Value::Text("s0_articles".into()), Value::Text("s0_articles_author_id_fk".into())]
+    );
+}
+
+#[tokio::test]
 async fn empty_columns_is_an_error_naming_the_model() {
     let db = Mock::with_dialect(Dialect::Sqlite);
     let err = migrate::create_table::<Plain, _>(&db).await.unwrap_err();
@@ -90,6 +129,23 @@ async fn add_missing_columns_alters_only_the_missing_ones() {
         "ALTER TABLE articles ADD COLUMN author_id INTEGER NOT NULL REFERENCES authors (id)"
     );
     assert_eq!(calls[2].0, "ALTER TABLE articles ADD COLUMN created INTEGER NOT NULL DEFAULT 0");
+}
+
+#[tokio::test]
+async fn add_missing_columns_uses_the_resolved_table() {
+    let db = Mock {
+        dialect: Some(Dialect::Sqlite),
+        resolve_prefix: Some("s0_".into()),
+        rows: vec![row_of(&[("name", serde_json::json!("id"))])],
+        ..Mock::default()
+    };
+    migrate::add_missing_columns::<Article, _>(&db).await.unwrap();
+    let calls = db.calls();
+    assert_eq!(calls[0].0, "PRAGMA table_info(s0_articles)");
+    assert_eq!(
+        calls[1].0,
+        "ALTER TABLE s0_articles ADD COLUMN author_id INTEGER NOT NULL REFERENCES s0_authors (id)"
+    );
 }
 
 #[tokio::test]

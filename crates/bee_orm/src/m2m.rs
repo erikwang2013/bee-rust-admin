@@ -49,8 +49,8 @@ pub async fn related_ids<L: Model, R: Model, D: Db + ?Sized>(
     local: &L,
 ) -> Result<Vec<Value>> {
     let def = def_or_err::<L, R>()?;
-    let sql =
-        format!("SELECT {} FROM {} WHERE {} = ?", def.foreign_column, def.table, def.local_column);
+    let table = db.resolve_table(def.table)?;
+    let sql = format!("SELECT {} FROM {table} WHERE {} = ?", def.foreign_column, def.local_column);
     let rows = db.query(&sql, &[local.pk_value()]).await?;
     Ok(rows.iter().filter_map(|row| row.get(def.foreign_column)).map(as_value).collect())
 }
@@ -83,13 +83,14 @@ pub async fn related_for<L: Model, R: Model, D: Db + ?Sized>(
     }
     // Step 1: the (local, foreign) pairs, one `IN` per 999-key chunk. Local
     // keys are deduped first; `IN` with a repeated key buys nothing.
+    let table = db.resolve_table(def.table)?;
     let keys = dedup_pk_values(locals);
     let mut pairs: HashMap<String, Vec<Json>> = HashMap::new();
     for chunk in keys.chunks(MAX_BIND_PARAMS) {
         let placeholders = vec!["?"; chunk.len()].join(", ");
         let sql = format!(
-            "SELECT {} AS local_key, {} AS foreign_key FROM {} WHERE {} IN ({placeholders})",
-            def.local_column, def.foreign_column, def.table, def.local_column
+            "SELECT {} AS local_key, {} AS foreign_key FROM {table} WHERE {} IN ({placeholders})",
+            def.local_column, def.foreign_column, def.local_column
         );
         for row in db.query(&sql, chunk).await? {
             if let (Some(local_key), Some(foreign_key)) =
@@ -138,10 +139,9 @@ pub async fn attach<L: Model, R: Model, D: Db + ?Sized>(
     foreign: &R,
 ) -> Result<u64> {
     let def = def_or_err::<L, R>()?;
-    let sql = format!(
-        "INSERT INTO {} ({}, {}) VALUES (?, ?)",
-        def.table, def.local_column, def.foreign_column
-    );
+    let table = db.resolve_table(def.table)?;
+    let sql =
+        format!("INSERT INTO {table} ({}, {}) VALUES (?, ?)", def.local_column, def.foreign_column);
     db.execute(&sql, &[local.pk_value(), foreign.pk_value()]).await
 }
 
@@ -153,9 +153,10 @@ pub async fn detach<L: Model, R: Model, D: Db + ?Sized>(
     foreign: &R,
 ) -> Result<u64> {
     let def = def_or_err::<L, R>()?;
+    let table = db.resolve_table(def.table)?;
     let sql = format!(
-        "DELETE FROM {} WHERE {} = ? AND {} = ?",
-        def.table, def.local_column, def.foreign_column
+        "DELETE FROM {table} WHERE {} = ? AND {} = ?",
+        def.local_column, def.foreign_column
     );
     db.execute(&sql, &[local.pk_value(), foreign.pk_value()]).await
 }

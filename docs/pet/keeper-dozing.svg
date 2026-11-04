@@ -19,7 +19,7 @@
     <path d="M320,268 C364,264 396,252 416,236 C382,208 336,214 308,240 Z" fill="#E4F2FB" stroke="#8FBED8" stroke-width="4"/>
   </g>
   
-  <g fill="#2E8FA8" font-family="ui-monospace,Menlo,monospace" font-weight="800">
+  <g fill="#2E8FA8" font-family="'JetBrains Mono','Noto Sans Mono','DejaVu Sans Mono',ui-monospace,monospace" font-weight="800">
     <text x="336" y="152" font-size="30">z</text>
     <text x="360" y="122" font-size="23">z</text>
     <text x="380" y="96" font-size="17">z</text>

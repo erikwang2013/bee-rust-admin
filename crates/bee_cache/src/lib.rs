@@ -13,7 +13,17 @@ pub use memcache_cache::MemcacheCache;
 #[cfg(feature = "redis")]
 mod redis_cache;
 #[cfg(feature = "redis")]
-pub use redis_cache::RedisCache;
+pub use redis_cache::{RedisCache, RedisOptions, RedisPoolStatus};
+#[cfg(any(feature = "redis-sentinel", feature = "redis-cluster"))]
+mod redis_ha;
+#[cfg(feature = "redis-sentinel")]
+mod redis_sentinel;
+#[cfg(feature = "redis-sentinel")]
+pub use redis_sentinel::RedisSentinelCache;
+#[cfg(feature = "redis-cluster")]
+mod redis_cluster;
+#[cfg(feature = "redis-cluster")]
+pub use redis_cluster::RedisClusterCache;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CacheError {

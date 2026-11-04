@@ -10,8 +10,10 @@ repository.workspace = true
 
 
 [dependencies]
-bee_config_macro = { version="1.3.0", path = "../bee_config_macro" }
+bee_config_macro = { version="1.6.2", path = "../bee_config_macro" }
 serde = { workspace = true }
-serde_json = { workspace = true }
 thiserror = { workspace = true }
 notify = "6"
+
+[dev-dependencies]
+serde_json = { workspace = true }

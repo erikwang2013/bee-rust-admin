@@ -5,6 +5,15 @@
 //! a restarted server needs no action from the caller, but the command that
 //! runs into the break fails with a [`KvError`] and the following one succeeds
 //! on a fresh connection. There is no background health-check thread.
+//!
+//! With the `redis-tls` feature, a `rediss://` URL connects over TLS, and
+//! `redis://user:pass@host` carries ACL credentials in the URL. Neither needs
+//! a different constructor.
+//!
+//! `RedisSentinelStore` (the `redis-sentinel` feature) follows a master named
+//! in Redis Sentinel, and `RedisClusterStore` (the `redis-cluster` feature)
+//! discovers a Redis Cluster from seed nodes. Both take a list of URLs in the
+//! same form as `RedisStore`.
 
 use async_trait::async_trait;
 use thiserror::Error;
@@ -14,9 +23,23 @@ mod memcache_store;
 #[cfg(feature = "memcached")]
 pub use memcache_store::MemcacheStore;
 #[cfg(feature = "redis")]
+mod redis_lock;
+#[cfg(feature = "redis")]
+pub use redis_lock::{LockGuard, RedisLock};
+#[cfg(feature = "redis")]
 mod redis_store;
 #[cfg(feature = "redis")]
-pub use redis_store::RedisStore;
+pub use redis_store::{RedisOptions, RedisPoolStatus, RedisStore};
+#[cfg(any(feature = "redis-sentinel", feature = "redis-cluster"))]
+mod redis_ha;
+#[cfg(feature = "redis-sentinel")]
+mod redis_sentinel;
+#[cfg(feature = "redis-sentinel")]
+pub use redis_sentinel::RedisSentinelStore;
+#[cfg(feature = "redis-cluster")]
+mod redis_cluster;
+#[cfg(feature = "redis-cluster")]
+pub use redis_cluster::RedisClusterStore;
 
 /// Errors that can occur when interacting with a key-value store.
 #[derive(Error, Debug)]

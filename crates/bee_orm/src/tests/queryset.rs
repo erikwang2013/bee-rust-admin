@@ -136,3 +136,35 @@ async fn invalid_aggregate_field_is_rejected_without_a_query() {
     assert!(matches!(err, OrmError::InvalidField(_)));
     assert!(db.calls().is_empty());
 }
+
+#[tokio::test]
+async fn reads_use_the_resolved_table() {
+    let db = Mock::renaming("s0_");
+    QuerySet::<Plain>::new("plain").filter_eq("id", 1).unwrap().all(&db).await.unwrap();
+    assert_eq!(db.calls()[0].0, "SELECT * FROM s0_plain WHERE id = ?");
+}
+
+#[tokio::test]
+async fn writes_and_aggregates_use_the_resolved_table() {
+    let db = Mock {
+        rows: vec![value_row(serde_json::json!(1.0))],
+        resolve_prefix: Some("s0_".into()),
+        ..Mock::default()
+    };
+    QuerySet::<Plain>::new("plain")
+        .filter_eq("id", 1)
+        .unwrap()
+        .update(&db, &[("id", Value::Int(2))])
+        .await
+        .unwrap();
+    QuerySet::<Plain>::new("plain").sum(&db, "id").await.unwrap();
+    let calls = db.calls();
+    assert_eq!(calls[0].0, "UPDATE s0_plain SET id = ? WHERE id = ?");
+    assert_eq!(calls[1].0, "SELECT SUM(id) AS value FROM s0_plain");
+}
+
+#[test]
+fn to_sql_stays_logical() {
+    let qs = QuerySet::<Plain>::new("plain").filter_eq("id", 1).unwrap();
+    assert_eq!(qs.to_sql(), "SELECT * FROM plain WHERE id = ?");
+}

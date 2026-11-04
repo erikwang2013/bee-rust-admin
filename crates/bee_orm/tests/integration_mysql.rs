@@ -1,8 +1,8 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 #![cfg(feature = "mysql")]
 //! MySQL integration tests against a real server. Each test is a no-op (with a
-//! skip notice) unless `BEE_ORM_MYSQL_DSN` is set; CI sets it against a
-//! `mysql:8` service container.
+//! skip notice) unless `BEE_ORM_MYSQL_DSN` is set; CI sets it against the
+//! MySQL 5.7 / 8.0 / 8.4 / 9 and MariaDB 10.11 service containers.
 mod common;
 
 use bee_orm::pool::mysql::Pool;
@@ -168,11 +168,9 @@ struct MyMember {
 /// §39: the generated DDL is really valid MySQL — auto pk, the inline
 /// `REFERENCES` pair and `sync` idempotency on a live server.
 ///
-/// MySQL parses but *ignores* `REFERENCES` inside a column clause (measured on
-/// 8.0.46: no constraint is created, no error even for a missing target). The
-/// §35 amendment / §40 ruling keep the inline clause as portable *intent* with
-/// enforcement parity deferred to round 5+, so the dangling create below
-/// **succeeding** is the pinned behavior and no insert is asserted to fail.
+/// MySQL 8.0/8.4 parse but *ignore* `REFERENCES` inside a column clause; MySQL 9
+/// enforces it and rejects a child whose parent is absent. The parent is created
+/// first so the same DDL runs on every supported version.
 #[tokio::test]
 async fn migrations_create_the_fk_pair_and_stay_idempotent() -> Result<(), OrmError> {
     let Some(dsn) = common::dsn("BEE_ORM_MYSQL_DSN") else { return Ok(()) };
@@ -180,10 +178,10 @@ async fn migrations_create_the_fk_pair_and_stay_idempotent() -> Result<(), OrmEr
     pool.execute("DROP TABLE IF EXISTS it_mysql_members", &[]).await?;
     pool.execute("DROP TABLE IF EXISTS it_mysql_teams", &[]).await?;
 
-    // §36/§39: the child is created happily while the parent is still absent;
-    // the `?` is the assertion (a failure to create would fail the test).
-    migrate::create_table::<MyMember, _>(&pool).await?;
+    // §36/§39: parent first — MySQL 9 enforces the column-level `REFERENCES`,
+    // 8.0/8.4 ignore it; the `?` is the assertion either way.
     migrate::create_table::<MyTeam, _>(&pool).await?;
+    migrate::create_table::<MyMember, _>(&pool).await?;
     assert_eq!(migrate::sync::<MyTeam, _>(&pool).await?, 0, "columns created above");
     assert_eq!(migrate::sync::<MyMember, _>(&pool).await?, 0, "idempotent on a live table");
 
@@ -229,7 +227,10 @@ async fn json_columns_round_trip_object_scalar_and_null() -> Result<(), OrmError
             &[],
         )
         .await?;
-    assert_eq!(rows[0]["ty"], "json", "serde_json::Value renders JSON on mysql");
+    // MariaDB's JSON is a LONGTEXT alias with a json_valid CHECK.
+    let (_, is_mariadb) = common::mysql_vendor(&pool).await?;
+    let expected = if is_mariadb { "longtext" } else { "json" };
+    assert_eq!(rows[0]["ty"], expected, "serde_json::Value renders JSON on mysql");
 
     let object = json!({ "k": [1, true, "x"] });
     MyDoc { id: 0, payload: object.clone(), extra: Some(json!(null)) }.insert(&pool).await?;

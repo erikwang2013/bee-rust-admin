@@ -12,17 +12,19 @@ pub mod model;
 pub mod pool;
 pub mod queryset;
 pub mod rel;
+pub mod shard;
 pub mod value;
 
 #[cfg(test)]
 mod tests;
 
 pub use bee_orm_macro::Model;
-pub use db::Db;
+pub use db::{Db, TimedDb};
 pub use migrate::MigrateOptions;
 pub use model::{ColumnDef, DefaultValue, Dialect, M2mDef, Model, Reference, SqlType};
-pub use pool::Row;
+pub use pool::{PoolStatus, Row};
 pub use queryset::QuerySet;
+pub use shard::{HashRouter, ShardHandle, ShardRouter, ShardedPools};
 pub use value::{FromValue, Value, decode};
 
 /// The `rustls` this crate links against (feature `postgres-tls`):
@@ -56,6 +58,9 @@ pub mod __private {
 /// Result type used throughout this crate.
 pub type Result<T> = std::result::Result<T, OrmError>;
 
+/// Every fallible ORM operation returns this. `#[non_exhaustive]`: match with
+/// a wildcard arm.
+#[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum OrmError {
     #[error("connection error: {0}")]
@@ -66,4 +71,8 @@ pub enum OrmError {
     InvalidField(String),
     #[error("not found")]
     NotFound,
+    /// Sharding misuse: a bad router or shard count, an out-of-range shard, or
+    /// a model without a shard key. Raised by [`shard`](crate::shard) only.
+    #[error("shard error: {0}")]
+    ShardError(String),
 }

@@ -19,7 +19,7 @@
 # ── 构建阶段 ───────────────────────────────────────────────
 # 注意：构建阶段与运行阶段必须是同一个 Debian 版本（这里是 trixie / Debian 13），
 # 否则容器内 glibc 版本低于编译时所用版本，二进制一启动就报 GLIBC_x.xx not found。
-FROM rust:1.98.1-slim AS builder
+FROM rust:1.99.0-slim AS builder
 WORKDIR /src
 COPY Cargo.toml Cargo.lock rustfmt.toml ./
 COPY crates ./crates

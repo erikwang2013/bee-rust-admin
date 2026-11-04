@@ -165,7 +165,7 @@ impl<T: Model> QuerySet<T> {
     /// placeholders, in order, through the driver's prepared-statement
     /// interface.
     pub fn to_sql(&self) -> String {
-        self.select_sql(None)
+        self.select_sql_for(&self.table, None)
     }
 
     /// Run the query and decode every row into `T`.
@@ -175,20 +175,22 @@ impl<T: Model> QuerySet<T> {
 
     /// Run the SELECT and return the raw rows (`all` decodes them).
     pub(crate) async fn rows<D: Db + ?Sized>(&self, db: &D) -> Result<Vec<Row>> {
-        db.query(&self.select_sql(None), &self.active_params()).await
+        let table = self.table_for(db)?;
+        db.query(&self.select_sql_for(&table, None), &self.active_params()).await
     }
 
     /// `LIMIT 1`; decodes the first row, if any. Overrides any earlier `limit()`.
     pub async fn one<D: Db + ?Sized>(&self, db: &D) -> Result<Option<T>> {
-        let rows = db.query(&self.select_sql(Some(1)), &self.active_params()).await?;
+        let table = self.table_for(db)?;
+        let rows = db.query(&self.select_sql_for(&table, Some(1)), &self.active_params()).await?;
         rows.first().map(T::from_row).transpose()
     }
 
     /// `SELECT COUNT(*) AS count` with the WHERE clause only — ORDER BY / LIMIT
     /// / OFFSET are ignored.
     pub async fn count<D: Db + ?Sized>(&self, db: &D) -> Result<i64> {
-        let sql =
-            format!("SELECT COUNT(*) AS count FROM {}{}", self.table, self.active_where_sql());
+        let table = self.table_for(db)?;
+        let sql = format!("SELECT COUNT(*) AS count FROM {table}{}", self.active_where_sql());
         let rows = db.query(&sql, &self.active_params()).await?;
         rows.first()
             .and_then(|row| row.get("count"))
@@ -199,7 +201,8 @@ impl<T: Model> QuerySet<T> {
     /// Whether at least one row matches (`SELECT 1 … LIMIT 1`; no row is
     /// decoded).
     pub async fn exists<D: Db + ?Sized>(&self, db: &D) -> Result<bool> {
-        let sql = format!("SELECT 1 FROM {}{} LIMIT 1", self.table, self.active_where_sql());
+        let table = self.table_for(db)?;
+        let sql = format!("SELECT 1 FROM {table}{} LIMIT 1", self.active_where_sql());
         Ok(!db.query(&sql, &self.active_params()).await?.is_empty())
     }
 
@@ -217,12 +220,9 @@ impl<T: Model> QuerySet<T> {
             params.push(value.clone());
         }
         params.extend_from_slice(&self.active_params());
-        let sql = format!(
-            "UPDATE {} SET {}{}",
-            self.table,
-            assignments.join(", "),
-            self.active_where_sql()
-        );
+        let table = self.table_for(db)?;
+        let sql =
+            format!("UPDATE {table} SET {}{}", assignments.join(", "), self.active_where_sql());
         db.execute(&sql, &params).await
     }
 
@@ -232,18 +232,18 @@ impl<T: Model> QuerySet<T> {
     /// plain `DELETE`. With no filters this affects every active row (soft
     /// model) or every row.
     pub async fn delete<D: Db + ?Sized>(&self, db: &D) -> Result<u64> {
+        let table = self.table_for(db)?;
         match self.soft_filter.as_ref() {
             Some((column, _)) => {
                 let column = *column;
                 let mut params: Vec<Value> = Vec::with_capacity(self.params.len() + 2);
                 params.push(Value::Bool(true));
                 params.extend_from_slice(&self.active_params());
-                let sql =
-                    format!("UPDATE {} SET {column} = ?{}", self.table, self.active_where_sql());
+                let sql = format!("UPDATE {table} SET {column} = ?{}", self.active_where_sql());
                 db.execute(&sql, &params).await
             }
             None => {
-                let sql = format!("DELETE FROM {}{}", self.table, self.active_where_sql());
+                let sql = format!("DELETE FROM {table}{}", self.active_where_sql());
                 db.execute(&sql, &self.active_params()).await
             }
         }
@@ -253,7 +253,8 @@ impl<T: Model> QuerySet<T> {
     /// models: purges matching active rows, and with
     /// [`with_deleted`](Self::with_deleted) the soft-deleted ones too.
     pub async fn hard_delete<D: Db + ?Sized>(&self, db: &D) -> Result<u64> {
-        let sql = format!("DELETE FROM {}{}", self.table, self.active_where_sql());
+        let table = self.table_for(db)?;
+        let sql = format!("DELETE FROM {table}{}", self.active_where_sql());
         db.execute(&sql, &self.active_params()).await
     }
 
@@ -304,7 +305,9 @@ impl<T: Model> QuerySet<T> {
     ) -> Result<Option<f64>> {
         let field = field.into();
         validate_field(&field)?;
-        let rows = db.query(&self.aggregate_sql(function, &field), &self.active_params()).await?;
+        let table = self.table_for(db)?;
+        let rows =
+            db.query(&self.aggregate_sql(function, &field, &table), &self.active_params()).await?;
         let value = aggregate_value(&rows, function)?;
         match value {
             serde_json::Value::Null => Ok(None),
@@ -323,32 +326,36 @@ impl<T: Model> QuerySet<T> {
     ) -> Result<Option<serde_json::Value>> {
         let field = field.into();
         validate_field(&field)?;
-        let rows = db.query(&self.aggregate_sql(function, &field), &self.active_params()).await?;
+        let table = self.table_for(db)?;
+        let rows =
+            db.query(&self.aggregate_sql(function, &field, &table), &self.active_params()).await?;
         let value = aggregate_value(&rows, function)?;
         Ok(if value.is_null() { None } else { Some(value.clone()) })
     }
 
     /// `SELECT {function}({field}) AS value FROM {table}{active_where}`.
-    fn aggregate_sql(&self, function: &str, field: &str) -> String {
-        format!(
-            "SELECT {function}({field}) AS value FROM {}{}",
-            self.table,
-            self.active_where_sql()
-        )
+    fn aggregate_sql(&self, function: &str, field: &str, table: &str) -> String {
+        format!("SELECT {function}({field}) AS value FROM {table}{}", self.active_where_sql())
     }
 
-    /// Build the SELECT statement; `limit_override` wins over `limit()`.
-    fn select_sql(&self, limit_override: Option<usize>) -> String {
+    /// The logical table name resolved to its physical name for execution.
+    fn table_for<D: Db + ?Sized>(&self, db: &D) -> Result<String> {
+        db.resolve_table(&self.table)
+    }
+
+    /// Build the SELECT statement against `table`; `limit_override` wins over
+    /// `limit()`.
+    fn select_sql_for(&self, table: &str, limit_override: Option<usize>) -> String {
         let limit = limit_override.or(self.limit_val);
         let capacity = 16
-            + self.table.len()
+            + table.len()
             + self.filters.iter().map(|f| f.len() + 5).sum::<usize>()
             + self.order_clauses.iter().map(|o| o.len() + 2).sum::<usize>()
             + 20;
         let mut sql = String::with_capacity(capacity);
 
         sql.push_str("SELECT * FROM ");
-        sql.push_str(&self.table);
+        sql.push_str(table);
         sql.push_str(&self.active_where_sql());
 
         if !self.order_clauses.is_empty() {

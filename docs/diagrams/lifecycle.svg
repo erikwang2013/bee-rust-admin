@@ -9,12 +9,12 @@
     .box-decision { fill: #f5f3ff; stroke: #8b5cf6; stroke-width: 1.5; }
     .box-end    { fill: #f8fafc; stroke: #94a3b8; stroke-width: 1.5; }
     .note       { fill: #fafafa; stroke: #e5e7eb; stroke-width: 1; }
-    .t-name { font: 600 12.5px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #111827; }
-    .t-sub  { font: 10.5px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #6b7280; }
-    .t-note { font: 10px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #4b5563; }
-    .t-edge { font: 10px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #7c3aed; }
-    .t-title{ font: 700 16px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #0f172a; }
-    .t-foot { font: 10px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #9ca3af; }
+    .t-name { font: 600 12.5px "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Micro Hei", system-ui, sans-serif; fill: #111827; }
+    .t-sub  { font: 10.5px "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Micro Hei", system-ui, sans-serif; fill: #6b7280; }
+    .t-note { font: 10px "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Micro Hei", system-ui, sans-serif; fill: #4b5563; }
+    .t-edge { font: 10px "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Micro Hei", system-ui, sans-serif; fill: #7c3aed; }
+    .t-title{ font: 700 16px "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Micro Hei", system-ui, sans-serif; fill: #0f172a; }
+    .t-foot { font: 10px "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Micro Hei", system-ui, sans-serif; fill: #9ca3af; }
     .a  { stroke: #94a3b8; stroke-width: 1.6; fill: none; }
     .a-yes { stroke: #8b5cf6; stroke-width: 1.6; fill: none; }
     .a-no  { stroke: #cbd5e1; stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }

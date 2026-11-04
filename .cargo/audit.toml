@@ -1,0 +1,8 @@
+# cargo-audit 配置。
+#
+# RUSTSEC-2023-0071（rsa 0.9.10：Marvin 时序攻击可恢复密钥）目前没有修复版本。
+# 它只经由 dev-dependency `sqlx`（sqlx-mysql）进入，仅用于 37 个集成测试文件
+# 直连 MySQL 做夹具/断言，不进入发布二进制。升级或替换 sqlx 之前保留该忽略；
+# 这不是“已修复”，只是“生产依赖图不可达”。
+[advisories]
+ignore = ["RUSTSEC-2023-0071"]

@@ -25,7 +25,7 @@
     <path d="M139,323 L166,352" stroke="#3A2A1A" stroke-width="10" stroke-linecap="round"/>
     <path d="M100,288 Q112,278 128,282" stroke="#FFFFFF" stroke-width="6" fill="none" stroke-linecap="round" opacity="0.9"/>
   </g>
-  <text x="336" y="128" font-family="system-ui,'PingFang SC',sans-serif" font-size="52" font-weight="800"
+  <text x="336" y="128" font-family="'Noto Sans SC','Noto Sans CJK SC','Source Han Sans SC','WenQuanYi Micro Hei',system-ui,sans-serif" font-size="52" font-weight="800"
         fill="#2E8FA8">?</text>
 
   <!-- 四肢（先画，压在身体下层）：粗短的圆润手脚 -->

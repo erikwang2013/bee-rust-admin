@@ -28,10 +28,22 @@ async fn join_table_ddl_is_the_pinned_shape_per_dialect() {
         pg.calls()[1].0
     );
 
-    // mysql without the option: inline `REFERENCES` (parsed and ignored).
+    // mysql without the option: inline `REFERENCES` (parsed and ignored on
+    // 8.0/8.4, enforced as a real FK on MySQL 9).
     let mysql = Mock::with_dialect(Dialect::Mysql);
     migrate::create_table::<Reader, _>(&mysql).await.unwrap();
     assert!(mysql.calls()[1].0.contains("reader_id BIGINT NOT NULL REFERENCES readers (id)"));
+}
+
+#[tokio::test]
+async fn join_table_uses_the_resolved_names() {
+    let db = Mock::with_dialect_and_prefix(Dialect::Sqlite, "s0_");
+    migrate::create_table::<Reader, _>(&db).await.unwrap();
+    let calls = db.calls();
+    let ddl = &calls[1].0;
+    assert!(ddl.starts_with("CREATE TABLE IF NOT EXISTS s0_reader_author"), "{ddl}");
+    assert!(ddl.contains("REFERENCES s0_readers (id)"), "{ddl}");
+    assert!(ddl.contains("REFERENCES s0_authors (id)"), "{ddl}");
 }
 
 #[tokio::test]
@@ -118,6 +130,39 @@ async fn attach_and_detach_bind_both_primary_keys() {
         "DELETE FROM reader_author WHERE reader_id = ? AND author_id = ?"
     );
     assert_eq!(mock.calls()[1].1, vec![Value::Int(3), Value::Int(7)]);
+}
+
+#[tokio::test]
+async fn m2m_direct_sql_uses_the_resolved_join_table() {
+    let mock = Mock::renaming("s0_");
+    m2m::attach(&mock, &Reader { id: 3 }, &Author { id: 7 }).await.unwrap();
+    m2m::detach(&mock, &Reader { id: 3 }, &Author { id: 7 }).await.unwrap();
+    let calls = mock.calls();
+    assert_eq!(calls[0].0, "INSERT INTO s0_reader_author (reader_id, author_id) VALUES (?, ?)");
+    assert_eq!(calls[1].0, "DELETE FROM s0_reader_author WHERE reader_id = ? AND author_id = ?");
+}
+
+#[tokio::test]
+async fn related_ids_uses_the_resolved_join_table() {
+    let mock = Mock {
+        rows: vec![row_of(&[("author_id", json!(7))])],
+        resolve_prefix: Some("s0_".into()),
+        ..Mock::default()
+    };
+    m2m::related_ids::<Reader, Author, _>(&mock, &Reader { id: 3 }).await.unwrap();
+    assert_eq!(mock.calls()[0].0, "SELECT author_id FROM s0_reader_author WHERE reader_id = ?");
+}
+
+#[tokio::test]
+async fn related_for_join_query_uses_the_resolved_join_table() {
+    let row = row_of(&[("local_key", json!(1)), ("foreign_key", json!(2)), ("id", json!(2))]);
+    let mock = Mock { rows: vec![row], resolve_prefix: Some("s0_".into()), ..Mock::default() };
+    m2m::related_for::<Reader, Author, _>(&mock, &[Reader { id: 1 }]).await.unwrap();
+    assert_eq!(
+        mock.calls()[0].0,
+        "SELECT reader_id AS local_key, author_id AS foreign_key FROM s0_reader_author \
+         WHERE reader_id IN (?)"
+    );
 }
 
 #[tokio::test]

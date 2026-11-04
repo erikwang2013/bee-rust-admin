@@ -13,7 +13,9 @@
 //! default), which rolls back a leftover transaction. Always end a
 //! transaction with `commit()` or `rollback()` — until then it holds locks.
 //!
-//! `Pool` has no `status()`: mysql_async exposes no pool statistics.
+//! mysql_async 0.37 exposes `Pool::metrics()`, but this wrapper does not
+//! surface it: [`Pool::pool_status`] reports `max_size` only, with `size` /
+//! `available` as `None`.
 //!
 //! ```no_run
 //! # async fn demo() -> Result<(), bee_orm::OrmError> {
@@ -35,10 +37,10 @@ use mysql_async::prelude::Queryable;
 use mysql_async::{Opts, OptsBuilder, Pool as MysqlPool, PoolConstraints, PoolOpts};
 use serde_json::Value as Json;
 
-use super::{Row, conn_err, query_err};
+use super::{PoolStatus, Row, conn_err, query_err};
 use crate::{Db, Dialect, OrmError, Result, Value};
 
-/// ponytail: fixed 30s — mysql_async 0.34.2 has no acquire timeout; make it
+/// ponytail: fixed 30s — mysql_async has no acquire timeout; make it
 /// configurable when a caller needs to tune it.
 const GET_CONN_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -46,17 +48,25 @@ const GET_CONN_TIMEOUT: Duration = Duration::from_secs(30);
 #[derive(Clone)]
 pub struct Pool {
     inner: MysqlPool,
+    max_size: u32,
 }
 
 impl Pool {
     /// `dsn` is a URL, e.g. `"mysql://user:pass@host:3306/db"`.
     pub fn connect(dsn: &str, max_size: u32) -> Result<Self> {
         let opts = Opts::from_url(dsn).map_err(conn_err)?;
-        let constraints = PoolConstraints::new(1, max_size.max(1) as usize)
+        let max_size = max_size.max(1);
+        let constraints = PoolConstraints::new(1, max_size as usize)
             .ok_or_else(|| OrmError::ConnectionError("invalid pool size".into()))?;
         let opts = OptsBuilder::from_opts(opts)
             .pool_opts(PoolOpts::default().with_constraints(constraints));
-        Ok(Self { inner: MysqlPool::new(opts) })
+        Ok(Self { inner: MysqlPool::new(opts), max_size })
+    }
+
+    /// Pool occupancy: `max_size` only — the driver's metrics are not
+    /// exposed, so `size` / `available` are `None`.
+    pub fn pool_status(&self) -> PoolStatus {
+        PoolStatus { max_size: self.max_size as usize, size: None, available: None }
     }
 
     /// Check out one connection. Hold it for the length of a transaction
@@ -125,13 +135,56 @@ impl Db for Pool {
         if found == 0 {
             return Ok(None);
         }
-        let rows = conn.query("SELECT LAST_INSERT_ID() AS id", &[]).await?;
-        let Some(pk) = rows.first().and_then(|row| row.get("id")).and_then(Json::as_i64) else {
-            return Ok(None);
-        };
-        let select = format!("SELECT * FROM {table} WHERE {pk_column} = ? LIMIT 1");
-        Ok(conn.query(&select, &[Value::Int(pk)]).await?.into_iter().next())
+        read_back_auto(&mut conn, table, pk_column).await
     }
+
+    /// The fast path: the model's [`ColumnDef::auto_increment`] hint replaces
+    /// the `information_schema` probe. `Some(false)` means the server did not
+    /// assign the pk, so `LAST_INSERT_ID()` is stale and `create` selects by
+    /// pk; `None` (no model metadata) keeps the probe.
+    ///
+    /// # Schema drift
+    ///
+    /// `Some(true)` trusts the metadata and reads `LAST_INSERT_ID()` without a
+    /// catalog probe. A physical pk that is not `AUTO_INCREMENT`, or metadata
+    /// that disagrees with the table, is unsupported.
+    ///
+    /// [`ColumnDef::auto_increment`]: crate::ColumnDef::auto_increment
+    async fn insert_returning_auto(
+        &self,
+        table: &str,
+        pk_column: &str,
+        auto_increment: Option<bool>,
+        sql: &str,
+        params: &[Value],
+    ) -> Result<Option<Row>> {
+        match auto_increment {
+            None => self.insert_returning(table, pk_column, sql, params).await,
+            Some(false) => {
+                self.execute(sql, params).await?;
+                Ok(None)
+            }
+            Some(true) => {
+                let mut conn = self.get().await?;
+                conn.execute(sql, params).await?;
+                read_back_auto(&mut conn, table, pk_column).await
+            }
+        }
+    }
+}
+
+/// Read the row just inserted on `conn` back by `LAST_INSERT_ID()`.
+async fn read_back_auto(
+    conn: &mut CheckedConn,
+    table: &str,
+    pk_column: &str,
+) -> Result<Option<Row>> {
+    let rows = conn.query("SELECT LAST_INSERT_ID() AS id", &[]).await?;
+    let Some(pk) = rows.first().and_then(|row| row.get("id")).and_then(Json::as_i64) else {
+        return Ok(None);
+    };
+    let select = format!("SELECT * FROM {table} WHERE {pk_column} = ? LIMIT 1");
+    Ok(conn.query(&select, &[Value::Int(pk)]).await?.into_iter().next())
 }
 
 /// A checked-out MySQL connection, returned to the pool on drop.
@@ -178,9 +231,9 @@ fn bind(params: &[Value]) -> Vec<mysql_async::Value> {
 }
 
 /// `Bool` → `Int(0|1)`, `Float` → `Double` (lossless), `Text` → `Bytes`,
-/// `Json` → its serialized bytes (a `JSON` column accepts them). The
-/// chrono / decimal variants convert through mysql_common's own impls: dates
-/// as `Date` cells and decimals as their length-encoded text.
+/// `Json` → its serialized bytes (a `JSON` column accepts them). The chrono
+/// variants convert through mysql_common's own impls (dates as `Date` cells);
+/// a decimal binds as its length-encoded text.
 fn to_mysql(value: &Value) -> mysql_async::Value {
     use mysql_async::Value as My;
     match value {
@@ -199,8 +252,10 @@ fn to_mysql(value: &Value) -> mysql_async::Value {
         // naive form (a UTC session makes `timestamp` round-trip exactly).
         #[cfg(feature = "chrono")]
         Value::DateTimeUtc(dt) => My::from(dt.naive_utc()),
+        // mysql_async 0.37's default features leave `mysql_common/rust_decimal`
+        // off; bind the same text form its `From<Decimal>` impl emits.
         #[cfg(feature = "rust_decimal")]
-        Value::Decimal(d) => My::from(*d),
+        Value::Decimal(d) => My::Bytes(d.to_string().into_bytes()),
     }
 }
 

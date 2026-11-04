@@ -36,13 +36,17 @@
 //!
 //! The `_with` variants take [`MigrateOptions`] ([`Default`] is the
 //! historical behavior). `table_level_fk` is a mysql-only opt-in: the inline
-//! `REFERENCES` mysql parses and ignores becomes a table-level
-//! `FOREIGN KEY (…)` clause on `CREATE`, and a named
-//! `ALTER TABLE … ADD CONSTRAINT {table}_{column}_fk FOREIGN KEY …` on the
-//! add path — idempotent by constraint-name lookup, loud over pre-existing
-//! orphan rows (the driver's error), and no retrofit of existing columns. On
-//! sqlite and postgres, where inline `REFERENCES` is enforced, it is a
-//! documented no-op.
+//! `REFERENCES` becomes a table-level `FOREIGN KEY (…)` clause on `CREATE`,
+//! and a named `ALTER TABLE … ADD CONSTRAINT {table}_{column}_fk FOREIGN KEY
+//! …` on the add path — idempotent by constraint-name lookup, loud over
+//! pre-existing orphan rows (the driver's error), and no retrofit of existing
+//! columns. On sqlite and postgres, where inline `REFERENCES` is enforced, it
+//! is a documented no-op.
+//!
+//! Column-level `REFERENCES` on mysql (measured): 8.0/8.4 parse and ignore it,
+//! creating no constraint even for a missing target; MySQL 9 enforces it, so
+//! the default inline clause is a real FK there and the parent must be created
+//! first.
 //!
 //! # Caveats
 //!
@@ -66,11 +70,12 @@ use crate::{
 pub struct MigrateOptions {
     /// mysql only: render foreign keys as table-level `FOREIGN KEY (…)`
     /// clauses plus named `ADD CONSTRAINT`s instead of the inline
-    /// `REFERENCES` mysql parses and ignores. A no-op on sqlite and postgres,
-    /// where inline `REFERENCES` is enforced. Off by default: turning it on
-    /// is what makes `ALTER`s fail over pre-existing orphan rows, and it
-    /// retrofits nothing — only fresh `CREATE TABLE`s and columns added while
-    /// opted in get enforced constraints.
+    /// `REFERENCES`. The inline form is ignored on MySQL 8.0/8.4 but enforced
+    /// on MySQL 9, where the parent must already exist. A no-op on sqlite and
+    /// postgres, where inline `REFERENCES` is enforced. Off by default:
+    /// turning it on is what makes `ALTER`s fail over pre-existing orphan
+    /// rows, and it retrofits nothing — only fresh `CREATE TABLE`s and
+    /// columns added while opted in get enforced constraints.
     pub table_level_fk: bool,
 }
 
@@ -92,10 +97,13 @@ pub async fn create_table_with<M: Model, D: Db + ?Sized>(
     options: MigrateOptions,
 ) -> Result<()> {
     let dialect = dialect(db)?;
-    let ddl = create_table_sql::<M>(dialect, options)?;
+    let table = db.resolve_table(M::table_name())?;
+    let ddl = create_table_sql::<M, D>(db, dialect, &table, options)?;
     db.execute(&ddl, &[]).await?;
     for def in M::m2m() {
-        let ddl = join_table_sql::<M>(def, dialect, options)?;
+        let join_table = db.resolve_table(def.table)?;
+        let target_table = db.resolve_table((def.target_table)())?;
+        let ddl = join_table_sql::<M>(def, dialect, options, &join_table, &table, &target_table)?;
         db.execute(&ddl, &[]).await?;
     }
     Ok(())
@@ -125,19 +133,23 @@ pub async fn add_missing_columns_with<M: Model, D: Db + ?Sized>(
 ) -> Result<u64> {
     let dialect = dialect(db)?;
     let table_level = dialect == Dialect::Mysql && options.table_level_fk;
+    let table = db.resolve_table(M::table_name())?;
     let columns = model_columns::<M>()?;
-    let existing = existing_columns::<M, D>(db, dialect).await?;
+    let existing = existing_columns::<D>(db, dialect, &table).await?;
     let mut affected = 0;
     for column in columns {
         if existing.iter().any(|name| name == column.name) {
             continue;
         }
-        let clause =
-            if table_level { column_clause(column, dialect) } else { column_sql(column, dialect) };
-        let ddl = format!("ALTER TABLE {} ADD COLUMN {clause}", M::table_name());
+        let clause = if table_level {
+            column_clause(column, dialect)
+        } else {
+            column_sql(db, column, dialect)?
+        };
+        let ddl = format!("ALTER TABLE {table} ADD COLUMN {clause}");
         affected += db.execute(&ddl, &[]).await?;
         if table_level {
-            add_constraint::<M, D>(db, column).await?;
+            add_constraint(db, &table, column).await?;
         }
     }
     Ok(affected)
@@ -158,16 +170,16 @@ pub async fn sync_with<M: Model, D: Db + ?Sized>(db: &D, options: MigrateOptions
 /// The named `FOREIGN KEY` constraint for a just-added column, unless one of
 /// that name is already there. Columns without a `#[bee(fk = …)]` reference
 /// get nothing.
-async fn add_constraint<M: Model, D: Db + ?Sized>(db: &D, column: &ColumnDef) -> Result<()> {
+async fn add_constraint<D: Db + ?Sized>(db: &D, table: &str, column: &ColumnDef) -> Result<()> {
     let Some(reference) = column.references else { return Ok(()) };
-    let name = format!("{}_{}_fk", M::table_name(), column.name);
-    if constraint_exists(db, M::table_name(), &name).await? {
+    let name = format!("{table}_{}_fk", column.name);
+    if constraint_exists(db, table, &name).await? {
         return Ok(());
     }
+    let target = db.resolve_table((reference.table)())?;
     let ddl = format!(
-        "ALTER TABLE {} ADD CONSTRAINT {name} {}",
-        M::table_name(),
-        fk_clause(column.name, (reference.table)(), (reference.pk_column)())
+        "ALTER TABLE {table} ADD CONSTRAINT {name} {}",
+        fk_clause(column.name, &target, (reference.pk_column)())
     );
     db.execute(&ddl, &[]).await?;
     Ok(())
@@ -203,27 +215,32 @@ fn model_columns<M: Model + ?Sized>() -> Result<&'static [ColumnDef]> {
     Ok(columns)
 }
 
-fn create_table_sql<M: Model + ?Sized>(
+fn create_table_sql<M: Model + ?Sized, D: Db + ?Sized>(
+    db: &D,
     dialect: Dialect,
+    table: &str,
     options: MigrateOptions,
 ) -> Result<String> {
     let columns = model_columns::<M>()?;
     let table_level = dialect == Dialect::Mysql && options.table_level_fk;
-    let mut clauses: Vec<String> =
-        columns
-            .iter()
-            .map(|column| {
-                if table_level {
-                    column_clause(column, dialect)
-                } else {
-                    column_sql(column, dialect)
-                }
-            })
-            .collect();
+    let mut clauses: Vec<String> = columns
+        .iter()
+        .map(|column| {
+            if table_level {
+                Ok(column_clause(column, dialect))
+            } else {
+                column_sql(db, column, dialect)
+            }
+        })
+        .collect::<Result<_>>()?;
     if table_level {
-        clauses.extend(columns.iter().filter_map(table_level_fk));
+        for column in columns {
+            let Some(reference) = column.references else { continue };
+            let target = db.resolve_table((reference.table)())?;
+            clauses.push(fk_clause(column.name, &target, (reference.pk_column)()));
+        }
     }
-    Ok(format!("CREATE TABLE IF NOT EXISTS {} ({})", M::table_name(), clauses.join(", ")))
+    Ok(format!("CREATE TABLE IF NOT EXISTS {table} ({})", clauses.join(", ")))
 }
 
 /// The join table of one m2m relation: both sides' primary-key columns,
@@ -236,14 +253,17 @@ fn join_table_sql<M: Model + ?Sized>(
     def: &M2mDef,
     dialect: Dialect,
     options: MigrateOptions,
+    join_table: &str,
+    local_table: &str,
+    target_table: &str,
 ) -> Result<String> {
     let local = local_pk_column::<M>()?;
-    let target_table = (def.target_table)();
     let target =
         (def.target_columns)().iter().find(|column| column.primary_key).ok_or_else(|| {
             OrmError::QueryError(format!(
-                "migrate: `{target_table}` has no primary-key column in its columns() \
+                "migrate: `{}` has no primary-key column in its columns() \
                  metadata (m2m target of `{}`)",
+                (def.target_table)(),
                 M::table_name()
             ))
         })?;
@@ -253,16 +273,16 @@ fn join_table_sql<M: Model + ?Sized>(
         if table_level { base } else { format!("{base} REFERENCES {table} ({pk})") }
     };
     let mut clauses = vec![
-        side(def.local_column, local.sql, M::table_name(), local.name),
+        side(def.local_column, local.sql, local_table, local.name),
         side(def.foreign_column, target.sql, target_table, target.name),
     ];
     if table_level {
-        clauses.push(fk_clause(def.local_column, M::table_name(), local.name));
+        clauses.push(fk_clause(def.local_column, local_table, local.name));
         clauses.push(fk_clause(def.foreign_column, target_table, target.name));
     }
     clauses.push(format!("PRIMARY KEY ({}, {})", def.local_column, def.foreign_column));
     clauses.push(format!("UNIQUE ({}, {})", def.foreign_column, def.local_column));
-    Ok(format!("CREATE TABLE IF NOT EXISTS {} ({})", def.table, clauses.join(", ")))
+    Ok(format!("CREATE TABLE IF NOT EXISTS {join_table} ({})", clauses.join(", ")))
 }
 
 /// `M`'s primary-key column metadata — the join table takes its type.
@@ -282,24 +302,19 @@ fn fk_clause(column: &str, table: &str, pk: &str) -> String {
     format!("FOREIGN KEY ({column}) REFERENCES {table} ({pk})")
 }
 
-/// The [`fk_clause`] of a column that has a reference, `None` otherwise.
-fn table_level_fk(column: &ColumnDef) -> Option<String> {
-    let reference = column.references?;
-    Some(fk_clause(column.name, (reference.table)(), (reference.pk_column)()))
-}
-
 /// `<name> <type> [NOT NULL] [DEFAULT <v>] [PRIMARY KEY] [REFERENCES …]`,
-/// with the auto-increment spellings of the module docs.
-fn column_sql(column: &ColumnDef, dialect: Dialect) -> String {
+/// with the auto-increment spellings of the module docs; the reference target
+/// is resolved through `db`.
+fn column_sql<D: Db + ?Sized>(db: &D, column: &ColumnDef, dialect: Dialect) -> Result<String> {
     let mut clause = column_clause(column, dialect);
     if let Some(reference) = column.references {
         clause.push_str(" REFERENCES ");
-        clause.push_str((reference.table)());
+        clause.push_str(&db.resolve_table((reference.table)())?);
         clause.push_str(" (");
         clause.push_str((reference.pk_column)());
         clause.push(')');
     }
-    clause
+    Ok(clause)
 }
 
 /// [`column_sql`] without the `REFERENCES` tail — what mysql's table-level
@@ -402,11 +417,11 @@ fn default_sql(default: DefaultValue, dialect: Dialect) -> String {
 
 /// The table's current column names, read per dialect and keyed uniformly as
 /// `name` (the `information_schema` queries alias explicitly).
-async fn existing_columns<M: Model + ?Sized, D: Db + ?Sized>(
+async fn existing_columns<D: Db + ?Sized>(
     db: &D,
     dialect: Dialect,
+    table: &str,
 ) -> Result<Vec<String>> {
-    let table = M::table_name();
     let (sql, params): (String, Vec<Value>) = match dialect {
         Dialect::Sqlite => (format!("PRAGMA table_info({table})"), Vec::new()),
         Dialect::Postgres => (

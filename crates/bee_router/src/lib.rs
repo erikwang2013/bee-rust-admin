@@ -1,6 +1,7 @@
 // Copyright (c) 2026 erik <erik@erik.xyz> — https://erik.xyz
 pub mod context;
 pub mod filter;
+pub mod latency;
 pub mod router;
 
 #[cfg(feature = "security")]
@@ -141,6 +142,7 @@ fn cookie_value<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
 
 pub use context::Context;
 pub use filter::Filter;
+pub use latency::{LatencyConfig, LatencySnapshot, LatencyStats};
 pub use router::Router;
 
 #[cfg(test)]

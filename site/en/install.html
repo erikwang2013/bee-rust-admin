@@ -347,7 +347,6 @@ log in with <code>admin</code> + <code>[seed] initial_admin_password</code>, and
   (plugin defaults: ≥4 points, 300–5000 ms, linearity ≤0.99); clients that send only the raw value fail.
   The new frontend always reports trajectories, so enabling it does not require a frontend redeploy; the cost is that an extremely fast flick (&lt;300 ms) is treated as a bot —
   users see “captcha error” no matter how they drag; adjust the plugin’s <code>min_duration_ms</code> to relax it.</li>
-<li><strong><code>install.sql</code> in the repository root is unrelated</strong> (it is another tool’s schema); installation does not need it.</li>
 <li><strong>Forgot the superadmin password</strong>: update the <code>admin</code> table in the database (or recreate the database).</li>
 </ul>
 </article></div>

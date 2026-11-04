@@ -259,5 +259,4 @@ log in with `admin` + `[seed] initial_admin_password`, and **change the password
   (plugin defaults: ≥4 points, 300–5000 ms, linearity ≤0.99); clients that send only the raw value fail.
   The new frontend always reports trajectories, so enabling it does not require a frontend redeploy; the cost is that an extremely fast flick (<300 ms) is treated as a bot —
   users see “captcha error” no matter how they drag; adjust the plugin’s `min_duration_ms` to relax it.
-- **`install.sql` in the repository root is unrelated** (it is another tool’s schema); installation does not need it.
 - **Forgot the superadmin password**: update the `admin` table in the database (or recreate the database).

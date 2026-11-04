@@ -16,5 +16,4 @@ export const adminApi = {
   remove: (id: string) => http.del<null>(`/admins/${id}`),
   setStatus: (id: string, status: number) => http.put<null>(`/admins/${id}/status`, { status }),
   resetPassword: (id: string, password: string) => http.put<null>(`/admins/${id}/password`, { password }),
-  setRoles: (id: string, role_ids: string[]) => http.put<null>(`/admins/${id}/roles`, { role_ids }),
 };

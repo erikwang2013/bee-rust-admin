@@ -22,7 +22,7 @@
   <circle cx="256" cy="300" r="190" fill="#E45B5B" opacity="0.10"/>
   <g transform="rotate(-12 112 150)">
     <rect x="76" y="118" width="72" height="88" rx="6" fill="#FFF7ED" stroke="#C03030" stroke-width="3.5"/>
-    <text x="112" y="172" text-anchor="middle" font-family="ui-monospace,Menlo,monospace"
+    <text x="112" y="172" text-anchor="middle" font-family="'JetBrains Mono','Noto Sans Mono','DejaVu Sans Mono',ui-monospace,monospace"
           font-size="22" font-weight="700" fill="#C03030">.env</text>
   </g>
 

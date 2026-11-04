@@ -45,7 +45,7 @@ fn compile_errors_match_the_frozen_table() {
     );
     expect_error(
         "struct Foo { #[bee(nope)] id: i64 }",
-        "bee_orm: unknown bee attribute for a field (expected column, pk, auto, ignore, auto_now_add, auto_now, soft_delete, sql_type, fk)",
+        "bee_orm: unknown bee attribute for a field (expected column, pk, auto, ignore, auto_now_add, auto_now, soft_delete, shard_key, sql_type, fk)",
     );
     expect_error(
         "struct Foo { #[bee(pk)] a: i64, #[bee(pk)] b: i64 }",
@@ -467,6 +467,42 @@ fn round9_crate_attribute_replaces_the_prefix() {
     // baselines elsewhere pin that byte-for-byte.
     let plain = expand_str("struct User { id: i64 }").expect("must expand");
     assert!(!plain.contains("bee_rust"));
+}
+
+#[test]
+fn shard_key_expands_on_the_marked_field() {
+    let expanded = expand_str("struct TenantRow { id: i64, #[bee(shard_key)] tenant: String }")
+        .expect("must expand");
+    assert!(expanded.contains(
+        "fn shard_key (& self) -> Option < bee_orm :: Value > { match bee_orm :: Value :: from (self . tenant . clone ()) { bee_orm :: Value :: Null => None , value => Some (value) , } }"
+    ));
+    // Unmarked models keep the trait default: no method is emitted.
+    let plain = expand_str("struct Plain { id: i64 }").expect("must expand");
+    assert!(!plain.contains("shard_key"));
+}
+
+#[test]
+fn shard_key_compile_errors() {
+    expect_error(
+        "struct Foo { id: i64, #[bee(shard_key)] a: i64, #[bee(shard_key)] b: i64 }",
+        "bee_orm: multiple #[bee(shard_key)] fields (`a`, `b`)",
+    );
+    expect_error(
+        "struct Foo { id: i64, #[bee(shard_key, ignore)] a: i64 }",
+        "bee_orm: #[bee(shard_key)] is not valid on an ignored field",
+    );
+    expect_error(
+        "struct Foo { #[bee(pk, auto, shard_key)] a: i64 }",
+        "bee_orm: #[bee(shard_key)] must be caller-supplied; it cannot be combined with auto, auto_now_add, or auto_now",
+    );
+    expect_error(
+        "struct Foo { id: i64, #[bee(shard_key, auto_now_add)] a: i64 }",
+        "bee_orm: #[bee(shard_key)] must be caller-supplied; it cannot be combined with auto, auto_now_add, or auto_now",
+    );
+    expect_error(
+        "struct Foo { id: i64, #[bee(shard_key, auto_now)] a: i64 }",
+        "bee_orm: #[bee(shard_key)] must be caller-supplied; it cannot be combined with auto, auto_now_add, or auto_now",
+    );
 }
 
 #[test]

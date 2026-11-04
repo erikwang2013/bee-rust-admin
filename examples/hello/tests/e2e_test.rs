@@ -15,6 +15,7 @@ use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
+use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use bee_rust::bee_template::{TemplateEngine, TemplateError};
@@ -115,9 +116,18 @@ fn wait_until_ready(port: u16) {
     }
 }
 
+/// Serializes the pick → spawn → ready window of `start_server` across the
+/// tests below. Without it, `pick_free_port`'s probe listener is already closed
+/// when the child binds, so two parallel tests can pick the same port and one
+/// `wait_until_ready` sees the *other* test's server as ready.
+static PORT_LOCK: Mutex<()> = Mutex::new(());
+
 /// Spawn the real `hello-bee` binary: exercises `bee_rust::init()`, the
 /// `PORT` env handling and `axum::serve` exactly as production would.
 fn start_server() -> Server {
+    // Held until this server is ready — from then on the port is bound by our
+    // own child, so no other test can pick it.
+    let _guard = PORT_LOCK.lock().unwrap_or_else(PoisonError::into_inner);
     let port = pick_free_port();
     let child = Command::new(env!("CARGO_BIN_EXE_hello-bee"))
         .env("PORT", port.to_string())

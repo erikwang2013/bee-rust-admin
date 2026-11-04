@@ -132,12 +132,12 @@ const extras = (mood) => {
     <path d="M139,323 L166,352" stroke="${INK}" stroke-width="10" stroke-linecap="round"/>
     <path d="M100,288 Q112,278 128,282" stroke="#FFFFFF" stroke-width="6" fill="none" stroke-linecap="round" opacity="0.9"/>
   </g>
-  <text x="336" y="128" font-family="system-ui,'PingFang SC',sans-serif" font-size="52" font-weight="800"
+  <text x="336" y="128" font-family="'Noto Sans SC','Noto Sans CJK SC','Source Han Sans SC','WenQuanYi Micro Hei',system-ui,sans-serif" font-size="52" font-weight="800"
         fill="#2E8FA8">?</text>`;
   }
   if (mood === 'dozing') {
     return `
-  <g fill="#2E8FA8" font-family="ui-monospace,Menlo,monospace" font-weight="800">
+  <g fill="#2E8FA8" font-family="'JetBrains Mono','Noto Sans Mono','DejaVu Sans Mono',ui-monospace,monospace" font-weight="800">
     <text x="336" y="152" font-size="30">z</text>
     <text x="360" y="122" font-size="23">z</text>
     <text x="380" y="96" font-size="17">z</text>
@@ -149,7 +149,7 @@ const extras = (mood) => {
   <circle cx="256" cy="300" r="190" fill="#E45B5B" opacity="0.10"/>
   <g transform="rotate(-12 112 150)">
     <rect x="76" y="118" width="72" height="88" rx="6" fill="#FFF7ED" stroke="#C03030" stroke-width="3.5"/>
-    <text x="112" y="172" text-anchor="middle" font-family="ui-monospace,Menlo,monospace"
+    <text x="112" y="172" text-anchor="middle" font-family="'JetBrains Mono','Noto Sans Mono','DejaVu Sans Mono',ui-monospace,monospace"
           font-size="22" font-weight="700" fill="#C03030">.env</text>
   </g>`;
   }

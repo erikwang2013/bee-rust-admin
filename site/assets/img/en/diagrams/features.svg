@@ -4,7 +4,7 @@
   <style>
     .bg { fill: #ffffff; }
     .panel { fill: #f7f8fa; stroke: #e5e7eb; stroke-width: 1; }
-    .panel-label { font: 600 12px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #4b5563; }
+    .panel-label { font: 600 12px "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Micro Hei", system-ui, sans-serif; fill: #4b5563; }
     .box-frontend { fill: #eff6ff; stroke: #3b82f6; stroke-width: 1.5; }
     .box-backend  { fill: #f0fdf4; stroke: #22c55e; stroke-width: 1.5; }
     .box-db       { fill: #fefce8; stroke: #eab308; stroke-width: 1.5; }
@@ -12,11 +12,11 @@
     .box-join     { fill: #ffffff; stroke: #a855f7; stroke-width: 1.4; }
     .box-module   { fill: #f5f3ff; stroke: #8b5cf6; stroke-width: 1.4; }
     .box-scope    { fill: #f8fafc; stroke: #94a3b8; stroke-width: 1.2; }
-    .t-name { font: 600 12.5px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #111827; }
-    .t-sub  { font: 10.5px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #6b7280; }
-    .t-join { font: 600 10px ui-monospace, Menlo, Consolas, monospace; fill: #7c3aed; }
-    .t-title{ font: 700 16px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #0f172a; }
-    .t-foot { font: 10px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; fill: #9ca3af; }
+    .t-name { font: 600 12.5px "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Micro Hei", system-ui, sans-serif; fill: #111827; }
+    .t-sub  { font: 10.5px "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Micro Hei", system-ui, sans-serif; fill: #6b7280; }
+    .t-join { font: 600 10px "JetBrains Mono", "Noto Sans Mono", "Cascadia Code", "Roboto Mono", "DejaVu Sans Mono", ui-monospace, monospace; fill: #7c3aed; }
+    .t-title{ font: 700 16px "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Micro Hei", system-ui, sans-serif; fill: #0f172a; }
+    .t-foot { font: 10px "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Micro Hei", system-ui, sans-serif; fill: #9ca3af; }
     .a-default { stroke: #94a3b8; stroke-width: 1.4; fill: none; }
     .a-data    { stroke: #a855f7; stroke-width: 1.4; fill: none; }
   </style>

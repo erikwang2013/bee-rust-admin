@@ -32,6 +32,16 @@
 /// One result row: column name → JSON value.
 pub type Row = serde_json::Map<String, serde_json::Value>;
 
+/// Pool occupancy in one shape across backends.
+///
+/// `size` / `available` are `None` when the backend exposes no statistics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PoolStatus {
+    pub max_size: usize,
+    pub size: Option<usize>,
+    pub available: Option<usize>,
+}
+
 #[cfg(any(feature = "sqlite", feature = "postgres", feature = "mysql"))]
 use crate::OrmError;
 

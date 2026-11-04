@@ -18,6 +18,7 @@ struct FieldOptions {
     auto_now_add: bool,
     auto_now: bool,
     soft_delete: bool,
+    shard_key: bool,
     sql_type: Option<LitStr>,
     fk: Option<syn::Path>,
 }
@@ -33,6 +34,7 @@ pub(crate) struct Column {
     pub(crate) auto_now_add: bool,
     pub(crate) auto_now: bool,
     pub(crate) soft_delete: bool,
+    pub(crate) shard_key: bool,
     pub(crate) sql_type: Option<LitStr>,
     pub(crate) fk: Option<syn::Path>,
 }
@@ -284,12 +286,14 @@ pub(crate) fn parse_fields(
                     "auto_now_add" => options.auto_now_add = true,
                     "auto_now" => options.auto_now = true,
                     "soft_delete" => options.soft_delete = true,
+                    "shard_key" => options.shard_key = true,
                     "sql_type" => options.sql_type = Some(meta.value()?.parse()?),
                     "fk" => options.fk = Some(meta.value()?.parse()?),
                     _ => {
                         return Err(meta.error(
                             "bee_orm: unknown bee attribute for a field (expected column, pk, \
-                             auto, ignore, auto_now_add, auto_now, soft_delete, sql_type, fk)",
+                             auto, ignore, auto_now_add, auto_now, soft_delete, shard_key, \
+                             sql_type, fk)",
                         ));
                     }
                 }
@@ -346,6 +350,24 @@ pub(crate) fn parse_fields(
                 "bee_orm: #[bee(fk)] is not valid on an ignored field",
             ));
         }
+        // An ignored field is not persisted, so `from_row` would default it
+        // and `shard_key()` on a loaded row would route to the wrong shard.
+        if options.shard_key && options.ignore {
+            errors.push(Error::new(
+                ident.span(),
+                "bee_orm: #[bee(shard_key)] is not valid on an ignored field",
+            ));
+        }
+        // Database-assigned values do not exist before routing: `for_model`
+        // would read the pre-insert placeholder and write the row to a shard
+        // that later lookups by the assigned key would not reach.
+        if options.shard_key && (options.auto || options.auto_now_add || options.auto_now) {
+            errors.push(Error::new(
+                ident.span(),
+                "bee_orm: #[bee(shard_key)] must be caller-supplied; it cannot be combined \
+                 with auto, auto_now_add, or auto_now",
+            ));
+        }
 
         let column = match options.column {
             Some(literal) => {
@@ -374,6 +396,7 @@ pub(crate) fn parse_fields(
             auto_now_add: options.auto_now_add,
             auto_now: options.auto_now,
             soft_delete: options.soft_delete,
+            shard_key: options.shard_key,
             sql_type: options.sql_type,
             fk: options.fk,
         });

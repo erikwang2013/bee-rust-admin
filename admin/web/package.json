@@ -4,6 +4,11 @@
   "version": "0.1.0",
   "type": "module",
   "packageManager": "pnpm@10.12.4",
+  "pnpm": {
+    "overrides": {
+      "follow-redirects": ">=1.16.2"
+    }
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

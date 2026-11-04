@@ -6,7 +6,6 @@ export interface RoleForm { name: string; code: string; sort: number; data_scope
 
 export const roleApi = {
   list: (q: RoleQuery) => http.get<Page<Role>>('/roles', q),
-  get: (id: string) => http.get<Role>(`/roles/${id}`),
   create: (data: RoleForm) => http.post<Role>('/roles', data),
   update: (id: string, data: RoleForm) => http.put<Role>(`/roles/${id}`, data),
   remove: (id: string) => http.del<null>(`/roles/${id}`),

@@ -16,15 +16,27 @@ tokio = { workspace = true, features = ["sync", "time", "rt"] }
 thiserror.workspace = true
 
 [features]
-redis = ["dep:redis"]
+redis = ["dep:redis", "dep:deadpool-redis"]
+# `tokio-rustls-comp` is the Tokio TLS adapter; bare `tls-rustls` has neither
+# an async runtime nor a connector.
+redis-tls = ["redis", "redis/tokio-rustls-comp"]
+# `deadpool-redis` 0.23 no longer needs `serde` to compile its sentinel
+# module; the passthrough is retained only because the workspace lockfile
+# was resolved with it. Drop it together with the next `Cargo.lock` refresh.
+redis-sentinel = ["redis", "deadpool-redis/sentinel", "deadpool-redis/serde"]
+redis-cluster = ["redis", "deadpool-redis/cluster"]
 memcache = ["dep:memcache"]
 
 [dependencies.redis]
-version = "0.27"
+version = "1.6"
 optional = true
-# `aio` + `connection-manager` mirror bee_kv's redis features: the backend
-# holds a reconnecting `ConnectionManager`.
-features = ["tokio-comp", "aio", "connection-manager"]
+# `aio` mirrors bee_kv's redis features: the backend runs commands on pooled
+# multiplexed connections.
+features = ["tokio-comp", "aio"]
+
+[dependencies.deadpool-redis]
+version = "0.23"
+optional = true
 
 [dependencies.memcache]
 version = "0.17"

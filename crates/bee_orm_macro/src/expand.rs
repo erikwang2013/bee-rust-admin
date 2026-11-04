@@ -117,6 +117,24 @@ pub(crate) fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream
         ));
     }
 
+    let shard_keys: Vec<usize> = columns
+        .iter()
+        .enumerate()
+        .filter(|(_, column)| column.shard_key)
+        .map(|(index, _)| index)
+        .collect();
+    let shard_key_index = if shard_keys.len() > 1 {
+        let names: Vec<String> =
+            shard_keys.iter().map(|&index| columns[index].ident.to_string()).collect();
+        errors.push(Error::new(
+            columns[shard_keys[1]].ident.span(),
+            format!("bee_orm: multiple #[bee(shard_key)] fields (`{}`)", names.join("`, `")),
+        ));
+        None
+    } else {
+        shard_keys.first().copied()
+    };
+
     let mut seen: Vec<String> = Vec::new();
     for column in &columns {
         if column.ignore {
@@ -370,6 +388,22 @@ pub(crate) fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream
             }
         }
     });
+    // Emitted only when the attribute is used: a model without a shard key
+    // keeps the trait default (`None`).
+    let shard_key = shard_key_index.map(|index| {
+        let ident = &columns[index].ident;
+        quote! {
+            fn shard_key(&self) -> Option<#orm::Value> {
+                // `Option<T>::None` converts to `Value::Null`; treat it as
+                // "no key" so routing fails with the missing-key diagnostic
+                // instead of hashing a type HashRouter cannot route.
+                match #orm::Value::from(self.#ident.clone()) {
+                    #orm::Value::Null => None,
+                    value => Some(value),
+                }
+            }
+        }
+    });
 
     // One forwarder per listed hook; `Self::hook(self)` resolves to the
     // same-named inherent method (never recurses into the trait default).
@@ -413,6 +447,8 @@ pub(crate) fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream
             fn pk_value(&self) -> #orm::Value {
                 #orm::Value::from(self.#pk_ident.clone())
             }
+
+            #shard_key
 
             fn update_values(&self) -> ::std::vec::Vec<(&'static str, #orm::Value)> {
                 ::std::vec![#(#update_values),*]

@@ -35,7 +35,7 @@
   "description": "RBAC admin built on bee-rust: Rust backend + React frontend, button-level permissions, five data-scope levels, TOTP and audit trails.",
   "applicationCategory": "BusinessApplication",
   "operatingSystem": "Linux",
-  "softwareVersion": "2.18.3",
+  "softwareVersion": "2.18.4",
   "inLanguage": "en",
   "license": "https://github.com/erikwang2013/bee-rust-admin/blob/main/LICENSE",
   "codeRepository": "https://github.com/erikwang2013/bee-rust-admin",
@@ -197,7 +197,7 @@
   <div class="container">
     <div class="section-head reveal">
       <p class="eyebrow">Timeline</p>
-      <h2>From the first RBAC line to 2.18.3</h2>
+      <h2>From the first RBAC line to 2.18.4</h2>
       <p class="lead">A continuous run of iterations in October–November 2026: guard the door, add data channels, then finish the engineering and the framework upgrade.</p>
     </div>
     <ol class="timeline">
@@ -214,6 +214,7 @@
       <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v2.18.1</span><span class="tl-date">2026-11-01</span></div><h3>Notice payload + build cleanup</h3><p>Notice list/unread summaries with detail and status endpoints; unknown icons fall back deliberately, cutting build output from 806 JS files to 39; cleanup tests, password error code and site docs.</p></li>
       <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v2.18.2</span><span class="tl-date">2026-11-01</span></div><h3>API versioning compatibility</h3><p>Restores full rows for the v1 notice list/unread, adds the v2 summary contract and the full notice API; the frontend notice module moves to v2 while other endpoints stay on v1. 97 API entries, with version rules in the README.</p></li>
       <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v2.18.3</span><span class="tl-date">2026-11-01</span></div><h3>Audit and config concurrency hardening</h3><p>Anonymous log budgets, full-body admin PUT, job/backup consistency, notice status checks, draft attachment title masking, stale frontend response dropping, config write lock and relation-orphan cleanup; plus attachment quota serialization and v2 list projections.</p></li>
+      <li class="tl-item reveal"><div class="tl-meta"><span class="tl-ver">v2.18.4</span><span class="tl-date">2026-11-05</span></div><h3>Framework upgrade and dependency security</h3><p>bee-rust 1.3.0 → 1.6.2 (including mysql_async 0.37 / redis 1.6) with local router/config patches; install.sql and uncalled endpoints removed; free/open font stacks across the site; zero audit vulnerabilities in Rust and the production frontend.</p></li>
     </ol>
     <div class="btn-row" style="margin-top:24px"><a class="btn btn--ghost" href="releases.html">View the full release log →</a></div>
   </div>

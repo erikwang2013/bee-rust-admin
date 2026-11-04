@@ -224,9 +224,6 @@ docker-compose.yml      single-host MySQL + init + backend + frontend in one sta
 docker-compose.tls.yml  HTTPS overlay (certs/ + TLS nginx template)
 ```
 
-> `install.sql` sits in the repository root but **has nothing to do with this project** — it is another tool's memory schema.
-> Installing BRA neither needs nor uses it; don't be fooled by the name.
-
 ## Usage
 
 > **Want it running fast?** See [`docs/install.md`](docs/install.md) — full commands for the three install methods,
@@ -252,6 +249,7 @@ docker-compose.tls.yml  HTTPS overlay (certs/ + TLS nginx template)
 | Component | Version |
 |---|---|
 | Rust | 1.99+ (edition 2024) |
+| bee-rust | 1.6.2 (vendored under `crates/`; local router/config patches preserved) |
 | MySQL | 8.0+ (developed on 8.4, utf8mb4) |
 | Node / pnpm | Node 22.12+ / pnpm 10+ |
 | nginx | any recent version (only needed for production deployment) |
@@ -463,7 +461,7 @@ Container configuration is included:
 ```bash
 # Framework: unit tests + real-database integration (integration tests skip with a printed reason when no DSN is set)
 cargo test -p bee_orm
-BEE_ORM_TEST_DSN='mysql://user:pass@127.0.0.1:3306/bee_orm_test' cargo test -p bee_orm -- --nocapture
+BEE_ORM_MYSQL_DSN='mysql://user:pass@127.0.0.1:3306/bee_orm_test' cargo test -p bee_orm --features mysql,chrono -- --nocapture
 
 # Admin: unit tests (pure functions: config / JWT / data scope / cycle prevention …)
 cargo test -p bee_admin --bins

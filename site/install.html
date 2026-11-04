@@ -347,7 +347,6 @@ journalctl --user -u bee-admin -f          # 跟日志
   （插件默认阈值：≥4 点、300–5000ms、线性度 ≤0.99），只交裸数值的老客户端一律失败。
   新前端总是上报轨迹，开这个开关不用重发前端；代价是「极快甩动」（&lt;300ms）会被判机器 ——
   用户表现为滑块怎么拖都提示「验证码错误」，要放宽得改插件侧的 <code>min_duration_ms</code></li>
-<li><strong>仓库根目录的 <code>install.sql</code> 与本项目无关</strong>（那是另一个工具的库），安装不需要它</li>
 <li><strong>忘了超管密码</strong>：改库里的 <code>admin</code> 表（或重建库重来）</li>
 </ul>
 </article></div>

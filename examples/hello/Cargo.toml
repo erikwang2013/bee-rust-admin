@@ -7,7 +7,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
-bee_rust = { version = "1.1.5", path = "../../crates/bee_rust", features = ["full"] }
+bee_rust = { version = "1.6.2", path = "../../crates/bee_rust", features = ["full"] }
 tokio = { version = "1", features = ["full"] }
 axum = "0.8"
 tracing = "0.1"

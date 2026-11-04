@@ -34,7 +34,9 @@ pub mod prelude {
     #[cfg(feature = "security")]
     pub use bee_router::SecurityFilter;
     #[cfg(feature = "router")]
-    pub use bee_router::{Context, Controller, Filter, Router};
+    pub use bee_router::{
+        Context, Controller, Filter, LatencyConfig, LatencySnapshot, LatencyStats, Router,
+    };
     #[cfg(feature = "session")]
     pub use bee_session::Session;
     #[cfg(feature = "template")]

@@ -202,6 +202,22 @@ pub trait Model: Send + Sync + 'static {
     /// The primary key value addressing this instance.
     fn pk_value(&self) -> Value;
 
+    /// The sharding key for this instance, or `None` when the model declares
+    /// none.
+    ///
+    /// The derive returns `Some` for the field marked `#[bee(shard_key)]`;
+    /// that field's type must implement `Into<Value>` (the scalar column
+    /// spellings do; `Option<T>::None` converts to `Value::Null` and is
+    /// returned as `None`). The derive rejects database-assigned keys
+    /// (`auto` / `auto_now_add` / `auto_now`): routing happens before insert.
+    /// Hand-written impls return `None` unless they override it.
+    /// [`ShardedPools::for_model`] routes on this.
+    ///
+    /// [`ShardedPools::for_model`]: crate::ShardedPools::for_model
+    fn shard_key(&self) -> Option<Value> {
+        None
+    }
+
     /// Column/value pairs for `UPDATE` (skips the primary key).
     ///
     /// Must not list columns named by
@@ -283,7 +299,8 @@ pub trait Model: Send + Sync + 'static {
     /// columns, executes, then runs [`after_insert`](Model::after_insert).
     async fn insert<D: Db + ?Sized>(&self, db: &D) -> Result<u64> {
         self.before_insert().await?;
-        let (sql, values) = insert_statement(self, batch_now::<Self>()?, "insert")?;
+        let table = db.resolve_table(Self::table_name())?;
+        let (sql, values) = insert_statement(self, &table, batch_now::<Self>()?, "insert")?;
         let params: Vec<Value> = values.into_iter().map(|(_, value)| value).collect();
         let affected = db.execute(&sql, &params).await?;
         self.after_insert().await?;
@@ -303,20 +320,31 @@ pub trait Model: Send + Sync + 'static {
         Self: Sized,
     {
         self.before_insert().await?;
-        let (sql, values) = insert_statement(self, batch_now::<Self>()?, "create")?;
+        let table = db.resolve_table(Self::table_name())?;
+        let (sql, values) = insert_statement(self, &table, batch_now::<Self>()?, "create")?;
         let has_pk = values.iter().any(|(column, _)| *column == Self::pk_column());
         let params: Vec<Value> = values.into_iter().map(|(_, value)| value).collect();
         let row = if has_pk {
             db.execute(&sql, &params).await?;
             None
         } else {
-            db.insert_returning(Self::table_name(), Self::pk_column(), &sql, &params).await?
+            // `None`: a hand-written impl without schema metadata — the backend
+            // probes as before instead of acting on a guessed `false`. A `Some`
+            // hint is trusted, not checked: `columns()` must match the physical
+            // schema, since drift is unsupported.
+            let columns = Self::columns();
+            let auto_increment = if columns.is_empty() {
+                None
+            } else {
+                Some(columns.iter().any(|column| column.primary_key && column.auto_increment))
+            };
+            db.insert_returning_auto(&table, Self::pk_column(), auto_increment, &sql, &params)
+                .await?
         };
         let row = match row {
             Some(row) => row,
             None => {
-                let sql =
-                    format!("SELECT * FROM {} WHERE {} = ?", Self::table_name(), Self::pk_column());
+                let sql = format!("SELECT * FROM {table} WHERE {} = ?", Self::pk_column());
                 let rows = db.query(&sql, &[self.pk_value()]).await?;
                 rows.into_iter().next().ok_or(OrmError::NotFound)?
             }
@@ -333,6 +361,7 @@ pub trait Model: Send + Sync + 'static {
     /// consulted — updating a soft-deleted row works (also the restore path).
     async fn update<D: Db + ?Sized>(&self, db: &D) -> Result<u64> {
         self.before_update().await?;
+        let table = db.resolve_table(Self::table_name())?;
         let values = update_row_values(self, batch_now::<Self>()?);
         if values.is_empty() {
             return Err(no_columns("update", Self::table_name()));
@@ -340,8 +369,7 @@ pub trait Model: Send + Sync + 'static {
         let assignments: Vec<String> =
             values.iter().map(|(column, _)| format!("{column} = ?")).collect();
         let sql = format!(
-            "UPDATE {} SET {} WHERE {} = ?",
-            Self::table_name(),
+            "UPDATE {table} SET {} WHERE {} = ?",
             assignments.join(", "),
             Self::pk_column()
         );
@@ -360,18 +388,17 @@ pub trait Model: Send + Sync + 'static {
     /// `DELETE`. Runs the delete hooks.
     async fn delete<D: Db + ?Sized>(&self, db: &D) -> Result<u64> {
         self.before_delete().await?;
+        let table = db.resolve_table(Self::table_name())?;
         let affected = match Self::soft_delete_column() {
             Some(column) => {
                 let sql = format!(
-                    "UPDATE {} SET {column} = ? WHERE {} = ? AND {column} = ?",
-                    Self::table_name(),
+                    "UPDATE {table} SET {column} = ? WHERE {} = ? AND {column} = ?",
                     Self::pk_column()
                 );
                 db.execute(&sql, &[Value::Bool(true), self.pk_value(), Value::Bool(false)]).await?
             }
             None => {
-                let sql =
-                    format!("DELETE FROM {} WHERE {} = ?", Self::table_name(), Self::pk_column());
+                let sql = format!("DELETE FROM {table} WHERE {} = ?", Self::pk_column());
                 db.execute(&sql, &[self.pk_value()]).await?
             }
         };
@@ -383,7 +410,8 @@ pub trait Model: Send + Sync + 'static {
     /// delete hooks.
     async fn hard_delete<D: Db + ?Sized>(&self, db: &D) -> Result<u64> {
         self.before_delete().await?;
-        let sql = format!("DELETE FROM {} WHERE {} = ?", Self::table_name(), Self::pk_column());
+        let table = db.resolve_table(Self::table_name())?;
+        let sql = format!("DELETE FROM {table} WHERE {} = ?", Self::pk_column());
         let affected = db.execute(&sql, &[self.pk_value()]).await?;
         self.after_delete().await?;
         Ok(affected)
@@ -403,6 +431,7 @@ pub trait Model: Send + Sync + 'static {
         if models.is_empty() {
             return Ok(0);
         }
+        let table = db.resolve_table(Self::table_name())?;
         let now = batch_now::<Self>()?;
         let rows: Vec<Vec<(&'static str, Value)>> =
             models.iter().map(|model| insert_row_values(model, now)).collect();
@@ -421,11 +450,8 @@ pub trait Model: Send + Sync + 'static {
         let mut affected = 0u64;
         for group in rows.chunks(chunk) {
             let values_clause = vec![tuple.as_str(); group.len()].join(", ");
-            let sql = format!(
-                "INSERT INTO {} ({}) VALUES {values_clause}",
-                Self::table_name(),
-                columns.join(", ")
-            );
+            let sql =
+                format!("INSERT INTO {table} ({}) VALUES {values_clause}", columns.join(", "));
             let mut params = Vec::with_capacity(columns.len() * group.len());
             for row in group {
                 params.extend(row.iter().map(|(_, value)| value.clone()));
@@ -467,9 +493,11 @@ fn update_row_values<M: Model + ?Sized>(model: &M, now: i64) -> Vec<(&'static st
 }
 
 /// The `INSERT` statement and its named values (own columns plus the
-/// timestamp injection); `op` names the caller in the no-columns error.
+/// timestamp injection); `table` is the resolved physical name, `op` names
+/// the caller in the no-columns error.
 fn insert_statement<M: Model + ?Sized>(
     model: &M,
+    table: &str,
     now: i64,
     op: &str,
 ) -> Result<(String, Vec<(&'static str, Value)>)> {
@@ -479,8 +507,7 @@ fn insert_statement<M: Model + ?Sized>(
     }
     let columns: Vec<&str> = values.iter().map(|(column, _)| *column).collect();
     let placeholders = vec!["?"; values.len()].join(", ");
-    let sql =
-        format!("INSERT INTO {} ({}) VALUES ({placeholders})", M::table_name(), columns.join(", "));
+    let sql = format!("INSERT INTO {table} ({}) VALUES ({placeholders})", columns.join(", "));
     Ok((sql, values))
 }
 

@@ -52,7 +52,7 @@ use deadpool_postgres::{Manager, ManagerConfig, Pool as DeadpoolPool, Timeouts};
 use serde_json::Value as Json;
 use tokio_postgres::types::ToSql;
 
-use super::{Row, conn_err, query_err};
+use super::{PoolStatus, Row, conn_err, query_err};
 use crate::{Db, Dialect, OrmError, Result, Value};
 
 /// A cloneable handle to a deadpool PostgreSQL pool.
@@ -148,6 +148,16 @@ impl Pool {
     /// `waiting`.
     pub fn status(&self) -> deadpool_postgres::Status {
         self.inner.status()
+    }
+
+    /// Pool occupancy in the crate-wide [`PoolStatus`] shape.
+    pub fn pool_status(&self) -> PoolStatus {
+        let status = self.inner.status();
+        PoolStatus {
+            max_size: status.max_size,
+            size: Some(status.size),
+            available: Some(status.available),
+        }
     }
 }
 
